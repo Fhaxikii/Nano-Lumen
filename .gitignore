@@ -24,6 +24,8 @@ data/context_last_known.json
 data/context_samples.jsonl
 data/nano_memory.db
 data/nano_runtime.db
+data/*.db-shm
+data/*.db-wal
 data/os_audit/
 data/os_state.json
 data/proactive_ledger.json

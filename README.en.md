@@ -35,6 +35,14 @@ It becomes:
 
 ---
 
+## 📸 Preview
+
+| Dark | Light |
+|---|---|
+| ![Dark theme](assets/preview/ui-dark.png) | ![Light theme](assets/preview/ui-light.png) |
+
+---
+
 ## ⚙️ Core Architecture: Designing the Agent as a Persistent-State System
 
 Around the goal of persistent state, Nano builds a complete state-guarantee layer at the kernel level:
