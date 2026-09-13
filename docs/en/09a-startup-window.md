@@ -37,7 +37,7 @@ process start
 
 ## Tray and "close means hide"
 
-- System tray (pystray, ~:261): **clicking close hides to tray, it does not
+- System tray (pystray): **clicking close hides to tray, it does not
   exit** — the user-facing half of "resident" (since Changelog v1.11).
 - Real exit goes through the tray menu → `_quit`. A PR that makes
   close = exit reverses the resident positioning and will not pass.

@@ -19,7 +19,7 @@ another"). **The fix: exactly one `right_drawer`, with multiple content panels
 toggling visibility inside** — eliminating the "several drawers fighting for a
 slot" premise at the root.
 
-Panel inventory (`WebUI.__init__`, ~:1050):
+Panel inventory (`WebUI.__init__`):
 
 | Panel | Variable | Contents |
 |---|---|---|
