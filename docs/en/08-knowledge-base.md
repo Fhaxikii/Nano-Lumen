@@ -1,157 +1,85 @@
-# 08 · Knowledge base and retrieval
+# 08 · Knowledge base & retrieval (Overview)
 
-**What this page covers**: how files are ingested, how retrieval works, and the special handling of system documents.  
-**After reading it you can**: modify the ingest flow or retrieval strategy, and locate why something cannot be retrieved.  
-**Prerequisites**: [02-architecture.md](02-architecture.md).
+**What this page covers**: the map of the RAG layer — the four blocks of `core/rag.py` (~4,600 lines), the two-way retrieval fusion, a file's lifecycle (ingest → index → retrieve → temp attachments), and how the three sub-pages divide the work.  
+**After reading it you can**: tell which sub-page your change belongs in, and understand why RAG is shaped as hybrid retrieval + multi-level parsing fallback.  
+**Prerequisites**: [02-architecture.md](02-architecture.md), [10-builtin-tools.md](10-builtin-tools.md) (RAG retrieval is an availability of a built-in tool).  
 
-> Language: [中文](../zh/08-knowledge-base.md) · English
+> Language: [中文](../zh/08-knowledge-base.md) · English  
 
 ---
 
-## Composition
+## The four blocks (a map of `core/rag.py`)
 
-The code is concentrated in `core/rag.py`. Retrieval combines three parts:
+| Block | Function region (lines) | Contents | Read in |
+|---|---|---|---|
+| Model loading | `_resolve_hf_snapshot`(:184) / `_load_embedder`(:207) / `_load_reranker`(:596) | safetensors snapshots, lazy embedder/reranker, error classification | [08a](08a-parsing-indexing.md) |
+| Parsing & indexing | `_parse_file`(:2465) / `_chunk_text`(:2499) / `_index_one_file`(:2724) / `index_documents`(:2801) | ten formats, chunking, incremental indexing | [08a](08a-parsing-indexing.md) |
+| Retrieval & fusion | `_build_bm25_index`(:380) / `_bm25_search`(:460) / `_rrf_fuse`(:522) / `_rerank`(:640) / `search`(:3021) / `query_for_agent`(:3413) | vector + BM25 fused by RRF + rerank | [08b](08b-retrieval-ranking.md) |
+| Temp attachments | `index_temp_file`(:3510) / `register_temp_file`(:3604) / `cleanup_stale_temp_files`(:3573) | registration-based lazy build for uploads | [08c](08c-health-temp.md) |
 
-| Part | Role |
+Cross-cutting: **health probes** (`_register_health_probes`, :863 — four probes
+watching embedder/reranker/bm25/vector store) and **parse_report** (per-file
+parsing report, `data/parse_reports.json`, feeding the health panel) — see
+[08c](08c-health-temp.md).
+
+## The retrieval design in one sentence
+
+**Hybrid retrieval (vector + BM25, fused by RRF) + a cross-encoder reranker**,
+solving "long queries with modifiers drown the relevant chunk" — vector search
+has high semantic similarity but gets pulled off by irrelevant content; BM25 is
+precise on keywords but blind to semantics; RRF fuses both rankings, then the
+reranker re-sorts. Acceptance criterion: a question with long modifiers and the
+key info at the end must hit the short clause at the end of the text. Details
+and tuning: [08b](08b-retrieval-ranking.md).
+
+## A file's lifecycle
+
+```
+drop into data/knowledge/ → index_documents scans (incremental by file hash)
+→ _parse_file multi-level parsing (PDF three-tier fallback: pdfplumber → pymupdf → OCR)
+→ _chunk_text chunking (tables stay whole) → embed into chroma
+→ BM25 index rebuild → served to query_local_knowledge / load_full_file
+```
+
+Hashes live in `data/indexed_hashes.json`, parse reports in
+`data/parse_reports.json`, the vector store in `data/chroma_db/` — **all three
+are runtime files, not in the repository** (`data/` is whitelist-based, see
+[12-contributing.md](12-contributing.md)).
+
+## System documents (`_system/`)
+
+`data/knowledge/_system/` holds Nano's own manual (`nano_manual.md`), with
+special visibility: hidden from the user (not in the UI's KB list), visible to
+the model (in retrieval and the file catalog), deletion refused. Maintenance
+rules (UI changes must update the manual in the same commit; version in the
+header; one section, one question) live in
+[12-contributing.md](12-contributing.md) and
+[the writing requirements](#writing-system-documents).
+
+## The three sub-pages
+
+| Sub-page | Direction of change |
 |---|---|
-| Vector retrieval | Matches on semantic proximity, no literal overlap required |
-| Keyword retrieval | BM25-based, literal matching; Chinese goes through word segmentation |
-| Reranking | Re-sorts the merged results of the two channels |
+| [08a · Parsing & indexing](08a-parsing-indexing.md) | new formats, chunking strategy, incremental indexing, model loading |
+| [08b · Retrieval & ranking](08b-retrieval-ranking.md) | RRF/rerank tuning, retrieval paths, query_for_agent |
+| [08c · Health & temp attachments](08c-health-temp.md) | probes, parse_report, temp-attachment registry, chroma self-healing |
 
-The two retrieval channels are merged via RRF (Reciprocal Rank Fusion);
-the parameter `RRF_K` is defined in `core/rag.py`.
+## Two iron rules
 
-When the keyword channel's dependencies are missing, retrieval degrades to
-vector-only. The degradation is registered with the health registry but does
-not interrupt the conversation.
-
-## Model dependencies
-
-| Purpose | Model |
-|---|---|
-| Embedding | `BAAI/bge-m3`, local, ~2.3 GB |
-| Reranking | Local, may be absent |
-
-Without the embedding model, knowledge-base retrieval is unavailable
-entirely. Load-failure attribution lives in `_model_load_code` and
-`_classify_model_load_error` in `core/rag.py`.
-
-Attribution must distinguish several causes, because the advice to the user
-is completely different: a genuinely missing file means re-download, while
-insufficient memory means the file is intact and re-downloading is pointless.
-Never use a broad exception base class as the test for one specific cause.
-
-## Supported formats
-
-Text: `.txt` `.md` `.pdf` `.docx` `.pptx` `.xlsx` `.xls` `.csv`
-Images: `.jpg` `.jpeg` `.png` `.webp` `.bmp` `.gif`
-
-The exact lists are `SUPPORTED_EXTENSIONS` and `IMAGE_EXTENSIONS` in
-`core/rag.py`. The per-file size cap is `MAX_FILE_SIZE_MB`.
-
-Images and scanned PDFs are converted to text via vision or OCR before
-ingest. The vision model is set under Settings → Advanced → Vision and
-resolved via `model_for_role` in `core/models.py`, never hardcoded at the
-call site.
-
-## Ingest
-
-`index_documents()` scans `data/knowledge` and processes incrementally by
-file hash: unchanged files are skipped; changed files have their old chunks
-deleted, then are re-chunked and re-ingested. Hashes are recorded in
-`data/indexed_hashes.json`.
-
-Chunking parameters are in `_chunk_text` in `core/rag.py`: default chunk 500
-characters with 80 overlap. Overly long tables are split by row.
-
-## Retrieval
-
-Two public entry points:
-
-| Function | Purpose |
-|---|---|
-| `search()` | Returns a structured list of chunks |
-| `query_for_agent()` | Returns a string for the model |
-
-There is also `load_full_file()` to read an entire file. Retrieval suits
-finding specific facts, clauses, numbers, keywords; for understanding
-overall structure or a complete mechanism, read the full text.
-
-Queries shorter than `MIN_QUERY_CHARS` do not trigger retrieval.
-
-## System documents
-
-`data/knowledge/_system/` holds Nano's own documents, such as the user
-manual. Their visibility rules differ from ordinary files:
-
-| Entry point | Includes system documents? |
-|---|---|
-| Retrieval | yes |
-| The knowledge-base file list in the UI | no |
-| The file catalog provided to the model | yes |
-| Deletion | refused |
-
-Hidden from the user and hidden from the model are two different things,
-distinguished by the `include_system` parameter of `list_knowledge_files()`,
-defaulting to excluded.
-
-System documents appear in the catalog with the `_system/` prefix;
-`load_full_file()` must be called with the full prefixed name.
-
-### Writing system documents
-
-System documents must support both retrieval and full-text loading, which
-imposes two constraints on how they are written:
-
-1. **Easy for keywords to hit**: whatever words a user would ask with must
-   appear in the title and body.
-2. **Each chunk stands alone**: any chunk recalled on its own must be
-   understandable without context. In practice: each section opens by
-   restating where it is.
-
-#### About nano_manual.md
-
-`_system/nano_manual.md` is Nano's user manual: where every UI feature
-lives, what it is called, and how to use it. When the user asks "where is
-X", "how do I turn Y on/off", or "can Nano do Z", the answer should come
-from this file. Three maintenance rules:
-
-1. **Changed the UI or a feature? Update the manual in the same commit.**
-   This file is the authority Nano answers "where is X" from; if the
-   feature changed and the manual did not, Nano will confidently answer
-   with stale information — worse than not knowing.
-2. **State the corresponding program version in the file header**
-   (e.g. "manual matches Nano version 1.96"). The manual ships with the
-   release; the version number is the first check for staleness.
-3. **One section answers one question; title it the way users ask.**
-   Ingest chunks at roughly 500 characters (see "Ingestion" above), so a
-   section should fit inside one chunk. A title like "where do I open
-   Settings" hits more easily than "about the settings panel". Avoid
-   cross-references like "see the previous section" — a chunk recalled on
-   its own cannot follow them.
-
-## Common problems
-
-**The file exists but retrieval never finds it**
-First confirm it entered the index: check `data/indexed_hashes.json` and the
-chunk count in the vector store. Present on disk but absent from the index
-usually means an ingest error or an unsupported format.
-
-**System documents cannot be retrieved**
-The retrieval path does not exclude system documents. If the model claims
-they are not indexed, check whether the wording of the file catalog given to
-the model created that impression.
+1. **Incremental decisions are based on file content hashes**. Unchanged files
+   are skipped; changed ones have old chunks deleted before re-chunking
+   (otherwise chunks pile up); parse_report is a human-facing report and takes
+   no part in the decision.
+2. **Retrieval and full-text loading are separate**: RAG finds fragments
+   (`query_for_agent`); `load_full_file` reads the whole file — "find a specific
+   fact" goes to retrieval, "understand the whole structure" goes to full text.
 
 ---
 
 ## How to verify you got it right
 
-1. Add a new file: after ingest, the UI's file and chunk counts increase.
-2. Search with a keyword from the file: it hits.
-3. Modify the file and re-ingest: old chunks are replaced, not stacked.
-4. Remove the embedding model and start: the report says "model missing" and
-   nothing else, and conversation works unaffected.
-5. Run `bash run_tests.sh`.
+This page is a map. Verification lives at the end of each sub-page; full
+regression `bash run_tests.sh`.
 
 ---
 

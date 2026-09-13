@@ -1,140 +1,75 @@
-﻿# 08 · 知识库与检索
+﻿# 08 · 知识库与检索（总览）
 
-**这篇讲什么**：文件如何入库、检索如何进行、以及系统文档的特殊处理。  
-**读完你能做什么**：修改入库流程或检索策略，定位检索不到内容的原因。  
-**前置**：[02-architecture.md](02-architecture.md)。  
+**这篇讲什么**：RAG 层的地图——`core/rag.py`（约 4600 行）的四大块、检索的两路融合、文件的生命周期（入库→索引→检索→临时附件），以及三个子篇的分工。  
+**读完你能做什么**：知道"我要改的东西在哪个子篇"，并理解 RAG 为什么长成混合检索 + 多级解析降级的形状。  
+**前置**：[02-architecture.md](02-architecture.md)、[10-builtin-tools.md](10-builtin-tools.md)（RAG 检索是一个内置工具的可用能力）。  
 
-> 语言：中文 · [English](../en/08-knowledge-base.md)
+> 语言：中文 · [English](../en/08-knowledge-base.md)  
 
 ---
 
-## 组成
+## 四大块（`core/rag.py` 的地图）
 
-代码集中在 `core/rag.py`。检索由三部分组合而成：
+| 块 | 函数区（行号） | 内容 | 详读 |
+|---|---|---|---|
+| 模型加载 | `_resolve_hf_snapshot`(:184) / `_load_embedder`(:207) / `_load_reranker`(:596) | safetensors 快照、嵌入/重排懒加载、错误分类上报 | [08a](08a-parsing-indexing.md) |
+| 解析与入库 | `_parse_file`(:2465) / `_chunk_text`(:2499) / `_index_one_file`(:2724) / `index_documents`(:2801) | 十种格式解析、切块、增量索引 | [08a](08a-parsing-indexing.md) |
+| 检索与融合 | `_build_bm25_index`(:380) / `_bm25_search`(:460) / `_rrf_fuse`(:522) / `_rerank`(:640) / `search`(:3021) / `query_for_agent`(:3413) | 向量 + BM25 两路 RRF 融合 + 重排 | [08b](08b-retrieval-ranking.md) |
+| 临时附件 | `index_temp_file`(:3510) / `register_temp_file`(:3604) / `cleanup_stale_temp_files`(:3573) | 上传文件的注册制 lazy build | [08c](08c-health-temp.md) |
 
-| 部分 | 作用 |
+贯穿全层的横切面：**健康度探针**（`_register_health_probes`，:863，四个探针
+分别盯 embedder/reranker/bm25/向量库）、**parse_report**（每个文件的解析报告，
+`data/parse_reports.json`，喂给健康度面板）——见 [08c](08c-health-temp.md)。
+
+## 检索设计的一句话
+
+**混合检索（向量 + BM25，RRF 融合）+ cross-encoder 重排**，解决的是
+"长 query 里修饰词淹没真正相关 chunk"——向量检索语义相似度高但会被无关
+内容带偏；BM25 对关键词精确但不理解语义；RRF 融合两路排名再重排。
+验收判据：一句修饰词很长、关键信息在末尾的提问，要能命中正文末尾那条
+短条款。细节与调参见 [08b](08b-retrieval-ranking.md)。
+
+## 文件的生命周期
+
+```
+放入 data/knowledge/ → index_documents 扫描（按文件哈希增量）
+→ _parse_file 多级解析（PDF 三层 fallback：pdfplumber → pymupdf → OCR）
+→ _chunk_text 切块（表格整体成 chunk）→ 嵌入入库（chroma）
+→ BM25 索引重建 → 供 query_local_knowledge 检索 / load_full_file 全文读
+```
+
+哈希记录在 `data/indexed_hashes.json`，解析报告在 `data/parse_reports.json`，
+向量库在 `data/chroma_db/`——**三个都是运行期文件，不在仓库里**（`data/`
+白名单制，见 [12-contributing.md](12-contributing.md)）。
+
+## 系统文档（`_system/`）
+
+`data/knowledge/_system/` 存 Nano 自己的手册（`nano_manual.md`），可见性规则
+特殊：对用户隐藏（不出现在界面的知识库列表）、对模型可见（进检索与清单）、
+拒绝删除。维护约定（改界面必须同步更新手册、头部写版本号、一节一个问题）
+见 [12-contributing.md](12-contributing.md) 相关约定与现有
+[撰写系统文档的要求](#撰写系统文档的要求)。
+
+## 三个子篇
+
+| 子篇 | 面向的改动方向 |
 |---|---|
-| 向量检索 | 语义相近即可命中，不要求字面一致 |
-| 关键词检索 | 基于 BM25，字面命中，中文经分词处理 |
-| 重排 | 对两路结果的合并结果重新排序 |
+| [08a · 解析与索引](08a-parsing-indexing.md) | 新增格式、切块策略、增量索引、模型加载 |
+| [08b · 检索与排序](08b-retrieval-ranking.md) | RRF/重排调参、检索路径、query_for_agent |
+| [08c · 健康度与临时附件](08c-health-temp.md) | 探针、parse_report、临时附件注册制、chroma 自愈 |
 
-两路检索结果通过 RRF（Reciprocal Rank Fusion，倒数排名融合）合并，
-参数 `RRF_K` 定义在 `core/rag.py`。
+## 两条铁律
 
-关键词检索的依赖缺失时会自动降级为纯向量检索，
-降级会登记到健康度，但不打断对话。
-
-## 模型依赖
-
-| 用途 | 模型 |
-|---|---|
-| 嵌入 | `BAAI/bge-m3`，本地运行，约 2.3 GB |
-| 重排 | 本地运行，可缺失 |
-
-嵌入模型缺失时知识库检索整体不可用。加载失败的归因逻辑在
-`core/rag.py` 的 `_model_load_code` 与 `_classify_model_load_error`。
-
-归因需要区分几类原因，因为给用户的建议完全不同：文件确实缺失
-应当重新下载，而内存不足时文件是完好的，重新下载没有意义。
-不要用宽泛的异常基类作为某一类具体原因的判据。
-
-## 支持的格式
-
-文本类：`.txt` `.md` `.pdf` `.docx` `.pptx` `.xlsx` `.xls` `.csv`
-图片类：`.jpg` `.jpeg` `.png` `.webp` `.bmp` `.gif`
-
-准确清单见 `core/rag.py` 的 `SUPPORTED_EXTENSIONS` 与 `IMAGE_EXTENSIONS`。
-单文件大小上限由 `MAX_FILE_SIZE_MB` 定义。
-
-图片与扫描版 PDF 走视觉或 OCR 转成文字后再入库，
-所用的视觉模型由「设置 → 进阶配置 → 视觉」指定，
-通过 `core/models.py` 的 `model_for_role` 解析，不在调用处硬编码。
-
-## 入库
-
-`index_documents()` 扫描 `data/knowledge`，按文件哈希增量处理：
-哈希未变的文件跳过，变了的先删除旧片段再重新切分入库。
-哈希记录在 `data/indexed_hashes.json`。
-
-切分参数见 `core/rag.py` 的 `_chunk_text`，默认块长 500 字符，
-重叠 80 字符。超长表格按行切分。
-
-## 检索
-
-对外的两个入口：
-
-| 函数 | 用途 |
-|---|---|
-| `search()` | 返回结构化的片段列表 |
-| `query_for_agent()` | 返回给模型看的字符串 |
-
-另有 `load_full_file()` 读取整个文件。检索适合找具体事实、条款、
-数字、关键词；需要理解整体结构或完整机制时应当读全文。
-
-查询长度低于 `MIN_QUERY_CHARS` 不会触发检索。
-
-## 系统文档
-
-`data/knowledge/_system/` 用于存放 Nano 自己的文档，例如操作手册。
-它的可见性规则与普通文件不同：
-
-| 入口 | 是否包含系统文档 |
-|---|---|
-| 检索 | 包含 |
-| 界面的知识库文件列表 | 不包含 |
-| 提供给模型的文件清单 | 包含 |
-| 删除操作 | 拒绝 |
-
-对用户隐藏与对模型隐藏是两件不同的事，由 `list_knowledge_files()`
-的 `include_system` 参数区分，默认为不包含。
-
-系统文档在清单中以带 `_system/` 前缀的名字返回，
-调用 `load_full_file()` 时需要使用完整的带前缀名字。
-
-### 撰写系统文档的要求
-
-系统文档需要同时支持检索与全文加载两种取用方式，因此撰写时有两条约束：
-
-1. **便于关键词命中**：用户会用什么词提问，标题和正文里就要出现那个词。
-2. **单个片段自带完整信息**：一个片段被单独召回时，其内容必须能够独立读懂，
-   不依赖上下文。实践做法是每一节开头重述自己的位置。
-
-#### 关于 nano_manual.md
-
-`_system/nano_manual.md` 是 Nano 的操作手册：界面上每个功能在哪、
-叫什么、怎么用。用户问「XX 在哪」「怎么开关 YY」「能不能做 ZZ」时，
-答案应当来自这份文档。三条维护约定：
-
-1. **改了界面或功能，同一次提交里更新手册。** Nano 回答「XX 在哪」的
-   权威来源就是这份文件；功能改了而手册没改，Nano 会拿着过时的信息
-   自信地答错——这类错误比"不知道"更糟。
-2. **文件头部写明对应的程序版本号**（如「手册对应 Nano 程序版本号：1.96」）。
-   手册随版本一起分发，版本号是判断手册是否过时的第一依据。
-3. **一节只回答一个问题，标题用用户的问法。** 入库时按约 500 字符切块
-   （见上文「入库」），一节最好能完整落进一个片段；「设置在哪打开」这样的
-   标题比「设置面板说明」更容易被命中。节内不要用「详见上一节」这类指代——
-   片段被单独召回时，指代会断。
-
-## 常见问题
-
-**明明有这份文件却检索不到**
-先确认它是否进了索引：检查 `data/indexed_hashes.json` 与向量库中的片段数。
-文件存在但未入库，通常是入库过程报错或格式不受支持。
-
-**系统文档检索不到**
-检索路径不排除系统文档。如果模型声称它不在索引里，
-检查提供给模型的文件清单文案是否让模型产生了这个误解。
+1. **哈希增量判定基于文件内容哈希**。哈希未变的文件跳过，变了的先删旧
+   片段再重切（不然旧 chunk 堆积）；parse_report 是给人看的报告，不参与判定。
+2. **检索与全文加载职责分离**：RAG 查片段（`query_for_agent`），
+   `load_full_file` 读完整文件——"找具体事实"走检索，"理解整体结构"走全文。
 
 ---
 
 ## 怎么验证你改对了
 
-1. 放入一份新文件，确认入库后界面上的文件数与片段数增加。
-2. 用文件中出现过的关键词检索，确认能命中。
-3. 修改该文件后重新入库，确认旧片段被替换而不是叠加。
-4. 删除嵌入模型后启动，确认给出的说明是"模型缺失"而不是其他原因，
-   且对话功能不受影响。
-5. 运行 `bash run_tests.sh`。
+本页是地图。验证方式见各子篇末尾；全量回归 `bash run_tests.sh`。
 
 ---
 
