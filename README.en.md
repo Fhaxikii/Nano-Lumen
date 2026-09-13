@@ -74,7 +74,9 @@ Nano itself never collects usage statistics or behavioral data.
 **🧰 Tools & Skills**
 
 - **Agent execution engine**: ReAct tool loop, single-file skill system, and standard MCP (Model Context Protocol) support over local stdio or remote HTTP, connecting to any standards-compliant third-party MCP server.
-- **On-demand loading**: tools are discovered dynamically and injected only as needed, keeping per-turn overhead low.
+- **30+ built-in tools**: file read/search/edit, RAG retrieval, task lists, background jobs & wait/wake, image/screen, OS automation, MCP & skill management, sub-agents, and more — all discovered and injected on demand to keep per-turn context cost low.
+- **Skill self-authoring**: Nano can create, modify, and audit single-file skills from your request, with source viewing, backup-on-update, disable/enable, and delete-to-archive.
+- **MCP auto-discovery & management**: auto-searches the official MCP Registry and connects/manages MCP servers on a single command; persistent connections with automatic reconnect and unified management.
 
 **🧠 Memory & Context**
 
@@ -85,13 +87,15 @@ Nano itself never collects usage statistics or behavioral data.
 
 - Local embedding models (BGE-M3 + reranker), fully offline retrieval.
 
-**🤖 Proactive Intelligence (experimental, not yet enabled)**
+**🤖 Proactive Intelligence (experimental, in shadow observation)**
 
-- The proactive engine is built but currently in **shadow observation**: it records decisions but does not speak, and never messages you unprompted.
+- A three-layer proactive engine (hard safety / routine trigger / state inference) plus an emotion model is built, but currently in **shadow observation**: it records decisions without speaking, and never messages you unprompted. Emotion only affects tone and the proactive gate, never the underlying functions.
 
 **🎛️ System Operation & Safety**
 
-- **Controlled operation**: system actions are risk-graded with six independent permission switches and a classifier-backed Auto mode that blocks dangerous actions that don't match your intent.
+- **Controlled operation**: system actions are risk-graded with six independent permission switches and a classifier-backed Auto mode that judges dangerous commands by whether the action matches your intent, blocking behavior that deviates from it.
+- **Trajectory awareness**: records only a summary of "which app and what you're doing" (expiring in ~18 hours); the behavior ledger uses closed categories with no sensitive semantics, and no telemetry by default.
+- **Sub-agents**: spawns restricted-scope doppelgängers for parallel exploration or execution, isolated via tool and runtime allowlists.
 - **Native window**: a native windowed interface built on NiceGUI + WebView2.
 - **Logging + UIA self-check**: all OS actions are logged; idle-time checks verify the visual-locating pipeline stays healthy.
 
