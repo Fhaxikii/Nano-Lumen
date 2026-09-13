@@ -1,6 +1,6 @@
 # 08 · Knowledge base & retrieval (Overview)
 
-**What this page covers**: the map of the RAG layer — the four blocks of `core/rag.py` (~4,600 lines), the two-way retrieval fusion, a file's lifecycle (ingest → index → retrieve → temp attachments), and how the three sub-pages divide the work.  
+**What this page covers**: the map of the RAG layer — the four blocks of `core/rag.py`, the two-way retrieval fusion, a file's lifecycle (ingest → index → retrieve → temp attachments), and how the three sub-pages divide the work.  
 **After reading it you can**: tell which sub-page your change belongs in, and understand why RAG is shaped as hybrid retrieval + multi-level parsing fallback.  
 **Prerequisites**: [02-architecture.md](02-architecture.md), [10-builtin-tools.md](10-builtin-tools.md) (RAG retrieval is an availability of a built-in tool).  
 
@@ -10,7 +10,7 @@
 
 ## The four blocks (a map of `core/rag.py`)
 
-| Block | Function region (lines) | Contents | Read in |
+| Block | Functions (search by name) | Contents | Read in |
 |---|---|---|---|
 | Model loading | `_resolve_hf_snapshot` / `_load_embedder` / `_load_reranker` | safetensors snapshots, lazy embedder/reranker, error classification | [08a](08a-parsing-indexing.md) |
 | Parsing & indexing | `_parse_file` / `_chunk_text` / `_index_one_file` / `index_documents` | ten formats, chunking, incremental indexing | [08a](08a-parsing-indexing.md) |
@@ -43,16 +43,27 @@ drop into data/knowledge/ → index_documents scans (incremental by file hash)
 
 Hashes live in `data/indexed_hashes.json`, parse reports in
 `data/parse_reports.json`, the vector store in `data/chroma_db/` — **all three
-are runtime files, not in the repository** (`data/` is whitelist-based, see
-[12-contributing.md](12-contributing.md)).
+are runtime files, not in the repository** (`data/` is whitelist-based; the rule lives in the `data/*.json` section of the repo-root `.gitignore`).
 
 ## System documents (`_system/`)
 
 `data/knowledge/_system/` holds Nano's own manual (`nano_manual.md`), with
 special visibility: hidden from the user (not in the UI's KB list), visible to
-the model (in retrieval and the file catalog), deletion refused. Maintenance rules (update the manual in the same commit as UI changes;
-version in the header; one section, one question) live in
-[12-contributing.md](12-contributing.md).
+the model (in retrieval and the file catalog), deletion refused.
+
+Maintenance rules (apply to anything under `_system/`):
+
+1. **Changed the UI or a feature? Update the manual in the same commit.** The
+   manual is the authority Nano answers "where is X" from; a changed feature
+   with an unchanged manual makes Nano confidently answer with stale
+   information — worse than not knowing.
+2. **State the corresponding program version in the file header.** The manual
+   ships with the release; the version is the first staleness check.
+3. **One section answers one question; title it the way users ask** ("where do
+   I open Settings", not "about the settings panel"); no cross-references like
+   "see the previous section" — a chunk recalled on its own cannot follow them.
+4. Be easy for keywords to hit: whatever words a user would ask with must
+   appear in the title and body.
 
 ## The three sub-pages
 

@@ -1,6 +1,6 @@
 ﻿# 08 · 知识库与检索（总览）
 
-**这篇讲什么**：RAG 层的地图——`core/rag.py`（约 4600 行）的四大块、检索的两路融合、文件的生命周期（入库→索引→检索→临时附件），以及三个子篇的分工。  
+**这篇讲什么**：RAG 层的地图——`core/rag.py` 的四大块、检索的两路融合、文件的生命周期（入库→索引→检索→临时附件），以及三个子篇的分工。  
 **读完你能做什么**：知道"我要改的东西在哪个子篇"，并理解 RAG 为什么长成混合检索 + 多级解析降级的形状。  
 **前置**：[02-architecture.md](02-architecture.md)、[10-builtin-tools.md](10-builtin-tools.md)（RAG 检索是一个内置工具的可用能力）。  
 
@@ -10,7 +10,7 @@
 
 ## 四大块（`core/rag.py` 的地图）
 
-| 块 | 函数区（行号） | 内容 | 详读 |
+| 块 | 函数（按函数名搜索） | 内容 | 详读 |
 |---|---|---|---|
 | 模型加载 | `_resolve_hf_snapshot` / `_load_embedder` / `_load_reranker` | safetensors 快照、嵌入/重排懒加载、错误分类上报 | [08a](08a-parsing-indexing.md) |
 | 解析与入库 | `_parse_file` / `_chunk_text` / `_index_one_file` / `index_documents` | 十种格式解析、切块、增量索引 | [08a](08a-parsing-indexing.md) |
@@ -40,16 +40,22 @@
 
 哈希记录在 `data/indexed_hashes.json`，解析报告在 `data/parse_reports.json`，
 向量库在 `data/chroma_db/`——**三个都是运行期文件，不在仓库里**（`data/`
-白名单制，见 [12-contributing.md](12-contributing.md)）。
+白名单制，规则在仓库根 `.gitignore` 的 `data/*.json` 段）。
 
 ## 系统文档（`_system/`）
 
 `data/knowledge/_system/` 存 Nano 自己的手册（`nano_manual.md`），可见性规则
 特殊：对用户隐藏（不出现在界面的知识库列表）、对模型可见（进检索与清单）、
-拒绝删除。维护约定（改界面必须同步更新手册、头部写版本号、一节一个问题）见
-[10-builtin-tools.md](10-builtin-tools.md) 之外另见 docs/12-contributing.md 的
-「文档」一节与 [13-builtin](13-builtin-tools.md)——具体以
-[12-contributing.md](12-contributing.md) 为准。
+拒绝删除。
+
+维护约定（完整版也适用于任何 `_system/` 下的文档）：
+
+1. **改了界面或功能，同一次提交里更新手册。** 手册是 Nano 回答「XX 在哪」的
+   权威来源；功能改了手册没改，Nano 会拿着过时信息自信地答错——比"不知道"更糟。
+2. **文件头部写明对应的程序版本号**。手册随版本分发，版本号是判断过时的第一依据。
+3. **一节只回答一个问题，标题用用户的问法**（如「设置在哪打开」而非「设置面板
+   说明」），节内不用「详见上一节」——片段被单独召回时指代会断。
+4. 便于关键词命中：用户会用什么词问，标题和正文里就要出现那个词。
 
 ## 三个子篇
 
