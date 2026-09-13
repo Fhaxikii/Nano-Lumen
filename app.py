@@ -10730,7 +10730,7 @@ class WebUI:
         # 终端风：左上角 boot 行（整行同一暗色），不再居中大标题、不再带副标题
         with ui.column().classes('w-full items-start') \
                 .style('padding-top:10px;') as self._empty_state_greeting:
-            ui.label(f'// nano-lumen v1.96 · {self._greeting_text()}').style(
+            ui.label(f'// nano-lumen v1.97 · {self._greeting_text()}').style(
                 'font-size:var(--nano-fs-lg); color:var(--nano-faint); font-family:var(--nano-mono);'
             )
 

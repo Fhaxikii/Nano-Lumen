@@ -4,7 +4,7 @@
 
 ![Nano-Lumen](assets/nano-banner.png)
 
-**Nano-Lumen v1.96** · A resident general-purpose agent for Windows desktop · [中文](README.md)
+**Nano-Lumen v1.97** · A resident general-purpose agent for Windows desktop · [中文](README.md)
 
 `Resident AI Agent` · `Task-level persistent state` · `Local-first privacy` · `Windows desktop`
 

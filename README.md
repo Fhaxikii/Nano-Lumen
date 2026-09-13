@@ -4,7 +4,7 @@
 
 ![Nano-Lumen](assets/nano-banner.png)
 
-**Nano-Lumen v1.96** · Windows 桌面常驻型通用智能体 · [English](README.en.md)
+**Nano-Lumen v1.97** · Windows 桌面常驻型通用智能体 · [English](README.en.md)
 
 `常驻 AI Agent` · `任务级持久状态` · `本地优先隐私` · `Windows 桌面端`
 
