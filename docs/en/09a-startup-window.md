@@ -17,7 +17,7 @@ process start
 → reconciler startup recovery ("should that task continue?" is asked here)
 → skills loaded (registry, the six official skills)
 → WebUI() constructed
-→ [synchronous init] (~:16687)   ⚠️ must run synchronously before ui.run(); never on a ui.timer
+→ [synchronous init]   ⚠️ must run synchronously before ui.run(); never on a ui.timer
 → ui.run() 
 → WebView2 native window
 → _on_browser_connect (client connect; re-applies theme; conversation state kept)
