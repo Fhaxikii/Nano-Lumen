@@ -206,3 +206,7 @@ immediately.
 3. Re-walk [01-getting-started.md](01-getting-started.md) in a clean
    environment; first launch still works.
 4. If the change touches the UI, verify under both themes.
+
+---
+
+← Back to [README](README.md)

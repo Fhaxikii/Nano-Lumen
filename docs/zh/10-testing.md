@@ -100,3 +100,7 @@ python tests/t_xxx.py
 1. 新增的测试单独运行时通过。
 2. 故意破坏被测的性质，确认测试会失败——一个从不失败的测试没有意义。
 3. `bash run_tests.sh` 输出 `OK 真·全量 0 失败`。
+
+---
+
+← 返回 [README](README.md)

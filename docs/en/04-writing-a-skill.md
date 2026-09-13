@@ -141,3 +141,7 @@ in `core/schema.py`.
 4. Force a failure (e.g. an invalid argument): the result is a failure
    result, not an exception abort.
 5. Run `bash run_tests.sh`.
+
+---
+
+← Back to [README](README.md)

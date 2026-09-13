@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 460" font-family="'Segoe UI','Microsoft YaHei',system-ui,sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a1a1aa"/>
+    </marker>
+  </defs>
+
+  <!-- 窗口层 -->
+  <rect x="170" y="16" width="380" height="54" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="360" y="49" text-anchor="middle" font-size="16" font-weight="600" fill="#18181b">窗口层 · pywebview / WebView2</text>
+
+  <line x1="360" y1="70" x2="360" y2="100" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="374" y="90" font-size="12" fill="#71717a">渲染</text>
+
+  <!-- 界面层 -->
+  <rect x="170" y="104" width="380" height="54" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="360" y="137" text-anchor="middle" font-size="16" font-weight="600" fill="#18181b">界面层 · app.py（NiceGUI）</text>
+
+  <line x1="360" y1="158" x2="360" y2="188" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
+  <text x="374" y="178" font-size="12" fill="#71717a">调用</text>
+
+  <!-- 编排层 -->
+  <rect x="110" y="192" width="500" height="70" rx="10" fill="#fff8eb" stroke="#f59e0b"/>
+  <text x="360" y="222" text-anchor="middle" font-size="16" font-weight="600" fill="#18181b">编排层 · core/orchestrator.py</text>
+  <text x="360" y="246" text-anchor="middle" font-size="13" fill="#71717a">ReAct 主循环</text>
+
+  <!-- 三列 -->
+  <line x1="170" y1="262" x2="170" y2="292" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="360" y1="262" x2="360" y2="292" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="550" y1="262" x2="550" y2="292" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <rect x="70" y="296" width="200" height="150" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="170" y="326" text-anchor="middle" font-size="15" font-weight="600" fill="#18181b">模型接入层</text>
+  <text x="170" y="356" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/provider</text>
+  <text x="170" y="380" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/models</text>
+
+  <rect x="260" y="296" width="200" height="150" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="360" y="326" text-anchor="middle" font-size="15" font-weight="600" fill="#18181b">工具与能力层</text>
+  <text x="360" y="356" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/tools</text>
+  <text x="360" y="380" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/os_layer</text>
+  <text x="360" y="404" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/mcp_client</text>
+  <text x="360" y="428" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">skills/</text>
+
+  <rect x="450" y="296" width="200" height="150" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
+  <text x="550" y="326" text-anchor="middle" font-size="15" font-weight="600" fill="#18181b">存储与记忆层</text>
+  <text x="550" y="356" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">memory/</text>
+  <text x="550" y="380" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/context</text>
+  <text x="550" y="404" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/rag</text>
+</svg>

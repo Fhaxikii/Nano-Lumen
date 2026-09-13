@@ -141,3 +141,7 @@ model name at the call site.
 4. Check the audit log: the action is recorded.
 5. Repeat the above in auto mode: destructive operations are still blocked.
 6. Run `bash run_tests.sh`.
+
+---
+
+← Back to [README](README.md)

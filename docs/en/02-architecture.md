@@ -12,30 +12,7 @@
 
 Nano is a single-process desktop application:
 
-```
-                 ┌─────────────────────────────┐
-                 │  Window (pywebview/WebView2)│
-                 └──────────────┬──────────────┘
-                                │ renders
-                 ┌──────────────┴──────────────┐
-                 │  Web UI layer (NiceGUI)     │   app.py
-                 └──────────────┬──────────────┘
-                                │ calls
-                 ┌──────────────┴──────────────┐
-                 │  Orchestration layer        │   core/orchestrator.py
-                 └──┬────────┬────────┬────────┘
-                    │        │        │
-        ┌───────────┘        │        └──────────────┐
-        │                    │                       │
- ┌──────┴────────┐   ┌───────┴────────┐      ┌───────┴────┐
- │ Model access  │   │ Tools &        │      │ Storage &  │
- │ core/provider │   │ capabilities   │      │ memory     │
- │ core/models   │   │ core/tools     │      │ memory/    │
- │               │   │ core/os_layer  │      │ core/context│
- │               │   │ core/mcp_client│      │ core/rag   │
- └───────────────┘   │ skills/        │      └────────────┘
-                     └────────────────┘
-```
+![Nano single-process structure](../../assets/architecture.en.svg)
 
 The UI layer and the orchestration layer live in the same process and
 communicate through async generators passing events.
@@ -173,3 +150,7 @@ concrete problem and say which file it belongs in. For example:
 
 If you can locate the file for questions like these, this page has done its
 job.
+
+---
+
+← Back to [README](README.md)

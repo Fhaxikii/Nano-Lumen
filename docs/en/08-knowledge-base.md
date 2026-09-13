@@ -152,3 +152,7 @@ the model created that impression.
 4. Remove the embedding model and start: the report says "model missing" and
    nothing else, and conversation works unaffected.
 5. Run `bash run_tests.sh`.
+
+---
+
+← Back to [README](README.md)

@@ -80,3 +80,7 @@ start.bat
 3. 运行测试：`bash run_tests.sh`，期望输出 `OK 真·全量 0 失败`。
    若唯一失败项是 `tests/t_f5_live.py` 且返回码为 139，通常是加载嵌入模型时
    内存不足导致的进程崩溃，与代码改动无关。
+
+---
+
+← 返回 [README](README.md)

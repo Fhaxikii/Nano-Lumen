@@ -113,3 +113,7 @@ other test passes and available system memory is below that value.
 2. Deliberately break the property under test: the test fails. A test that
    can never fail is meaningless.
 3. `bash run_tests.sh` prints `OK 真·全量 0 失败`.
+
+---
+
+← Back to [README](README.md)

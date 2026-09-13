@@ -93,3 +93,7 @@ Microsoft Edge WebView2 Runtime to be installed.
    only failing test is `tests/t_f5_live.py` with return code 139, that is
    usually the embedding model load running out of memory and crashing the
    process — unrelated to your change.
+
+---
+
+← Back to [README](README.md)

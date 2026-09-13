@@ -188,3 +188,7 @@ bash run_tests.sh
 2. 自检清单逐项确认。
 3. 在干净的环境中重新走一遍 [01-getting-started.md](01-getting-started.md)，确认改动没有破坏首次启动。
 4. 如果改动涉及界面，在两套主题下分别确认。
+
+---
+
+← 返回 [README](README.md)

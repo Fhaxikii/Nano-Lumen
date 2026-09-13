@@ -156,3 +156,7 @@ read and the write side go through it.
 2. Change it in the UI: the behavior changes immediately, no restart.
 3. Restart: the setting survives.
 4. Run `bash run_tests.sh`.
+
+---
+
+← Back to [README](README.md)

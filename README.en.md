@@ -159,26 +159,7 @@ Dropping a skill file into the `skills/` root auto-loads it, no framework change
 
 ## Architecture Overview
 
-```
-┌──────────────────────────────────────────┐
-│ Window layer · pywebview / WebView2      │
-└─────────────────────┬────────────────────┘
-┌─────────────────────▼────────────────────┐
-│ UI layer · app.py (NiceGUI)              │
-└─────────────────────┬────────────────────┘
-┌─────────────────────▼────────────────────┐
-│ Orchestration · core/orchestrator.py     │
-│ ReAct main loop                          │
-└─────┬──────────────┬─────────────────┬───┘
-      │              │                 │
-┌─────▼────┐   ┌─────▼────┐   ┌────────▼───────┐
-│ Model    │   │ Tools    │   │ Store / Memory │
-│ provider │   │ tools    │   │ memory         │
-│ models   │   │ skills   │   │ context        │
-│          │   │ os_layer │   │ rag            │
-│          │   │ mcp      │   │ runtime        │
-└──────────┘   └──────────┘   └────────────────┘
-```
+![Nano architecture](assets/architecture.en.svg)
 
 The UI layer never calls models or tools directly; everything goes through the orchestrator. Full details: [docs/en/02-architecture.md](docs/en/02-architecture.md)
 

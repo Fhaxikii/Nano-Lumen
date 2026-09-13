@@ -114,3 +114,7 @@ quietly disappeared" or "paying twice". Before shipping a change, confirm:
 4. No duplicate distillation: the same stretch of conversation must not
    trigger model calls repeatedly in the log.
 5. Run `bash run_tests.sh`.
+
+---
+
+← Back to [README](README.md)

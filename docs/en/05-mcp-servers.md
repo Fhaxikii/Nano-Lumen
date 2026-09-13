@@ -164,3 +164,7 @@ built in. The same three conditions apply to PRs — see
 4. For an authorization-requiring server: no login prompt at paste time, the
    prompt appears at first use.
 5. Run `bash run_tests.sh`.
+
+---
+
+← Back to [README](README.md)
