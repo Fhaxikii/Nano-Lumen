@@ -111,6 +111,27 @@ imposes two constraints on how they are written:
    understandable without context. In practice: each section opens by
    restating where it is.
 
+#### About nano_manual.md
+
+`_system/nano_manual.md` is Nano's user manual: where every UI feature
+lives, what it is called, and how to use it. When the user asks "where is
+X", "how do I turn Y on/off", or "can Nano do Z", the answer should come
+from this file. Three maintenance rules:
+
+1. **Changed the UI or a feature? Update the manual in the same commit.**
+   This file is the authority Nano answers "where is X" from; if the
+   feature changed and the manual did not, Nano will confidently answer
+   with stale information — worse than not knowing.
+2. **State the corresponding program version in the file header**
+   (e.g. "manual matches Nano version 1.96"). The manual ships with the
+   release; the version number is the first check for staleness.
+3. **One section answers one question; title it the way users ask.**
+   Ingest chunks at roughly 500 characters (see "Ingestion" above), so a
+   section should fit inside one chunk. A title like "where do I open
+   Settings" hits more easily than "about the settings panel". Avoid
+   cross-references like "see the previous section" — a chunk recalled on
+   its own cannot follow them.
+
 ## Common problems
 
 **The file exists but retrieval never finds it**
