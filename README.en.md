@@ -197,22 +197,6 @@ Nano-Lumen/
 
 ---
 
-## Safety
-
-Desktop automation is the highest-risk capability, so Nano layers multiple defenses:
-
-- **Risk takes the maximum**: each action's effective risk = max(declared risk, static floor, dynamic escalation rules); the model can only raise risk, never lower it.
-- **Danger master switch**: `PERM_DANGEROUS` is deliberately bound to no specific action; every action reaching the highest risk tier must pass through it.
-- **Path deny-list**: explicitly refuses to read credentials, private keys, browser passwords, and other sensitive locations.
-- **Explainable denials**: when denied, the model tells you which permission switch to enable.
-- **Auto-mode backstop**: even with Auto mode on, destructive commands are still caught by the command classifier.
-
-The six permission switches can be turned off anytime in settings. See [docs/en/06-os-automation.md](docs/en/06-os-automation.md)
-
-Installing or using the software means you have read and agreed to the [User Agreement](docs/en/user-agreement.md).
-
----
-
 ## Privacy & Trust
 
 For a desktop agent, privacy is the core of trust. Nano applies three principles at the architecture level: **local-first, minimal collection, restrained behavior**.
@@ -229,6 +213,22 @@ OCR, vector search, memory storage, and the interface all run locally. The only 
 **No telemetry**
 
 Nano itself never collects usage statistics or behavioral data.
+
+---
+
+## Safety
+
+Desktop automation is the highest-risk capability, so Nano layers multiple defenses:
+
+- **Risk takes the maximum**: each action's effective risk = max(declared risk, static floor, dynamic escalation rules); the model can only raise risk, never lower it.
+- **Danger master switch**: `PERM_DANGEROUS` is deliberately bound to no specific action; every action reaching the highest risk tier must pass through it.
+- **Path deny-list**: explicitly refuses to read credentials, private keys, browser passwords, and other sensitive locations.
+- **Explainable denials**: when denied, the model tells you which permission switch to enable.
+- **Auto-mode backstop**: even with Auto mode on, destructive commands are still caught by the command classifier.
+
+The six permission switches can be turned off anytime in settings. See [docs/en/06-os-automation.md](docs/en/06-os-automation.md)
+
+Installing or using the software means you have read and agreed to the [User Agreement](docs/en/user-agreement.md).
 
 ---
 
