@@ -29,6 +29,7 @@ a change belongs, and how to verify that a change is correct.
 | Modify the UI or add a panel | [09-ui.md](09-ui.md) |
 | Run or add tests | [10-testing.md](10-testing.md) |
 | Before submitting a PR | [11-contributing.md](11-contributing.md) |
+| Cut a release | [12-release.md](12-release.md) |
 | Understand usage responsibilities and disclaimers | [user-agreement.md](user-agreement.md) |
 
 New features usually start from `04` and `05`. Both are "add one thing"

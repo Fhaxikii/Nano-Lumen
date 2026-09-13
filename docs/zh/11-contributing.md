@@ -182,6 +182,15 @@ bash run_tests.sh
 
 ---
 
+## 发布新版本（维护者）
+
+贡献合并后，版本的正式发布由维护者按 [12-release.md](12-release.md) 的流程执行：
+更新全部版本号位置、追加 Changelog、创建 GitHub Release。贡献者通常不需要
+走这一步，但如果你的 PR 属于用户可见的修复或功能，请在描述里写清楚，
+方便它进入对应版本的 Changelog。
+
+---
+
 ## 怎么验证你改对了
 
 1. `bash run_tests.sh` 通过。

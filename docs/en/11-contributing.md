@@ -199,6 +199,16 @@ immediately.
 
 ---
 
+## Cutting a release (maintainers)
+
+After contributions are merged, the official release is run by the maintainer
+following [12-release.md](12-release.md): update every version location, append
+the Changelog, create the GitHub Release. Contributors normally do not do this
+step — but if your PR is a user-visible fix or feature, please say so in its
+description so it lands in the right version's Changelog.
+
+---
+
 ## How to verify you got it right
 
 1. `bash run_tests.sh` passes.

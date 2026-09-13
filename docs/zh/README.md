@@ -26,6 +26,7 @@
 | 修改界面或新增面板 | [09-ui.md](09-ui.md) |
 | 运行测试或新增测试 | [10-testing.md](10-testing.md) |
 | 提交 PR 之前 | [11-contributing.md](11-contributing.md) |
+| 发布一个新版本 | [12-release.md](12-release.md) |
 | 了解使用责任与免责条款 | [user-agreement.md](user-agreement.md) |
 
 新增功能的入口通常是 `04` 和 `05`。这两处是"增加一个东西"，不涉及核心改动，
