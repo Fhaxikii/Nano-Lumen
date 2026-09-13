@@ -42,7 +42,7 @@ predicted = anchor.actual + (estimate(now) − anchor.estimate)
 | `ContextMeter`（ / `_Anchor`（ | 计量器与锚 |
 | `estimate_request`（ / `estimate_text`（ | 发出前的估算 |
 | `normalize_prompt_input`（ / `_PROMPT_INPUT_FIELDS`（ | 各厂商 usage 字段归一 |
-| `_sample`（:184，`_SAMPLE_MAX=5000` 满了丢最老） | 预测 vs 实际的分布采样（`data/context_samples.jsonl`）——这是**分布**，不是账本 |
+| `_sample`（，`_SAMPLE_MAX=5000` 满了丢最老） | 预测 vs 实际的分布采样（`data/context_samples.jsonl`）——这是**分布**，不是账本 |
 | `last_known`（/ `forget_conversation_size`（ | 重启后第一轮的"上次已知值"及其失效 |
 
 ⚠️ provider 在真正发出前还会再变形三次（防 400 丢弃消息 / 切 stable-dynamic /

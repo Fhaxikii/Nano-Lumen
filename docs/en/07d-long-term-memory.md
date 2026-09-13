@@ -53,8 +53,8 @@ reset): this stores **cross-session operation events**, permanently.
 
 - **Two-way writing**: code instrumentation (`add`) plus the model reading
   actively through the `recall_working_memory` pseudo-tool
-  (`search` → `format_for_model`/:291).
-- ⚠️ **One fixed lesson** (~:252): deleted memories used to come back through
+  (`search` → `format_for_model`/).
+- ⚠️ **One fixed lesson** (): deleted memories used to come back through
   recall — `search` did not filter status. A `user_note`'s pending state shows
   only in the UI and is excluded from model recall; "deleted" must be excluded
   the same way. **What enters the model's view must leave it upon deletion.**

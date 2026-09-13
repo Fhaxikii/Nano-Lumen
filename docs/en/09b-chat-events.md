@@ -11,7 +11,7 @@
 ## The consumption skeleton
 
 The chat produces nothing itself; it consumes the orchestrator's event stream
-(~:3615):
+():
 
 ```python
 _stream = self.agent.handle_query(query, image_parts=..., temp_file_hint=...)
@@ -33,7 +33,7 @@ spinner, the metadata row, etc.). **Key mechanics**:
 
 - **One epoch, one status timer**: a carrier completion may **continue the same
   epoch** — before continuing, the old timer must be cancelled and a new one
-  started (the `_status_timer_task` cancellation around :3610), or two tasks
+  started (the `_status_timer_task` cancellation around ), or two tasks
   race to render one metadata row.
 - **The continuation seam**: when a continuation happens, the preparation logic
   clears `content_md`, resets `current_text`, re-shows the spinner — and on
@@ -51,7 +51,7 @@ seam is broken.
 - Tool calls unfold as **cards** in the chat area (layout guarded by
   `t_u7_card_layout` / `t_u8_tool_detail`).
 - **Routing and internal step info never enter the chat** — log events go to
-  the monitor panel only (comment at :4405). The criterion: "the user needs to
+  the monitor panel only (comment at ). The criterion: "the user needs to
   see the process" goes to chat; "debug info" goes to the monitor.
 - Memory actions ("Nano remembered something") go through a **unified bubble +
   pending-confirmation card in the memory drawer** , not a flood of

@@ -48,7 +48,7 @@ ToolDefinition (constructed by D(), builtin.py）
 
 ## On-demand loading: core-resident vs load_tools
 
-**Mechanism** (`core/orchestrator.py`, ~:14518):
+**Mechanism** (`core/orchestrator.py`, ):
 
 - Only a **tiny core set** is resident by default; every other tool leaves just
   a one-line "awareness" (name + one sentence) in the prompt — full schemas are
@@ -140,7 +140,7 @@ guess.
    hand-written sentence, not listing all 39 actions (they reach the search
    docs automatically via the manifest enum).
 5. 🔴 **`_BUILTIN_TOOLS_AWARENESS` was a dead table**: twenty hand-written good
-   descriptions never reached the model, which only ever saw `[:28]`
+   descriptions never reached the model, which only ever saw `[]`
    fragments — "the correct answer written down" and "the wrong answer in use"
    coexisted, unaware of each other. 📌 **A well-written thing nobody calls is
    worse than nothing written**: it creates the illusion that it was handled.

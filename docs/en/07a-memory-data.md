@@ -39,7 +39,7 @@ Four properties you must know:
    change both.
 4. **It deliberately stays out of the Kernel and has no storage**.
    `split(messages)` and `user_cut_points(messages)` are pure functions
-   (exchange.py / :190). Store it and you must answer "who is authoritative,
+   (exchange.py / ). Store it and you must answer "who is authoritative,
    this table or the message table" — a question that should not exist.
    Historically this concept was computed inline three times in three shapes —
    the signal that it deserved to become a real entity.
@@ -52,11 +52,11 @@ adding a level (a future L5) never shifts the meaning of existing data.
 
 | Method | Line | Purpose |
 |---|---|---|
-| `source_hash(session_id, start, end)` | :76 | content hash over the **persisted text** |
-| `record(...)` | :95 | record one level migration (and its derivatives) |
-| `get` / `load_session` / `active_entries` | :126/:137/:149 | one entry / whole session / unexpired entries |
-| `is_stale(entry)` | :176 | hash comparison: source changed → entry void |
-| `level_of(session_id, start)` | :202 | current level of one stretch |
+| `source_hash(session_id, start, end)` |  | content hash over the **persisted text** |
+| `record(...)` |  | record one level migration (and its derivatives) |
+| `get` / `load_session` / `active_entries` | // | one entry / whole session / unexpired entries |
+| `is_stale(entry)` |  | hash comparison: source changed → entry void |
+| `level_of(session_id, start)` |  | current level of one stretch |
 
 **Iron rule: `source_hash` hashes the persisted ledger, not the projection**
 (`_hash_rows`, reads the original text straight from SQLite). Why: the

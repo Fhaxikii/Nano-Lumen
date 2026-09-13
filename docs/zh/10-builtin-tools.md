@@ -45,7 +45,7 @@ ToolDefinition（D() 构造，builtin.py）
 
 ## 按需加载：核心常驻 vs load_tools
 
-**机制**（`core/orchestrator.py` :14518 一带）：
+**机制**（`core/orchestrator.py` 8 一带）：
 
 - 默认只常驻**极小核心集**；其余工具只在提示词里留一行"感知"（名字+一句话），
   完整 schema 默认不注入，模型需要时调 `load_tools(query=...)` 加载。
@@ -111,10 +111,10 @@ ToolDefinition（D() 构造，builtin.py）
    就 return）→ 录成真实的 `EXCLUSIVE`。
 2. 5 个工具没有 awareness → 人工补写（必填项，构造期拦）。
 3. `cancel_wait` 不在任何调度表里，靠兜底"碰巧对" → 显式录成 SERIAL。
-4. `os_execute` 的 awareness 被 `[:28]` 截成残句 → 人工写完整句，不列 39 个
+4. `os_execute` 的 awareness 被 `[]` 截成残句 → 人工写完整句，不列 39 个
    action（它们经 manifest enum 自动进检索文档）。
 5. 🔴 **`_BUILTIN_TOOLS_AWARENESS` 是死表**：20 条人工写的好描述从未进过模型
-   上下文，模型一直看到的是 `[:28]` 截出的残句——"写好的正确答案"和"实际
+   上下文，模型一直看到的是 `[]` 截出的残句——"写好的正确答案"和"实际
    在用的错误答案"同时存在且互不知道。📌 **一个写好但没人调的东西，比没写
    更坏**：它制造了"已经处理过"的假象。
 

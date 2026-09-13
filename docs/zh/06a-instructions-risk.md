@@ -77,7 +77,7 @@ reasons = [每次抬升的原因]   ← 全部进审计日志
 ## 档位与 M1/M2/M3
 
 - `stage`：1=只读 / 2=写操作 / 3=鼠标键盘。
-- `M1/M2/M3_ALLOWED_ACTIONS`（:226-228）**从 `_ACTIONS` 派生**，不许手抄——
+- `M1/M2/M3_ALLOWED_ACTIONS`（-228）**从 `_ACTIONS` 派生**，不许手抄——
   教训：曾手抄 29 个而实际 39 个，还专挑高频项漏。
 - `m1_mode` → `max_stage=1`（铁律：纯只读，click 等必被拒）。
 

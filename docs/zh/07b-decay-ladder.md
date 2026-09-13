@@ -57,7 +57,7 @@
 × 模型窗口，`quota_of` / `window_of`）。每次降级 = 一次 LLM 调用，所以它是批，
 但**批的是调用次数，不是成败判定**。
 
-关键常量（decay.py 常量区 :54-73）：
+关键常量（decay.py 常量区 -73）：
 
 | 常量 | 值 | 为什么 |
 |---|---|---|
@@ -109,7 +109,7 @@ schema 五字段：`kind / status / outcome / referents / open_items`。
 ## 改动手把手
 
 **场景 A：调批量与上限**
-`decay.py` 常量区（:54-73）。`MAX_PER_RUN` 只在防失控时才动；
+`decay.py` 常量区（-73）。`MAX_PER_RUN` 只在防失控时才动；
 `MAX_DISTILL_PER_RUN` 动之前先想清楚账单。改完在真机用
 `_quota_override`（`data/model_config.json` 的 `_settings`）做加速验证，
 验完必须设回 `null`——生效期间每次读配额都会响亮 warning，这是刻意的。

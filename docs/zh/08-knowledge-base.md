@@ -17,7 +17,7 @@
 | 检索与融合 | `_build_bm25_index` / `_bm25_search` / `_rrf_fuse` / `_rerank` / `search` / `query_for_agent` | 向量 + BM25 两路 RRF 融合 + 重排 | [08b](08b-retrieval-ranking.md) |
 | 临时附件 | `index_temp_file` / `register_temp_file` / `cleanup_stale_temp_files` | 上传文件的注册制 lazy build | [08c](08c-health-temp.md) |
 
-贯穿全层的横切面：**健康度探针**（`_register_health_probes`，:863，四个探针
+贯穿全层的横切面：**健康度探针**（`_register_health_probes`，四个探针
 分别盯 embedder/reranker/bm25/向量库）、**parse_report**（每个文件的解析报告，
 `data/parse_reports.json`，喂给健康度面板）——见 [08c](08c-health-temp.md)。
 

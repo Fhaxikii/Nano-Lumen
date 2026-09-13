@@ -63,7 +63,7 @@ Trigger: L1 usage exceeds the model's quota (`_quota.L1` × window from
 LLM call, so it runs as a batch — but **the batch caps call count, not success
 judgment**.
 
-Key constants (decay.py :54-73):
+Key constants (decay.py -73):
 
 | Constant | Value | Why |
 |---|---|---|
@@ -125,7 +125,7 @@ ask about it; the memory stays in the store.
 ## Hands-on recipes
 
 **Case A: tune batch sizes and caps**
-Constants block at decay.py :54-73. Touch `MAX_PER_RUN` only for runaway
+Constants block at decay.py -73. Touch `MAX_PER_RUN` only for runaway
 protection; think about the bill before touching `MAX_DISTILL_PER_RUN`. After
 changing, verify on a real machine with `_quota_override` (in
 `data/model_config.json` under `_settings`), and set it back to `null` after —

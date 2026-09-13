@@ -33,7 +33,7 @@ Exchange                     # dataclass，纯只读视图（exchange.py）
    完全相同——这里出过一次事故：改了切分规则却没改这个属性，
    「以系统注记开头的残段」被误认成有用户开口。改切分规则时，两处必须同改。
 4. **它刻意不进 Kernel、没有存储**。`split(messages)` 与 `user_cut_points(messages)`
-   是纯函数（exchange.py / :190）。存了就要回答"它和消息表谁是权威"，
+   是纯函数（exchange.py / ）。存了就要回答"它和消息表谁是权威"，
    而那个问题不该存在。历史上这个概念被临时算过三遍、每遍形状不同——
    那正是它该成为一个真实体的信号。
 
@@ -45,13 +45,13 @@ Exchange                     # dataclass，纯只读视图（exchange.py）
 
 | 方法 | 行 | 用途 |
 |---|---|---|
-| `source_hash(session_id, start, end)` | :76 | 对**落盘原文**算内容哈希 |
-| `record(...)` | :95 | 记一次档位迁移（含派生物） |
-| `get` / `load_session` / `active_entries` | :126/:137/:149 | 查询单条 / 整会话 / 未过期条目 |
-| `is_stale(entry)` | :176 | 哈希比对：原文变了则条目作废 |
-| `level_of(session_id, start)` | :202 | 查一段历史当前档位 |
+| `source_hash(session_id, start, end)` |  | 对**落盘原文**算内容哈希 |
+| `record(...)` |  | 记一次档位迁移（含派生物） |
+| `get` / `load_session` / `active_entries` | // | 查询单条 / 整会话 / 未过期条目 |
+| `is_stale(entry)` |  | 哈希比对：原文变了则条目作废 |
+| `level_of(session_id, start)` |  | 查一段历史当前档位 |
 
-**铁律：`source_hash` 算的是落盘账本那份，不是内存投影**（`_hash_rows`，:52，
+**铁律：`source_hash` 算的是落盘账本那份，不是内存投影**（`_hash_rows`，
 直接从 SQLite 读原文）。原因：内存投影被刻意设计成与落盘不同——图片换占位符、
 重启后重算注记，都只动投影。拿投影算哈希，每次重启都会产生新哈希，
 每条 Digest 都被判"陈旧"，然后**无限重新提炼（无限花钱）**——

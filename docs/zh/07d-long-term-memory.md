@@ -33,7 +33,7 @@
 两条通用纪律：
 
 - **去重后才写**：先 `find_semantic_candidates`（SQLite 按类型取候选）
-  再向量 search，命中已有条目则**更新置信度而非新建**（:151-177）。
+  再向量 search，命中已有条目则**更新置信度而非新建**（-177）。
   否则同类任务模式会随使用次数无限增殖。
 - **脱敏是硬代码规则，不能交给模型**：`redact_sensitive`（用正则硬拦
   密码/token/长随机串（`_SENSITIVE_PATTERNS`）。宁可误杀（替换成
@@ -45,8 +45,8 @@
 事件**，永久保存。
 
 - **双向写入**：代码埋点写（`add`）+ 模型通过伪工具
-  `recall_working_memory` 主动读（`search` → `format_for_model`，:219/:291）。
-- ⚠️ **一条已修的教训**（:252 附近）：删除的记忆曾照样被 recall 出来——
+  `recall_working_memory` 主动读（`search` → `format_for_model`/）。
+- ⚠️ **一条已修的教训**（ 附近）：删除的记忆曾照样被 recall 出来——
   因为 `search` 不筛 status。`user_note` 的 pending 状态只在 UI 显示、
   不参与模型 recall，而"已删除"必须同样从召回里排除。
   **写进模型视野的东西，删除也要同步出模型视野。**
@@ -58,7 +58,7 @@
 | 腿 | 函数 | 失败时 |
 |---|---|---|
 | SQLite 按类型 | `find_semantic_candidates`（memory_store 侧） | 整体失败 |
-| 向量联想 | `memory_index.search`（:88，chroma + 共享 `_load_embedder` 嵌入） | 降级 + 响亮告警 |
+| 向量联想 | `memory_index.search`（，chroma + 共享 `_load_embedder` 嵌入） | 降级 + 响亮告警 |
 
 三个读取入口：`retrieve_task_pattern_hint`（、
 `retrieve_correction_hints`（、`bridge.recall`（——各自绑定自己的
@@ -78,7 +78,7 @@
 不要引入"让模型判断是否敏感"的方案——被脱敏的内容会活很久，误放行的代价不可逆。
 
 **场景 C：改召回质量**
-`memory_index.py` 的 `search`（:88，top_k 默认 5）与嵌入（共享
+`memory_index.py` 的 `search`（，top_k 默认 5）与嵌入（共享
 `_load_embedder`，见 [07c](07c-meter-budget-guard.md)）。改嵌入模型 = 全库
 重嵌，属于大窗口工程，不要顺手做。
 
