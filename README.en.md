@@ -78,7 +78,7 @@ Nano itself never collects usage statistics or behavioral data.
 
 **🧠 Memory & Context**
 
-- **Full conversation history persisted** (SQLite), surviving restarts; long conversations are layered-compacted L0→L4 to control cost.
+- **Full conversation history persisted** in SQLite; survives restarts, and long conversations are layered-compacted automatically to control cost.
 - **Semantic long-term memory**: remembers your preferences and corrections across sessions.
 
 **📚 Knowledge Base (RAG)**
