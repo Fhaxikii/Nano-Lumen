@@ -1,67 +1,55 @@
-# 🐨 Nano-Lumen
+# <img src="assets/nano_icon_preview.png" height="34" alt="Nano" align="top"> Nano-Lumen
+
+![Python](https://img.shields.io/badge/Python-3.10-3776AB) ![Platform](https://img.shields.io/badge/Platform-Windows%20Desktop-0078D6) ![License](https://img.shields.io/badge/License-Apache--2.0-brightgreen) ![Release](https://img.shields.io/github/v/release/Fhaxikii/Nano-Lumen)
 
 ![Nano-Lumen](assets/nano-banner.png)
 
 **Nano-Lumen v1.96** · A resident general-purpose agent for Windows desktop · [中文](README.md)
 
-`Resident agent` · `Task-level persistent state` · `Local-first privacy` · `Windows desktop`
+`Resident AI Agent` · `Task-level persistent state` · `Local-first privacy` · `Windows desktop`
 
 ---
 
-Processes crash. Machines reboot. Nano is different — **it never starts from zero.**
+## If an AI truly lived on your computer, what would it look like?
 
-Nano is not another agent shell. It treats the agent as a **system that lives on your machine with persistent state**: state survives across processes, tasks are recoverable, and one crash does not reset everything.
+Today's common AI Agent paradigm is to temporarily move into the computer and complete a task:
+
+> Open a session.
+> Pick a workspace.
+> Give it a goal.
+> It calls a few tools.
+
+Nano starts from a different assumption: **a computer should not be merely a set of tools an AI can call — it should be the environment an agent lives in.**
+
+Files, applications, processes, knowledge, the network, external services — they should not be features wired into an AI one by one, but a world an agent can know, use, and act within.
+
+Nano is an attempt to build that world.
+
+So the question is no longer just:
+
+**What can an AI do?**
+
+It becomes:
+
+**What does an AI need to truly live inside a computer for the long term?**
+
+Nano is an exploration of this question.
 
 ---
 
-## From Sessions to a Resident System: Why Nano Has No Sessions
+## ⚙️ Core Architecture: Designing the Agent as a Persistent-State System
 
-Mainstream agents take the "session" as their unit of lifecycle: context lives inside a session, and project memory or history files carry things across. As a design, that is coherent — it assumes an agent is a tool you open, use, and close.
-
-Nano starts from a different premise: it is a resident, continuously running presence on the desktop. For a long-lived agent, relating to the user through many disconnected "sessions" is awkward by construction — you don't open a new session every time you talk to the same person.
-
-So Nano removed the session concept and uses the **Task** as its unit of state ownership:
-
-- **A Task owns one piece of work**: its context, authorizations, background resources, and cost accounting all attach to the Task; it can span many turns, be parked, or be preempted, and it does not vanish when a "session ends".
-- **The conversation record is a durable ledger**: written to disk (SQLite) as it happens, until you explicitly reset it; continuity of context comes from persistence and layered compaction, not from "which session you are in".
-- **After a crash, power loss, or reboot**, unfinished Tasks are recovered honestly, and Nano asks "should that task continue?" instead of starting from zero.
-
-This is not "remembering longer" — it is a different unit of lifecycle: **an agent is not a string of sessions, but a continuously existing system.**
-
----
-
-## Core Architecture: Treating the Agent as a Persistent State System
-
-To deliver persistent state, Nano builds a complete state-guarantee layer into the kernel:
+Around the goal of persistent state, Nano builds a complete state-guarantee layer at the kernel level:
 
 - **SQLite command kernel**: the single write path for all runtime operations, with invariant checks, idempotent accounting, and precise recovery after crashes.
-- **End-to-end crash recovery**: write-ahead logging plus a startup reconciler that also covers native crashes that `excepthook` cannot catch.
-- **Durable inbox**: your messages are persisted the moment they're written and are never lost; on crash repost, it tells you honestly.
+- **End-to-end crash recovery**: write-ahead logging plus a startup reconciler, covering native crashes that `excepthook` cannot catch.
+- **Durable inbox**: your messages are persisted the moment they are written and never lost; after a crash, redelivery is announced honestly.
 - **Triple fallback for waiting**: timeout / deadline / unconditional orphan reclamation, so tasks never hang indefinitely and the system stays responsive.
-- **Persistent memory**: a two-tier stack of working memory and durable semantic memory supporting active recall.
+- **Persistent memory**: a two-tier stack of working memory and durable semantic memory, supporting active recall.
+- **Design perspective**: build the agent as a distributed system with persistent state, not as a one-shot process.
+- **Goal-driven**: abandon the traditional tool-driven agent paradigm; give the agent self-evolution, discovery, and autonomous integration instead — its capability ceiling is set by the entire internet ecosystem, not by itself.
 
-> Design view: **build the agent as a distributed system with persistent state, not as a one-shot process.**
-
-Detailed architecture: [docs/en/02-architecture.md](docs/en/02-architecture.md)
-
----
-
-## Privacy & Trust
-
-For a desktop agent, privacy is the core of trust. Nano applies three principles at the architecture level: **local-first, minimal collection, restrained behavior**.
-
-**Local-first**
-
-OCR, vector search, memory storage, and the interface all run locally. The only data that leaves the machine is the model API request you yourself configured.
-
-**Minimal collection**
-
-- **Ambient trails** store only a one-line summary of "app + what it's doing" (e.g. "Chrome is browsing a page"), never raw events or plaintext content, and are deleted after 18 hours.
-- **The behavior ledger** uses only closed-set category labels (e.g. "file operation", "network access") and forbids storing any semantically sensitive information.
-
-**No telemetry**
-
-Nano itself never collects usage statistics or behavioral data.
+> Detailed architecture: [docs/en/02-architecture.md](docs/en/02-architecture.md)
 
 ---
 
@@ -174,24 +162,24 @@ Dropping a skill file into the `skills/` root auto-loads it, no framework change
 ## Architecture Overview
 
 ```
-┌─────────────────────────────┐
-│ Window layer pywebview/WebView2 │
-└──────────────┬──────────────┘
-┌──────────────▼──────────────┐
-│ UI layer app.py (NiceGUI)     │
-└──────────────┬──────────────┘
-┌──────────────▼──────────────┐
-│ Orchestration core/orchestrator.py │  ReAct main loop
-└──┬──────────┬──────────┬────┘
-   │          │          │
-┌──▼───┐ ┌───▼────┐ ┌───▼─────┐
-│Models │ │Tools   │ │State/    │
-│layer  │ │layer   │ │memory    │
-│provider│ │tools   │ │memory    │
-│models │ │skills  │ │context   │
-│       │ │os_layer│ │rag       │
-│       │ │mcp     │ │runtime   │
-└──────┘ └────────┘ └─────────┘
+┌──────────────────────────────────────────┐
+│ Window layer · pywebview / WebView2      │
+└─────────────────────┬────────────────────┘
+┌─────────────────────▼────────────────────┐
+│ UI layer · app.py (NiceGUI)              │
+└─────────────────────┬────────────────────┘
+┌─────────────────────▼────────────────────┐
+│ Orchestration · core/orchestrator.py     │
+│ ReAct main loop                          │
+└─────┬──────────────┬─────────────────┬───┘
+      │              │                 │
+┌─────▼────┐   ┌─────▼────┐   ┌────────▼───────┐
+│ Model    │   │ Tools    │   │ Store / Memory │
+│ provider │   │ tools    │   │ memory         │
+│ models   │   │ skills   │   │ context        │
+│          │   │ os_layer │   │ rag            │
+│          │   │ mcp      │   │ runtime        │
+└──────────┘   └──────────┘   └────────────────┘
 ```
 
 The UI layer never calls models or tools directly; everything goes through the orchestrator. Full details: [docs/en/02-architecture.md](docs/en/02-architecture.md)
@@ -244,15 +232,22 @@ The six permission switches can be turned off anytime in settings. See [docs/en/
 
 ---
 
-## Why the Name "Nano"
+## Privacy & Trust
 
-The name comes from GNU nano — a classic terminal editor. For many of us, nano was the editor we first wrote Python in.
+For a desktop agent, privacy is the core of trust. Nano applies three principles at the architecture level: **local-first, minimal collection, restrained behavior**.
 
-Before GUIs, you had to learn the machine's language to operate a computer; the GUI freed people from memorizing command lines.
+**Local-first**
 
-The next interaction paradigm we believe in: **the machine learns to understand human speech.**
+OCR, vector search, memory storage, and the interface all run locally. The only data that leaves the machine is the model API request you yourself configured.
 
-This is not a finished product. It is the start of a very long road.
+**Minimal collection**
+
+- **Ambient trails** store only a one-line summary of "app + what it's doing" (e.g. "Chrome is browsing a page"), never raw events or plaintext content, and are deleted after 18 hours.
+- **The behavior ledger** uses only closed-set category labels (e.g. "file operation", "network access") and forbids storing any semantically sensitive information.
+
+**No telemetry**
+
+Nano itself never collects usage statistics or behavioral data.
 
 ---
 

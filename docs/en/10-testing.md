@@ -42,18 +42,35 @@ There is no pytest or any framework — tests are plain scripts: a `check()`
 function collects assertion results, and the end prints a
 `passed/total passed` summary line.
 
+Skipping a framework is deliberate: running the tests should not add
+dependencies, and crash-recovery cases need to spawn subprocesses and
+`os._exit` at real transition points — plain scripts beat fighting a
+framework's output capture.
+
+`_console.py` and `_win_window.py` in this directory are helpers, not
+tests; `_console.py` provides console output protection (see step 2 of the
+next section).
+
 `run_tests.sh` judges success by parsing that summary line. It accepts two
 summary formats and checks that passed equals total — checking only "0
 failures" would let "77/79 passed" slip through.
 
 ## Adding a test
 
-1. Create `tests/t_<area>.py`.
-2. Follow the existing shape: define `check(ok, name, note)`, assert item by
+1. Create `tests/t_<area>.py`. Naming only requires the `t_` prefix;
+   put what the test verifies into the file's header docstring.
+2. First line: `import tests._console`. On Windows the default console
+   encoding is GBK; emoji or special symbols in assertion names make
+   `print` raise `UnicodeEncodeError` — the case aborts and the assertion
+   is never counted. It looks like "ran halfway then crashed", but in fact
+   the assertion never existed. `_console.py` replaces unencodable
+   characters with `?` so the worst case stays readable. Keep assertion
+   names themselves to console-safe characters.
+3. Follow the existing shape: define `check(ok, name, note)`, assert item by
    item, print the summary line at the end.
-3. The summary line must be parseable by `run_tests.sh`, or the run is
+4. The summary line must be parseable by `run_tests.sh`, or the run is
    judged "no summary" and fails.
-4. The test must run standalone, not depend on other tests having run first.
+5. The test must run standalone, not depend on other tests having run first.
 
 ## What to test
 
@@ -67,6 +84,21 @@ by manual acceptance. Examples:
 
 One assertion guards exactly the property it was written for. If a function
 has two constraints and you pin only one, the other can still be broken.
+
+Three disciplines from hard-won experience:
+
+- **For fault injection, determinism beats realism.** The goal is to verify
+  the pipeline works, not to reproduce a real error.
+- **A case that expects something NOT to happen must also assert that the
+  precondition DID happen.** Otherwise a failed injection disguises itself
+  as a pass — the subprocess died before reaching the injection point while
+  the expectation happened to be "nothing was persisted". Assert the
+  subprocess exit code, and print the tail of its stderr on mismatch.
+- **To check "an identifier is fully removed", use `ast.walk`, never
+  `in src`.** Text matching also hits comments and docstrings — the more
+  diligently the removal is explained in the source, the higher the chance
+  of a false hit. Add a precondition assertion too: have the AST find a name
+  that certainly still exists in the same tree, proving the analyzer works.
 
 ## Known failure
 

@@ -30,11 +30,6 @@ data/proactive_ledger.json
 data/proactive_shadow.jsonl
 data/throttle_config.json
 
-# ── Dev scratch (one-off helper scripts, not part of the product) ──
-_*.py
-_*.ps1
-_*.txt
-
 # ── OS / editor ────────────────────────────────────────────
 .DS_Store
 Thumbs.db
