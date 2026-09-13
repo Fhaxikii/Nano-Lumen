@@ -81,7 +81,9 @@ Nano itself never collects usage statistics or behavioral data.
 **🧠 Memory & Context**
 
 - **Full conversation history persisted** in SQLite; survives restarts, and long conversations are layered-compacted automatically to control cost.
+- **Context governance**: conversation content is organized dynamically by context budget, content freshness, and memory levels, keeping continuity while controlling context size and model call cost.
 - **Semantic long-term memory**: remembers your preferences and corrections across sessions.
+- **Session data export**: exports all sessions to Markdown, raw JSON, and image copies; export respects the user-visibility boundary, so history that no longer appears in the UI keeps a complete data outlet.
 
 **📚 Knowledge Base (RAG)**
 
@@ -89,15 +91,15 @@ Nano itself never collects usage statistics or behavioral data.
 
 **🤖 Proactive Intelligence (experimental, in shadow observation)**
 
-- A three-layer proactive engine (hard safety / routine trigger / state inference) plus an emotion model is built, but currently in **shadow observation**: it records decisions without speaking, and never messages you unprompted. Emotion only affects tone and the proactive gate, never the underlying functions.
+- A three-layer proactive engine (hard safety / routine trigger / state inference) plus an emotion model is implemented, currently in **shadow observation**: it records decisions without speaking, and never messages you unprompted. Emotion only affects tone and the proactive gate, never the underlying functions.
 
 **🎛️ System Operation & Safety**
 
-- **Controlled operation**: system actions are risk-graded with six independent permission switches and a classifier-backed Auto mode that judges dangerous commands by whether the action matches your intent, blocking behavior that deviates from it.
+- **Controlled operation**: system actions are risk-graded with six independent permission switches and a classifier-backed Auto mode that judges dangerous commands by whether the action matches your intent, blocking high-risk actions that fail intent-consistency checks.
 - **Trajectory awareness**: records only a summary of "which app and what you're doing" (expiring in ~18 hours); the behavior ledger uses closed categories with no sensitive semantics, and no telemetry by default.
-- **Sub-agents**: spawns restricted-scope doppelgängers for parallel exploration or execution, isolated via tool and runtime allowlists.
+- **Restricted-scope sub-agents**: spawns sub-agents with restricted scope for parallel exploration or execution, isolated via tool and runtime allowlists.
 - **Native window**: a native windowed interface built on NiceGUI + WebView2.
-- **Logging + UIA self-check**: all OS actions are logged; idle-time checks verify the visual-locating pipeline stays healthy.
+- **Auditable action trail**: OS actions (including read-only ones) are written one by one to an append-only audit log; related screenshots are reclaimed by the configured retention policy; idle-time checks verify the visual-locating (UIA) pipeline stays healthy.
 
 ---
 

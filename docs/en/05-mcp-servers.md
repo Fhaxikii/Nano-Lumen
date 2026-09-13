@@ -50,6 +50,42 @@ Two types:
 `type` may be omitted; it is inferred from the presence of `command` or
 `url`. Values support `${VAR}` environment-variable expansion.
 
+## Auto-discovery and connection
+
+In addition to pasting a configuration manually, Nano can query the official
+MCP Registry, discover candidate servers by keyword or capability, and proceed
+with the connection flow.
+
+### What discovery returns
+
+A query returns a candidate list. Each entry may include:
+
+- name and description;
+- maintainer and last-update information;
+- connection type (local stdio or remote HTTP);
+- a remote endpoint or local startup method.
+
+### Candidates are not trusted by default
+
+Discovery produces a **candidate list**, not a security, quality, license, or
+trust assessment. A `local` server runs third-party code on the local machine;
+a `remote` server makes network requests and may receive your input. Review the
+candidate's README, source, requested permissions, and license before connecting.
+
+### Connection and management
+
+After selecting a candidate, use Nano's MCP management capabilities to connect
+it. You can then enable or disable it, disconnect or reconnect it, and inspect
+its live connection state. Authorization follows the existing
+[authorization](#authorization) flow: registration does not prompt for login;
+servers that need authorization show a card at first actual use.
+
+### When discovery is unavailable
+
+If the Registry cannot be reached, or the official MCP SDK / required
+ dependencies are unavailable, auto-discovery is unavailable. Manual static
+configuration described above continues to work.
+
 ## Built-in servers
 
 Five are built in, all marked `builtin: true`:
