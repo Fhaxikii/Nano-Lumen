@@ -26,7 +26,7 @@ a change belongs, and how to verify that a change is correct.
 | Modify desktop automation, permissions, or risk decisions | [06 overview](06-os-automation.md) (sub-pages: [06a instructions & risk](06a-instructions-risk.md) · [06b execution pipeline](06b-execution-pipeline.md) · [06c permissions & audit](06c-permissions-audit.md)) |
 | Modify context management or memory | [07 overview](07-memory-and-context.md) (sub-pages: [07a data & projection](07a-memory-data.md) · [07b decay ladder](07b-decay-ladder.md) · [07c metering & guard](07c-meter-budget-guard.md) · [07d long-term memory](07d-long-term-memory.md)) |
 | Modify the knowledge base and retrieval | [08-knowledge-base.md](08-knowledge-base.md) |
-| Modify the UI or add a panel | [09-ui.md](09-ui.md) |
+| Modify the UI or add a panel | [09 overview](09-ui.md) (sub-pages: [09a startup & window](09a-startup-window.md) · [09b chat & events](09b-chat-events.md) · [09c drawers & settings](09c-drawers-settings.md)) |
 | Run or add tests | [10-testing.md](10-testing.md) |
 | Before submitting a PR | [11-contributing.md](11-contributing.md) |
 | Cut a release | [12-release.md](12-release.md) |
