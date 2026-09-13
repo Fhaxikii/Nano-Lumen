@@ -1,8 +1,8 @@
 ﻿# 12 · 发布与版本
 
-**这篇讲什么**：发布一个新版本（vX.YZ）的完整流程——版本号怎么定、仓库里哪些位置带版本号、Changelog 与 Release notes 的格式规范。
-**读完你能做什么**：独立完成一次从代码改动到 Release 上线的完整发布。
-**前置**：[11-contributing.md](11-contributing.md)、[10-testing.md](10-testing.md)。
+**这篇讲什么**：发布一个新版本（vX.YZ）的完整流程——版本号怎么定、仓库里哪些位置带版本号、Changelog 与 Release notes 的格式规范。  
+**读完你能做什么**：独立完成一次从代码改动到 Release 上线的完整发布。  
+**前置**：[11-contributing.md](11-contributing.md)、[10-testing.md](10-testing.md)。  
 
 > 语言：中文 · [English](../en/12-release.md)
 
