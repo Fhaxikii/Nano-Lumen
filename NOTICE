@@ -1,0 +1,22 @@
+Nano-Lumen
+
+Copyright (c) 2026 Nano-Lumen contributors.
+
+Apache License 2.0
+http://www.apache.org/licenses/LICENSE-2.0
+
+This product includes third-party trademarks and logos that are NOT covered
+by the Apache License 2.0:
+
+    assets/vendors/anthropic.png   Anthropic
+    assets/vendors/deepseek.png    DeepSeek
+
+These logos are the property of their respective trademark holders. They are
+included solely to identify the service provider in the product's user
+interface (indicative / nominative use) and do not imply any affiliation with
+or endorsement by the trademark holders. They are excluded from the scope of
+the Apache License 2.0; any further use requires permission from the
+respective rights holders.
+
+If additional vendor logos are added under assets/vendors/, this exception
+applies to them as well.

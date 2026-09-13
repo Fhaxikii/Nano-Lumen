@@ -1,0 +1,553 @@
+# core/os_layer/executor_low.py
+"""
+低级执行器 —— 只读动作。
+
+只实现【只读】原子能力，零写操作、零鼠标控制：
+  - screenshot          截屏
+  - get_sysinfo         CPU/内存/磁盘/网络/电源
+  - read_registry       读注册表
+  - read_window_tree    读前台窗口 UIA 控件树
+  - list_windows        列顶层窗口
+  - get_cursor_pos      鼠标坐标
+  - wait                等待
+
+设计要点（实现约束 1 / 2）：
+- 本执行器【只报状态，不决策】。每个方法返回结构化结果 dict，不决定"下一步做什么"。
+- 平台依赖（win32/psutil/PIL/uiautomation）全部 lazy import + 优雅降级：
+  缺库时返回 {"ok": False, "error": "dependency_missing: xxx"}，不抛异常崩溃。
+  这样在没装全依赖的机器上也能先跑通链路骨架，再逐个补依赖。
+
+返回协议（统一）：
+  {"ok": bool, "data": {...}, "summary": str, "error": str}
+"""
+from __future__ import annotations
+import asyncio
+import pathlib
+# ⚠️⚠️ **这一行以前不在这儿。**
+#
+# 🔴 唯一的 `import ctypes` 写在 `_window_title()` 函数体里（154 行），
+#    而 `_own_pid()` / `_pid_and_proc()` / `_H()` 三个模块级函数都用 `ctypes.` ——
+#    它们全都包着 `except Exception`，于是**不崩，只是永远走 except**：
+#      · `_own_pid()` 永远返回 **-1**（实测确认）
+#      · `_pid_and_proc()` 永远返回 `(0, "")`
+#      · `_H()` 直接抛 `NameError`，被调用方的 except 吞掉
+#
+# 🔴🔴 **后果是一次重写整体失效。** `is_self_window()` 在 2026-08-07 被专门
+#    重写过，把「这个窗口是不是我自己」的主键**从标题换成 PID**，理由写在它
+#    自己的 docstring 里（标题判据实际误判了用户的 cmd 控制台、
+#    一个记事本文档……）。而那条路是 `if pid and pid == _own_pid()` ——
+#    `_own_pid()` 恒为 -1、`_pid_and_proc()` 恒为 `(0, "")` →
+#    **那个分支永远进不去**，`is_self_window` 每次都落到它想废掉的标题判据上。
+#    换句话说：**那次重写从落地的第一天起就没生效，而它看起来生效了。**
+#
+# 📌 **一次「把主键从 A 换成 B」的重写，如果 B 那条路上有一个静默返回哨兵值的
+#    缺陷，那次重写等于没发生 —— 而且看起来发生了。**
+# 📌 **一个包在 `except Exception` 里的 `NameError`，比一个崩掉的贵得多**：
+#    崩掉会被立刻修，静默降级会被当成「这个判据就是不太准」。
+# ⚠️ `import ctypes` 本身在所有平台都安全（`ctypes.windll` 才是 Windows 专属，
+#    而那些调用点本来就有 `except`）。
+import ctypes
+import platform
+from typing import Any, Dict, Optional
+from loguru import logger
+
+
+def _missing(dep: str) -> Dict[str, Any]:
+    return {"ok": False, "data": {}, "summary": "", "error": f"dependency_missing: {dep}"}
+
+
+# ── 自身窗口排除（2026-06-20 复现：UIA 定位 + 合法性校验双双失效）──
+# 根因：用户发消息这个动作本身必然让 Nano 的浏览器/原生窗口获得 OS 焦点，
+# 此前 UIA 扫描 (auto.GetForegroundControl()) 和 Gemini 候选点合法性校验
+# (_foreground_window_rect) 都直接信"当前前台窗口"，等于永远在对着 Nano
+# 自己的窗口找/校验，而不是用户真正想操作的那个窗口——UIA 因此永远扫错
+# 树（NOT_FOUND），Gemini 瞎猜出的、落在 Nano 自己窗口里的错误坐标反而能
+# 通过"是否在前台窗口范围内"的校验（因为前台窗口=Nano自己），两条防线
+# 同时失效。
+#
+# 标题关键词用 "nano"（小写匹配，覆盖 app.py 里 ui.run(title='Nano OS', ...)
+# 设置的标题，以及浏览器标签页显示的 "Nano"/"Nano OS"）。刻意只依赖标题，
+# 不依赖浏览器进程名——以后 NiceGUI 如果切换成 native=True（pywebview
+# 原生窗口而非浏览器标签页），进程会从 chrome.exe/msedge.exe 变成
+# python/webview 宿主进程，但标题大概率不变，这条判断不用跟着改。
+_SELF_WINDOW_TITLE_MARKERS = ("nano",)
+
+
+#: 浏览器降级模式下，Nano 的标签页属于浏览器进程 —— 那时只能靠标题认。
+_BROWSER_PROC_NAMES = {"chrome", "msedge", "firefox", "brave", "opera", "iexplore"}
+
+
+def _own_pid() -> int:
+    try:
+        return int(ctypes.windll.kernel32.GetCurrentProcessId())
+    except Exception:
+        return -1
+
+
+def _pid_and_proc(hwnd) -> tuple:
+    try:
+        pid = ctypes.c_ulong()
+        ctypes.windll.user32.GetWindowThreadProcessId(_H(hwnd), ctypes.byref(pid))
+        p = int(pid.value)
+    except Exception:
+        return (0, "")
+    try:
+        import psutil
+        return (p, (psutil.Process(p).name() or "").replace(".exe", "").lower())
+    except Exception:
+        return (p, "")
+
+
+def is_self_window(hwnd, title: str = "") -> bool:
+    """这个窗口是不是 **Nano 自己的界面**。
+
+    ⚠️⚠️ **2026-08-07 重写：主键从「标题含 nano」改成「PID 是不是我自己」。**
+
+    旧写法（只看标题里有没有 "nano"）误判了一大片，实测命中：
+      · `'管理员:  Nano Office'`（**一个 cmd 控制台**，993x519）
+      · `'某个项目文档.md - 记事本'`（一个普通文档窗口）
+      · 任何标题里带 Nano 的资源管理器窗口
+
+    后果不是"多排除几个"这么轻：
+    🔴 `_get_self_window_rect()` 返回的是**第一个**命中的窗口 →
+       于是 `look_at_screen` **遮掉了 cmd 控制台那块区域**，
+       而 **Nano 自己的窗口根本没被排除**，照样出现在截图里。
+       "中间一个黑框、而且 Nano 说缩了窗其实没缩"就是这么来的。
+    🔴 那个记事本被当成"自己"，于是 `get_target_window()` 和窗口绑定都**跳过它** ——
+       用户让 Nano 操作那个文档，它会看不见。
+
+    📌 **判据：身份判据不能用「用户能自由命名的东西」当主键。**
+    标题是用户可控的（文件名、控制台标题、文件夹名都能含 "nano"），
+    而 PID 是操作系统给的。这跟窗口绑定用 hwnd 不用标题、
+    以及键鼠用 `LLKHF_INJECTED` 不用自抑制标志，是同一条原则：
+    **问系统要事实，别拿可被巧合命中的特征去猜。**
+
+    ⚠️ 标题判据**保留为降级路径**，但收窄了：原注释担心的是
+    「NiceGUI 换成 native 之后进程名会变」，那个顾虑本身对 ——
+    **浏览器降级模式**下（检测不到 WebView2、用户自己开 8080）
+    Nano 的标签页属于 chrome/msedge，PID 确实不是我们的。
+    所以那条路改成「标题命中 **且** 宿主是浏览器进程」，不再单靠标题。
+    """
+    if hwnd:
+        pid, proc = _pid_and_proc(hwnd)
+        if pid and pid == _own_pid():
+            return True
+        t = (title or "").strip().lower()
+        if proc in _BROWSER_PROC_NAMES and any(m in t for m in _SELF_WINDOW_TITLE_MARKERS):
+            return True
+        return False
+    # 没给 hwnd：只能退回旧判据（调用方应尽量给 hwnd）
+    t = (title or "").strip().lower()
+    return any(m in t for m in _SELF_WINDOW_TITLE_MARKERS)
+
+
+def _H(hwnd):
+    """把 Python int 转成 ctypes 能安全接的句柄。
+
+    ⚠️ **不转就会在大 hwnd 上抛 `OverflowError`**：ctypes 对未声明原型的
+    Win32 函数默认按 `c_int` 处理，而 hwnd 可以超过 2^31。
+    实测这台机器上就有 `hwnd=30803936`、`22480158` 这类值，更大的也存在。
+    ⭐ 这个错法是**静默**的：调用点普遍包着 `except Exception` →
+    那个窗口就悄悄从枚举结果里消失了。同一个坑在 `takeover_hooks` 已经踩过一次。
+    """
+    return ctypes.c_void_p(int(hwnd))
+
+
+def _is_self_window_title(title: str) -> bool:
+    """⚠️ **旧接口，只看标题 —— 会误判，新代码请用 `is_self_window(hwnd, title)`。**
+    保留是因为有两处调用方只拿得到标题（Playwright 的 `window_title`）。"""
+    t = (title or "").strip().lower()
+    return any(m in t for m in _SELF_WINDOW_TITLE_MARKERS)
+
+
+def foreground_identity() -> Optional[Dict[str, Any]]:
+    """前台窗口的**身份**：`{hwnd, pid, proc, title}`。取不到返回 None。
+
+    ⚠️⚠️ **为什么要 hwnd，光有标题不够：** 两个未命名的记事本标题**完全相同**
+    （都是"无标题 - 记事本"）。靠标题判身份，正好在最需要分清的场景下失效。
+    hwnd 是操作系统给的唯一句柄，这才是身份。
+
+    ⭐ 这个函数存在的理由是一次**真实的数据损坏**（2026-08-07 实测）：
+    Nano 要操作它自己打开的 `新建文本文档.txt`，用户中途把焦点放到了**自己的**
+    另一个记事本上。`get_target_window()`（见下）返回的是"最前面那个非 Nano 窗口"，
+    于是 Nano 对着**用户的**记事本 Ctrl+A + 输入，**清掉了用户的内容**。
+    而 `look_at_screen` 当时只返回视觉模型的散文描述，**一个字都没提在看哪个窗口** ——
+    模型除了在图里认标题之外，没有任何手段发现自己换了对象。
+    📌 **别让模型去「记得怀疑」，把变化本身摆到它眼前。**
+    """
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+        hwnd = u.GetForegroundWindow()
+        if not hwnd:
+            return None
+        pid = ctypes.c_ulong()
+        u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        n = u.GetWindowTextLengthW(hwnd)
+        buf = ctypes.create_unicode_buffer(n + 1)
+        u.GetWindowTextW(hwnd, buf, n + 1)
+        proc = ""
+        try:
+            import psutil
+            proc = psutil.Process(pid.value).name()
+        except Exception:
+            pass
+        return {"hwnd": int(hwnd), "pid": int(pid.value),
+                "proc": proc, "title": buf.value or ""}
+    except Exception as e:
+        logger.debug(f"[OS-Low] 取前台窗口身份失败: {e}")
+        return None
+
+
+def get_target_window():
+    """返回 Z-order 最靠前、且不是 Nano 自己的窗口对象；找不到返回 None。
+
+    pygetwindow.getAllWindows() 在 Windows 后端走 EnumWindows，天然按
+    Z-order（从最前到最后）排列，所以"第一个不是 Nano 自己的窗口"就是
+    用户当前实际在看的、最可能想让 Nano 操作的窗口。
+
+    ⚠️⚠️ **这是一个「任务开始时」的启发式，不是「每一步都能重新问」的权威。**
+    它的语义是"用户此刻在看哪个窗口" —— 开始一个任务时这么猜是对的；
+    但**任务中途**"最前面的窗口"等于"谁最后动过"，包括**用户自己的窗口**。
+    2026-08-07 实测的数据损坏就是这么发生的（详见 `foreground_identity` 的说明）。
+
+    📌 与运行作用域那条同形：**一个事实只能证明它在被测那一刻成立，不能证明它现在仍然成立。**
+
+    ✅ **已修（2026-08-07）**：**有绑定就用绑定**（`window_binding`，绑定期 = 活动租约寿命）；
+       没有绑定才退回下面那个 Z-order 启发式。
+       ⭐ 退化路径**刻意保留** —— 一次任务的**第一步**本来就没有绑定可用，
+       那时候"操作用户正在看的窗口"是对的语义。
+       📌 **同一个启发式，在任务开始时是对的、在任务中途是错的** ——
+       所以修法不是把它删掉，是给它加一个更强的前置。
+    """
+    try:
+        from core.os_layer import window_binding as _wb
+        from core.runtime.kernel import get_kernel as _gk
+        from core.runtime import oslease as _ol
+        _cur = _ol.current_activity(_gk())
+        if _cur is not None and _cur.holder == _ol.Holder.NANO:
+            _b = _wb.bound(_cur.lease_id)
+            if _b:
+                import pygetwindow as _gw
+                _w = _gw.Win32Window(_b["hwnd"])
+                logger.info(f"[OS-Low] get_target_window 用【绑定】: "
+                            f"hwnd={_b['hwnd']} {_b['title']!r}")
+                return _w
+    except Exception as e:
+        # 绑定层出任何问题都退回启发式 —— 它至少是今天的行为，不会更差
+        logger.debug(f"[OS-Low] 绑定查询失败，退回 Z-order 启发式: {e}")
+    try:
+        import pygetwindow as gw
+    except ImportError:
+        return None
+    try:
+        _seen = []
+        for w in gw.getAllWindows():
+            title = (w.title or "").strip()
+            if not title:
+                continue
+            try:
+                width, height = w.width, w.height
+            except Exception:
+                width = height = 0
+            _seen.append(f"{title!r}(min={getattr(w,'isMinimized','?')},{width}x{height})")
+            if _is_self_window_title(title):
+                continue
+            # 过滤系统外壳小部件（任务栏"开始"按钮等），不是真实应用窗口。
+            # 实测复现：pygetwindow 枚举会把"开始"排在最前面，宽高只有
+            # 48x40 左右，远小于任何真实应用窗口，之前没过滤导致它被
+            # 误选成"目标窗口"，UIA 扫它的控件树自然找不到任何东西。
+            if width < 200 or height < 150:
+                continue
+            logger.info(f"[OS-Low] get_target_window 选中: {title!r}({width}x{height}) | 扫描顺序前几个: {_seen[:6]}")
+            return w
+        logger.warning(f"[OS-Low] get_target_window 未找到合适的目标窗口 | 扫描顺序: {_seen[:10]}")
+    except Exception as e:
+        logger.warning(f"[OS-Low] get_target_window 异常: {e}")
+    return None
+
+
+class LowLevelExecutor:
+    """只读系统能力。Windows 优先；非 Windows 上多数能力返回 unsupported。"""
+
+    def __init__(self, audit_logger=None, screenshot_dir=None):
+        self._audit = audit_logger
+        self._is_windows = platform.system() == "Windows"
+        self._screenshot_dir = screenshot_dir
+
+    # ── 系统信息（psutil）────────────────────────────────────────────────
+    async def get_sysinfo(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._get_sysinfo_sync, params)
+
+    def _get_sysinfo_sync(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            import psutil
+        except ImportError:
+            return _missing("psutil")
+        try:
+            # ── 字段名归一化（模型可能用更自然的命名，全部映射到内部标准名）──
+            _FIELD_ALIASES = {
+                "cpu": "cpu", "cpu_usage": "cpu", "cpu_percent": "cpu",
+                "cpu_info": "cpu", "processor": "cpu",
+                "memory": "memory", "memory_usage": "memory", "mem": "memory",
+                "ram": "memory", "memory_info": "memory",
+                "disk": "disk", "disk_usage": "disk", "storage": "disk",
+                "battery": "battery", "power": "battery", "charge": "battery",
+                "network": "network", "net": "network", "bandwidth": "network",
+            }
+            raw_fields = params.get("fields") or ["cpu", "memory", "disk", "battery"]
+            fields = list(dict.fromkeys(                     # 去重保序
+                _FIELD_ALIASES.get(f.lower(), f) for f in raw_fields
+            ))
+            data: Dict[str, Any] = {}
+            if "cpu" in fields:
+                data["cpu_percent"] = psutil.cpu_percent(interval=0.3)
+                data["cpu_count"] = psutil.cpu_count()
+            if "memory" in fields:
+                vm = psutil.virtual_memory()
+                data["memory"] = {
+                    "total_gb": round(vm.total / 1e9, 2),
+                    "used_gb": round(vm.used / 1e9, 2),
+                    "percent": vm.percent,
+                }
+            if "disk" in fields:
+                du = psutil.disk_usage("/")
+                data["disk"] = {
+                    "total_gb": round(du.total / 1e9, 2),
+                    "used_gb": round(du.used / 1e9, 2),
+                    "percent": du.percent,
+                }
+            if "battery" in fields:
+                try:
+                    bat = psutil.sensors_battery()
+                    data["battery"] = ({"percent": bat.percent, "plugged": bat.power_plugged}
+                                       if bat else None)
+                except Exception:
+                    data["battery"] = None
+            summary = self._fmt_sysinfo(data)
+            return {"ok": True, "data": data, "summary": summary, "error": ""}
+        except Exception as e:
+            logger.error(f"[OS-Low] get_sysinfo 失败: {e}")
+            return {"ok": False, "data": {}, "summary": "", "error": str(e)}
+
+    @staticmethod
+    def _fmt_sysinfo(d: Dict[str, Any]) -> str:
+        parts = []
+        if "cpu_percent" in d:
+            parts.append(f"CPU {d['cpu_percent']}%")
+        if "memory" in d:
+            parts.append(f"memory {d['memory']['percent']}% ({d['memory']['used_gb']}/{d['memory']['total_gb']}GB)")
+        if "disk" in d:
+            parts.append(f"disk {d['disk']['percent']}%")
+        if d.get("battery"):
+            parts.append(f"battery {d['battery']['percent']}%")
+        return ", ".join(parts)
+
+    # ── 截屏（PIL/mss）───────────────────────────────────────────────────
+    async def screenshot(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._screenshot_sync, params)
+
+    def _screenshot_sync(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            import mss
+            import mss.tools
+        except ImportError:
+            # 退而求其次试 PIL ImageGrab（Windows/Mac）
+            try:
+                from PIL import ImageGrab
+            except ImportError:
+                return _missing("mss or pillow")
+            try:
+                img = ImageGrab.grab()
+                path = self._save_shot(img_pil=img)
+                return {"ok": True, "data": {"path": str(path), "size": img.size},
+                        "summary": f"screenshot saved to {path}", "error": ""}
+            except Exception as e:
+                return {"ok": False, "data": {}, "summary": "", "error": str(e)}
+        try:
+            import datetime as _dt
+            with mss.mss() as sct:
+                monitor = sct.monitors[params.get("monitor", 1)]
+                shot = sct.grab(monitor)
+                if self._screenshot_dir is None:
+                    return {"ok": False, "data": {}, "summary": "", "error": "no screenshot_dir configured"}
+                fname = f"shot_{_dt.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.png"
+                path = self._screenshot_dir / fname
+                mss.tools.to_png(shot.rgb, shot.size, output=str(path))
+                return {"ok": True,
+                        "data": {"path": str(path), "size": [shot.width, shot.height]},
+                        "summary": f"screenshot saved to {path}", "error": ""}
+        except Exception as e:
+            logger.error(f"[OS-Low] screenshot 失败: {e}")
+            return {"ok": False, "data": {}, "summary": "", "error": str(e)}
+
+    # 🪦 **这里曾是 `_prune_shots()` + `_SHOT_KEEP = 20`**，2026-08-25 移走。
+    #    搬去了 `audit.OSAuditLogger.prune_screenshots()`，并且换成按**体积**。
+    #
+    # 🔴 移走的理由是它在这里**永远跑不全**：它只在本类保存 `shot_*` 时被调用，
+    #    而截图目录里 47 张里有 44 张是视觉定位链（`executor_vision` / `dispatch`）
+    #    写的 —— 那条链一次都不会触发它。实测 47 张 / 52.4 MB，上限写着 20。
+    # 📌 **目录是 audit 的，回收就该是 audit 的责任** ——
+    #    挂在某一个写入方身上，等于要求所有写入方都自觉，而漏一个就永远漏。
+    # ⚠️ 别在这里加回一个「顺手也清一下」：**判据只能有一处**，
+    #    两处清理迟早会有不同的预算。
+
+    def _save_shot(self, img_pil) -> Any:
+        import datetime as _dt
+        fname = f"shot_{_dt.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.png"
+        path = self._screenshot_dir / fname
+        img_pil.save(str(path))
+        # ⚠️ **两条写盘路径都要清理** —— 这是 PIL 兜底那条。
+        #    📌 只在其中一条接回收，表现是「有时候清理有时候不清理」，
+        #       而那比完全不清理更难查（它取决于 mss 装没装）。
+        return path
+
+    # ── 读注册表（winreg，只读）──────────────────────────────────────────
+    async def read_registry(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._read_registry_sync, params)
+
+    def _read_registry_sync(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        if not self._is_windows:
+            return {"ok": False, "data": {}, "summary": "", "error": "unsupported: registry is Windows-only"}
+        try:
+            import winreg
+        except ImportError:
+            return _missing("winreg")
+        hive_map = {
+            "HKLM": winreg.HKEY_LOCAL_MACHINE, "HKCU": winreg.HKEY_CURRENT_USER,
+            "HKCR": winreg.HKEY_CLASSES_ROOT, "HKU": winreg.HKEY_USERS,
+        }
+        try:
+            hive = hive_map.get(params.get("hive", "HKCU"))
+            if hive is None:
+                return {"ok": False, "data": {}, "summary": "", "error": f"unknown hive: {params.get('hive')}"}
+            subkey = params.get("subkey", "")
+            value_name = params.get("value_name", "")
+            with winreg.OpenKey(hive, subkey) as key:
+                val, regtype = winreg.QueryValueEx(key, value_name)
+            return {"ok": True, "data": {"value": val, "type": regtype},
+                    "summary": f"{params.get('hive')}\\{subkey}\\{value_name} = {val}", "error": ""}
+        except FileNotFoundError:
+            return {"ok": False, "data": {}, "summary": "", "error": "registry key/value not found"}
+        except Exception as e:
+            logger.error(f"[OS-Low] read_registry 失败: {e}")
+            return {"ok": False, "data": {}, "summary": "", "error": str(e)}
+
+    # ── 列窗口 / 读控件树（pygetwindow / uiautomation）──────────────────
+    async def list_windows(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._list_windows_sync, params)
+
+    def _list_windows_sync(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            import pygetwindow as gw
+        except ImportError:
+            return _missing("pygetwindow")
+        try:
+            wins = []
+            for w in gw.getAllWindows():
+                title = (w.title or "").strip()
+                if not title:
+                    continue
+                wins.append({"title": title, "active": bool(getattr(w, "isActive", False)),
+                             "minimized": bool(getattr(w, "isMinimized", False))})
+            return {"ok": True, "data": {"windows": wins, "count": len(wins)},
+                    "summary": f"{len(wins)} visible window(s)", "error": ""}
+        except Exception as e:
+            logger.error(f"[OS-Low] list_windows 失败: {e}")
+            return {"ok": False, "data": {}, "summary": "", "error": str(e)}
+
+    async def read_window_tree(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._read_window_tree_sync, params)
+
+    def _read_window_tree_sync(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        if not self._is_windows:
+            return {"ok": False, "data": {}, "summary": "", "error": "unsupported: UIA is Windows-only"}
+        try:
+            import uiautomation as auto
+        except ImportError:
+            return _missing("uiautomation")
+        try:
+            max_depth = int(params.get("max_depth", 3))
+            ctrl = auto.GetForegroundControl()
+            if not ctrl:
+                return {"ok": False, "data": {}, "summary": "", "error": "no foreground control"}
+
+            def walk(c, depth):
+                if depth > max_depth:
+                    return None
+                node = {"name": c.Name, "type": c.ControlTypeName, "children": []}
+                try:
+                    for child in c.GetChildren():
+                        sub = walk(child, depth + 1)
+                        if sub:
+                            node["children"].append(sub)
+                except Exception:
+                    pass
+                return node
+
+            tree = walk(ctrl, 0)
+            return {"ok": True, "data": {"tree": tree},
+                    "summary": f"read foreground window control tree (depth <= {max_depth})", "error": ""}
+        except Exception as e:
+            logger.error(f"[OS-Low] read_window_tree 失败: {e}")
+            return {"ok": False, "data": {}, "summary": "", "error": str(e)}
+
+    # ── 鼠标坐标（只读）──────────────────────────────────────────────────
+    async def get_cursor_pos(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            import pyautogui
+        except ImportError:
+            return _missing("pyautogui")
+        try:
+            x, y = pyautogui.position()
+            return {"ok": True, "data": {"x": x, "y": y}, "summary": f"cursor position ({x}, {y})", "error": ""}
+        except Exception as e:
+            return {"ok": False, "data": {}, "summary": "", "error": str(e)}
+
+    # ── wait（无副作用）──────────────────────────────────────────────────
+    async def wait(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        secs = float(params.get("seconds", 0.5))
+        secs = max(0.0, min(secs, 10.0))  # 上限 10s，防滥用
+        await asyncio.sleep(secs)
+        return {"ok": True, "data": {"waited": secs}, "summary": f"waited {secs}s", "error": ""}
+
+    # ── list_dir（只读，列目录真实文件名）───────────────────────────────────
+    # 背景：Windows 默认隐藏扩展名，"新建 文本文档 (2)"这类文件名模型只能
+    # 看到不带后缀的样子，容易凭感觉拼错扩展名导致 file_delete/file_move 等
+    # 操作"文件不存在"。在做这类操作前应该先用这个 action 列目录确认真实
+    # 文件名（含完整扩展名），不要瞎猜。
+    async def list_dir(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        return await asyncio.to_thread(self._list_dir_sync, params)
+
+    def _list_dir_sync(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        import pathlib
+        import os as _os
+        raw = params.get("path") or "%USERPROFILE%\\Desktop"
+        path = _os.path.expandvars(_os.path.expanduser(raw))
+        try:
+            p = pathlib.Path(path)
+            if not p.exists():
+                return {"ok": False, "data": {}, "summary": "", "error": f"directory does not exist: {path}"}
+            if not p.is_dir():
+                return {"ok": False, "data": {}, "summary": "", "error": f"not a directory: {path}"}
+            entries = []
+            for child in sorted(p.iterdir())[:200]:  # 上限 200 条，防止超大目录刷屏
+                entries.append({"name": child.name, "is_dir": child.is_dir()})
+            names = ", ".join(e["name"] for e in entries[:50])
+            return {"ok": True, "data": {"path": str(p), "entries": entries},
+                    "summary": f"{p} ({len(entries)} item(s)): {names}", "error": ""}
+        except Exception as e:
+            logger.error(f"[OS-Low] list_dir 失败: {e}")
+            return {"ok": False, "data": {}, "summary": "", "error": str(e)}
+
+    # ── 当前目标窗口名（供动态升级规则判定，不是 DSL action）───────────────
+    # 排除 Nano 自己的窗口（见上方 get_target_window 注释），不再用
+    # gw.getActiveWindow()（=raw OS 前台窗口，几乎总是 Nano 自己）。
+    def get_foreground_window_title(self) -> str:
+        if not self._is_windows:
+            return ""
+        try:
+            w = get_target_window()
+            return (w.title if w else "") or ""
+        except Exception:
+            return ""

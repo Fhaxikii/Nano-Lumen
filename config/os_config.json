@@ -1,0 +1,90 @@
+{
+  "_comment": "桌面自动化的版本侧配置。dynamic_upgrade_rules 是风险升级规则，用户可以增补，不需要改代码。⚠️ 用户侧状态（六个权限开关与 auto 模式）不在这里，在 data/os_state.json —— 那份跟着用户走，升级时不该被覆盖。",
+  "limits": {
+    "max_steps_per_task": 30,
+    "max_replan": 3,
+    "max_locate_retry": 3,
+    "screenshot_retention_days": 7
+  },
+  "canary": {
+    "_comment": "定期自检视觉定位链路是否正常，仅在空闲时运行。自检目标必须是系统常驻的稳定界面元素，不要换成可能未打开的临时窗口，否则会把「目标不存在」误报成「定位能力坏了」。",
+    "interval_seconds": 1800,
+    "success_threshold": 0.5,
+    "escalate_after_consecutive_low": 3,
+    "_targets_removed_2026_08_28": [
+      "任务视图",
+      "显示桌面",
+      "操作中心",
+      "系统时钟"
+    ],
+    "probe_count": 4
+  },
+  "dynamic_upgrade_rules": [
+    {
+      "action": "launch_app",
+      "condition": {
+        "target_in": [
+          "cmd",
+          "powershell",
+          "regedit",
+          "wmic",
+          "mshta",
+          "diskpart",
+          "cscript",
+          "wscript"
+        ]
+      },
+      "upgrade_to": 3,
+      "reason": "启动系统级命令行工具"
+    },
+    {
+      "action": "type_text",
+      "condition": {
+        "foreground_window_in": [
+          "cmd",
+          "powershell",
+          "ConsoleHost",
+          "WindowsTerminal"
+        ]
+      },
+      "upgrade_to": 3,
+      "reason": "在终端中输入文本"
+    },
+    {
+      "action": "type_text",
+      "condition": {
+        "foreground_window_matches": "DevTools|Console|.*IDLE.*|PyCharm|VSCode.*[Tt]erminal|Jupyter"
+      },
+      "upgrade_to": 3,
+      "reason": "在浏览器控制台/IDE 交互窗口输入（可执行上下文）"
+    },
+    {
+      "action": "file_write",
+      "condition": {
+        "path_matches": "C:\\\\Windows|C:\\\\System32|.*Startup.*"
+      },
+      "upgrade_to": 3,
+      "reason": "写入系统目录或启动项"
+    },
+    {
+      "action": "file_move",
+      "condition": {
+        "path_matches": "C:\\\\Windows|C:\\\\System32"
+      },
+      "upgrade_to": 3,
+      "reason": "移动系统目录文件"
+    },
+    {
+      "action": "clipboard_read",
+      "condition": {
+        "foreground_window_in": [
+          "1Password",
+          "KeePass",
+          "Bitwarden"
+        ]
+      },
+      "upgrade_to": 3,
+      "reason": "密码管理器前台时读剪贴板"
+    }
+  ]
+}

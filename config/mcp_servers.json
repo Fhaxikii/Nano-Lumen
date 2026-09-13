@@ -1,0 +1,66 @@
+{
+  "_comment": "MCP server 配置。沿用生态标准 mcpServers shape——用户从某个 MCP server 的 README 复制的那段 JSON 可以直接粘进来。每个 server: type(stdio/http,可省略由 command/url 推断) + (command+args+env | url+headers) + enabled。支持 ${VAR} 环境变量展开。授权(OAuth)走'在场授权'：贴=登记，第一次用到时再在对话里走授权卡，这里不预先弹登录。",
+  "_note": "内置 server 说明。fetch = 官方 mcp-server-fetch（Python，网页抓取，不需要 Node）。playwright = 微软官方 @playwright/mcp，基于无障碍树与 DOM 的浏览器自动化，比模拟点击可靠；需要 Node（npx）。playwright-headless = 无界面版本，作为兜底。microsoft-learn / context7 = 文档检索，远程 HTTP，无需密钥。",
+  "mcpServers": {
+    "fetch": {
+      "type": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "mcp_server_fetch"
+      ],
+      "enabled": true,
+      "builtin": true,
+      "provides": [
+        "web.fetch"
+      ]
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp",
+        "--browser",
+        "msedge"
+      ],
+      "enabled": true,
+      "builtin": true,
+      "provides": [
+        "web.fetch"
+      ]
+    },
+    "microsoft-learn": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp",
+      "enabled": true,
+      "builtin": true
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true,
+      "builtin": true
+    },
+    "playwright-headless": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp",
+        "--browser",
+        "msedge",
+        "--headless",
+        "--isolated",
+        "--output-dir",
+        "${TEMP}/nano-playwright"
+      ],
+      "enabled": true,
+      "builtin": true,
+      "lazy": true,
+      "expose_tools": false,
+      "owned_by": "OpenPageWithBrowser"
+    }
+  },
+  "_note_provides": "`provides` 声明该 server 提供哪类通用能力（如 web.fetch），供能力发现使用；不填则只能按名字调用。"
+}

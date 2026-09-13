@@ -1,0 +1,136 @@
+{
+  "_comment": "两层配置：厂商 -> 提炼器 / 模型 -> 价格+窗口+配额。接新厂商时只改这个文件。  | roles: 每个角色的可用模型白名单，**顺序即优先级**（价格升序，手排）。用户在「设置 → 进阶配置」里选的那一份存在 throttle_config.json 的 _role_models，留空 = 用池子第一个。  | currency/currency_symbol: 厂商官方标价用的币种，**不折算**（汇率不在官方文档里、且每天在动）。default_caps: 该币种下的限额默认值 —— 换厂商时用量清零并套用这一档。",
+  "_ladder": "上下文衰减阶梯：L0 原文 → L1 工具结果换占位符 → L2 一次交换压成一条结论行 → L3 移出上下文并交接语义记忆、只留索引 → L4 索引也过期（不删语义记忆）。总开关是 _settings.ladder_enabled。",
+  "_quota": "四层配额 = 各占【模型自己窗口】的比例，合计 50%。剩下的 50% 给：system+工具表底噪 / 当前这一轮 / 突发（大工具结果、图、粘贴）/ 输出余量。⚠️ 这四个数【没有标定过】——第一片的 data/context_samples.jsonl 正在积累标定它们所需的分布。⚠️ 1M 档的 50% 可能太宽松（官方在 1M 上默认 150K 就压），但先照写，理由见总纲 第二片 Q2。",
+  "_quota_override": "【只用于实机验证】填一个像 {\"L0\":0.03,\"L1\":0.02,\"L2\":0.01,\"L3\":0.005} 的对象，所有模型的配额都会临时用它，好让 L0→L1→L2→L3→L4 全链在十几轮内就能触发（正式配额 L0=25%×200K=50K token，要聊很久才够，开了也只会看到\"没触发\"）。⚠️ 它【不覆盖】正式配额那份数据，验完把这一项设回 null 即可。⚠️ 生效期间每次读配额都会 warning —— 这是刻意的：一个临时配置必须响亮到不可能忘记关掉。",
+  "_settings": {
+    "ladder_enabled": true,
+    "quota_override": null
+  },
+  "anthropic": {
+    "roles": {
+      "distiller": [
+        "anthropic/claude-haiku-4.5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-opus-5"
+      ],
+      "classifier": [
+        "anthropic/claude-haiku-4.5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-opus-5"
+      ],
+      "vision": [
+        "anthropic/claude-haiku-4.5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-opus-5"
+      ]
+    },
+    "models": {
+      "anthropic/claude-haiku-4.5": {
+        "input_per_1m": 1.0,
+        "output_per_1m": 5.0,
+        "window": 200000,
+        "quota": {
+          "L0": 0.25,
+          "L1": 0.15,
+          "L2": 0.08,
+          "L3": 0.02
+        }
+      },
+      "anthropic/claude-sonnet-5": {
+        "input_per_1m": 3.0,
+        "output_per_1m": 15.0,
+        "window": 1000000,
+        "quota": {
+          "L0": 0.25,
+          "L1": 0.15,
+          "L2": 0.08,
+          "L3": 0.02
+        }
+      },
+      "anthropic/claude-opus-5": {
+        "input_per_1m": 5.0,
+        "output_per_1m": 25.0,
+        "window": 1000000,
+        "quota": {
+          "L0": 0.25,
+          "L1": 0.15,
+          "L2": 0.08,
+          "L3": 0.02
+        }
+      }
+    },
+    "label": "Anthropic",
+    "icon": "/vendors/anthropic.png",
+    "official_base": "",
+    "key_hint": "在 console.anthropic.com 申请官方 API Key，或填写任意中转服务的 Key",
+    "currency": "USD",
+    "currency_symbol": "$",
+    "default_caps": {
+      "soft": 5.0,
+      "hard": 10.0
+    }
+  },
+  "deepseek": {
+    "label": "深度求索",
+    "icon": "/vendors/deepseek.png",
+    "official_base": "https://api.deepseek.com/anthropic",
+    "key_hint": "在 platform.deepseek.com 申请官方 API Key，或填写任意中转服务的 Key",
+    "roles": {
+      "distiller": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp",
+        "deepseek-v4-pro"
+      ],
+      "classifier": [
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp",
+        "deepseek-v4-pro"
+      ],
+      "vision": [
+        "deepseek-v4-flash-vision-exp"
+      ]
+    },
+    "models": {
+      "deepseek-v4-flash": {
+        "input_per_1m": 3.0,
+        "output_per_1m": 9.0,
+        "window": 1000000,
+        "quota": {
+          "L0": 0.25,
+          "L1": 0.15,
+          "L2": 0.08,
+          "L3": 0.02
+        }
+      },
+      "deepseek-v4-flash-vision-exp": {
+        "input_per_1m": 3.0,
+        "output_per_1m": 9.0,
+        "window": 1000000,
+        "quota": {
+          "L0": 0.25,
+          "L1": 0.15,
+          "L2": 0.08,
+          "L3": 0.02
+        }
+      },
+      "deepseek-v4-pro": {
+        "input_per_1m": 9.0,
+        "output_per_1m": 27.0,
+        "window": 1000000,
+        "quota": {
+          "L0": 0.25,
+          "L1": 0.15,
+          "L2": 0.08,
+          "L3": 0.02
+        }
+      }
+    },
+    "currency": "CNY",
+    "currency_symbol": "¥",
+    "default_caps": {
+      "soft": 35.0,
+      "hard": 70.0
+    }
+  }
+}

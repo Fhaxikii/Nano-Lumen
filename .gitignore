@@ -1,0 +1,40 @@
+# ── Secrets ────────────────────────────────────────────────
+.env
+*.env
+.env.*
+!.env.example
+!*.env.example
+
+# ── Python ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ── Nano runtime data (usage traces) ──────────────────────
+# Keep: data/knowledge/_system (built-in manual),
+#       data/model_config.json, data/china_regions_city.json
+data/ambient_trail.jsonl
+data/breadcrumbs.json
+data/chat_images/
+data/chroma_db/
+data/chroma_memory_db/
+data/cmd_output/
+data/context_last_known.json
+data/context_samples.jsonl
+data/nano_memory.db
+data/nano_runtime.db
+data/os_audit/
+data/os_state.json
+data/proactive_ledger.json
+data/proactive_shadow.jsonl
+data/throttle_config.json
+
+# ── Dev scratch (one-off helper scripts, not part of the product) ──
+_*.py
+_*.ps1
+_*.txt
+
+# ── OS / editor ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
