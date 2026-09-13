@@ -1,10 +1,10 @@
-# 12 · Releases and versioning
+# 13 · Releases and versioning
 
 **What this page covers**: the full flow for releasing a new version (vX.YZ) — how version numbers work, which places in the repository carry the version, and the format rules for the Changelog and Release notes.  
 **After reading it you can**: run a complete release, from a code change to a published GitHub Release.  
-**Prerequisites**: [11-contributing.md](11-contributing.md), [10-testing.md](10-testing.md).  
+**Prerequisites**: [12-contributing.md](12-contributing.md), [11-testing.md](11-testing.md).  
 
-> Language: [中文](../zh/12-release.md) · English
+> Language: [中文](../zh/13-release.md) · English
 
 ---
 

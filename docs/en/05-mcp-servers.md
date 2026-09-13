@@ -141,7 +141,7 @@ A new built-in server must satisfy all of:
 
 Servers that don't qualify can still be added by users; they just won't be
 built in. The same three conditions apply to PRs — see
-[11-contributing.md](11-contributing.md).
+[12-contributing.md](12-contributing.md).
 
 ## Adding a built-in server
 

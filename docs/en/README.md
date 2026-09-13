@@ -23,13 +23,14 @@ a change belongs, and how to verify that a change is correct.
 | Modify config items or add configuration | [03-configuration.md](03-configuration.md) |
 | Add a tool (skill) | [04-writing-a-skill.md](04-writing-a-skill.md) |
 | Connect an MCP server | [05-mcp-servers.md](05-mcp-servers.md) |
+| Modify built-in tools or add one | [10-builtin-tools.md](10-builtin-tools.md) |
 | Modify desktop automation, permissions, or risk decisions | [06 overview](06-os-automation.md) (sub-pages: [06a instructions & risk](06a-instructions-risk.md) · [06b execution pipeline](06b-execution-pipeline.md) · [06c permissions & audit](06c-permissions-audit.md)) |
 | Modify context management or memory | [07 overview](07-memory-and-context.md) (sub-pages: [07a data & projection](07a-memory-data.md) · [07b decay ladder](07b-decay-ladder.md) · [07c metering & guard](07c-meter-budget-guard.md) · [07d long-term memory](07d-long-term-memory.md)) |
 | Modify the knowledge base and retrieval | [08-knowledge-base.md](08-knowledge-base.md) |
 | Modify the UI or add a panel | [09 overview](09-ui.md) (sub-pages: [09a startup & window](09a-startup-window.md) · [09b chat & events](09b-chat-events.md) · [09c drawers & settings](09c-drawers-settings.md)) |
-| Run or add tests | [10-testing.md](10-testing.md) |
-| Before submitting a PR | [11-contributing.md](11-contributing.md) |
-| Cut a release | [12-release.md](12-release.md) |
+| Run or add tests | [11-testing.md](11-testing.md) |
+| Before submitting a PR | [12-contributing.md](12-contributing.md) |
+| Cut a release | [13-release.md](13-release.md) |
 | Understand usage responsibilities and disclaimers | [user-agreement.md](user-agreement.md) |
 
 New features usually start from `04` and `05`. Both are "add one thing"

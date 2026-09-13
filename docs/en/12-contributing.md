@@ -1,10 +1,10 @@
-# 11 · Contributing
+# 12 · Contributing
 
 **What this page covers**: what to know before submitting a PR, including what we do not accept.  
 **After reading it you can**: judge whether your change is likely to be accepted, and run the pre-submission checklist.  
 **Prerequisites**: whichever page matches your change.
 
-> Language: [中文](../zh/11-contributing.md) · English
+> Language: [中文](../zh/12-contributing.md) · English
 
 ---
 
@@ -138,12 +138,12 @@ bash run_tests.sh
 ```
 
 The output must be `OK 真·全量 0 失败`. Known environment-dependent failures
-are in [10-testing.md](10-testing.md).
+are in [11-testing.md](11-testing.md).
 
 ### 3. Add a test
 
 If the change introduces new behavior, add a test. The criteria are in
-"what to test" in [10-testing.md](10-testing.md).
+"what to test" in [11-testing.md](11-testing.md).
 
 ### 4. Checklist
 
@@ -202,7 +202,7 @@ immediately.
 ## Cutting a release (maintainers)
 
 After contributions are merged, the official release is run by the maintainer
-following [12-release.md](12-release.md): update every version location, append
+following [13-release.md](13-release.md): update every version location, append
 the Changelog, create the GitHub Release. Contributors normally do not do this
 step — but if your PR is a user-visible fix or feature, please say so in its
 description so it lands in the right version's Changelog.

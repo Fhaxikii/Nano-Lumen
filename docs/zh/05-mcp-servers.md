@@ -125,7 +125,7 @@ server 可能处于以下状态之一，界面上会如实显示：
 - 不需要 API key。
 
 不满足的 server 可以由用户自行添加，但不会内置。
-这一条同样适用于 PR，详见 [11-contributing.md](11-contributing.md)。
+这一条同样适用于 PR，详见 [12-contributing.md](12-contributing.md)。
 
 ## 新增一个内置 server
 

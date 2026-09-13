@@ -1,10 +1,10 @@
-# 10 · Testing
+# 11 · Testing
 
 **What this page covers**: how to run the tests, how they are organized, and how to add one.  
 **After reading it you can**: verify before submitting a change, and add tests for new features.  
 **Prerequisites**: [01-getting-started.md](01-getting-started.md).
 
-> Language: [中文](../zh/10-testing.md) · English
+> Language: [中文](../zh/11-testing.md) · English
 
 ---
 

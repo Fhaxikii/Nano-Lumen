@@ -1,10 +1,10 @@
-﻿# 11 · 贡献指南
+﻿# 12 · 贡献指南
 
 **这篇讲什么**：提交 PR 之前需要知道的事，包括我们不接受什么样的改动。  
 **读完你能做什么**：判断你的改动是否可能被接受，并完成提交前的自检。  
 **前置**：与你的改动相关的那一篇。  
 
-> 语言：中文 · [English](../en/11-contributing.md)
+> 语言：中文 · [English](../en/12-contributing.md)
 
 ---
 
@@ -130,11 +130,11 @@ labels: enhancement
 bash run_tests.sh
 ```
 
-必须输出 `OK 真·全量 0 失败`。已知的环境相关失败项见 [10-testing.md](10-testing.md)。
+必须输出 `OK 真·全量 0 失败`。已知的环境相关失败项见 [11-testing.md](11-testing.md)。
 
 ### 3. 补测试
 
-如果改动引入了新行为，补一个测试。判断标准见 [10-testing.md](10-testing.md)
+如果改动引入了新行为，补一个测试。判断标准见 [11-testing.md](11-testing.md)
 的"测试写什么"一节。
 
 ### 4. 自检清单
@@ -184,7 +184,7 @@ bash run_tests.sh
 
 ## 发布新版本（维护者）
 
-贡献合并后，版本的正式发布由维护者按 [12-release.md](12-release.md) 的流程执行：
+贡献合并后，版本的正式发布由维护者按 [13-release.md](13-release.md) 的流程执行：
 更新全部版本号位置、追加 Changelog、创建 GitHub Release。贡献者通常不需要
 走这一步，但如果你的 PR 属于用户可见的修复或功能，请在描述里写清楚，
 方便它进入对应版本的 Changelog。
