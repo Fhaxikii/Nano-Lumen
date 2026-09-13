@@ -1,10 +1,10 @@
 ﻿# Nano Developer Documentation
 
-**What this page covers**: the structure of this documentation set and which
+**What this page covers**: the structure of this documentation set and which  
 page to start from.
-**After reading it you can**: tell which pages are relevant to your goal and
+**After reading it you can**: tell which pages are relevant to your goal and  
 skip the rest.
-**Prerequisites**: none.
+**Prerequisites**: none.  
 
 > Language: 中文 → see [zh/README.md](../zh/README.md) · English
 
@@ -48,7 +48,7 @@ re-explain its context.
 - Historical decision records. "Why it was decided back then" belongs to
   internal material and is not shipped. These pages answer "how things work
   now" — a different kind of question.
-- A changelog. See [`Changelog.txt`](../../Changelog.txt) at the repository root.
+- A changelog. See [[Changelog.txt](../../Changelog.txt)](../../Changelog.txt) at the repository root.
 
 ## Language
 

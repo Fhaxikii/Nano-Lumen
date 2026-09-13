@@ -1,10 +1,10 @@
 # 03 · Configuration
 
-**What this page covers**: where every config file lives, what each one
+**What this page covers**: where every config file lives, what each one  
 governs, and how to add a new config item.
-**After reading it you can**: locate the config behind a behavior, or add
+**After reading it you can**: locate the config behind a behavior, or add  
 configuration for a new feature.
-**Prerequisites**: [02-architecture.md](02-architecture.md).
+**Prerequisites**: [02-architecture.md](02-architecture.md).  
 
 > Language: [中文](../zh/03-configuration.md) · English
 

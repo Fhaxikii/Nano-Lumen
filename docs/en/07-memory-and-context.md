@@ -1,10 +1,10 @@
 # 07 · Memory and context
 
-**What this page covers**: how conversation history is stored, how it is
+**What this page covers**: how conversation history is stored, how it is  
 progressively compressed as it grows, and how it is recalled.
-**After reading it you can**: locate problems with context bloat or lost
+**After reading it you can**: locate problems with context bloat or lost  
 memory, or modify the compression strategy.
-**Prerequisites**: [02-architecture.md](02-architecture.md).
+**Prerequisites**: [02-architecture.md](02-architecture.md).  
 
 > Language: [中文](../zh/07-memory-and-context.md) · English
 

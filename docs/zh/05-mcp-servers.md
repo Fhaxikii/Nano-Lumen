@@ -1,8 +1,8 @@
 ﻿# 05 · 接入 MCP server
 
-**这篇讲什么**：MCP 在本项目中的接入方式、配置形状、授权流程，以及我们对它的约束。
-**读完你能做什么**：新增一个 MCP server，或修改现有 server 的接入逻辑。
-**前置**：`02-architecture.md`、`03-configuration.md`。
+**这篇讲什么**：MCP 在本项目中的接入方式、配置形状、授权流程，以及我们对它的约束。  
+**读完你能做什么**：新增一个 MCP server，或修改现有 server 的接入逻辑。  
+**前置**：[02-architecture.md](02-architecture.md)、[03-configuration.md](03-configuration.md)。  
 
 > 语言：中文 · [English](../en/05-mcp-servers.md)
 
@@ -125,14 +125,14 @@ server 可能处于以下状态之一，界面上会如实显示：
 - 不需要 API key。
 
 不满足的 server 可以由用户自行添加，但不会内置。
-这一条同样适用于 PR，详见 `11-contributing.md`。
+这一条同样适用于 PR，详见 [11-contributing.md](11-contributing.md)。
 
 ## 新增一个内置 server
 
 1. 确认它满足上述三条约束。
 2. 在 `config/mcp_servers.json` 中添加条目，标记 `builtin: true`。
 3. 如果它提供某类通用能力，填写 `provides` 字段，供能力发现使用。
-4. 如果它依赖 Node 或其他运行时，在 `01-getting-started.md` 中补充说明。
+4. 如果它依赖 Node 或其他运行时，在 [01-getting-started.md](01-getting-started.md) 中补充说明。
 
 ---
 

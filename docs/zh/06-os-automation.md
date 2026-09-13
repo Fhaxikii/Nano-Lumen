@@ -1,8 +1,8 @@
 ﻿# 06 · 桌面自动化
 
-**这篇讲什么**：桌面动作的执行链路、风险计算、权限开关与审计。
-**读完你能做什么**：新增一个桌面动作，或修改风险与授权判定。
-**前置**：`02-architecture.md`、`03-configuration.md`。
+**这篇讲什么**：桌面动作的执行链路、风险计算、权限开关与审计。  
+**读完你能做什么**：新增一个桌面动作，或修改风险与授权判定。  
+**前置**：[02-architecture.md](02-architecture.md)、[03-configuration.md](03-configuration.md)。  
 
 > 语言：中文 · [English](../en/06-os-automation.md)
 

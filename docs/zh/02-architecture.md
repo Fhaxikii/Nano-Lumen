@@ -1,8 +1,8 @@
 ﻿# 02 · 整体结构
 
-**这篇讲什么**：Nano 的进程结构、模块划分，以及一条用户消息从输入到回复所经过的路径。
-**读完你能做什么**：判断一个改动应该落在哪个模块，并理解后续各篇所用的术语。
-**前置**：`01-getting-started.md`。
+**这篇讲什么**：Nano 的进程结构、模块划分，以及一条用户消息从输入到回复所经过的路径。  
+**读完你能做什么**：判断一个改动应该落在哪个模块，并理解后续各篇所用的术语。  
+**前置**：[01-getting-started.md](01-getting-started.md)。  
 
 > 语言：中文 · [English](../en/02-architecture.md)
 
@@ -44,7 +44,7 @@ Nano 是一个单进程的桌面应用：
 ### 界面层
 
 `app.py`。包含窗口构造、聊天区、四个侧边抽屉、设置面板、以及所有样式定义。
-详见 `09-ui.md`。
+详见 [09-ui.md](09-ui.md)。
 
 ### 编排层
 
@@ -67,17 +67,17 @@ Nano 是一个单进程的桌面应用：
 | 目录 | 内容 |
 |---|---|
 | `core/tools/` | 内置工具的声明表与目录装配 |
-| `skills/` | 技能，即以文件形式存在的可插拔工具。详见 `04-writing-a-skill.md` |
-| `core/mcp_client.py` | MCP 客户端。详见 `05-mcp-servers.md` |
-| `core/os_layer/` | 桌面自动化：命令执行、文件操作、窗口与输入模拟、屏幕视觉。详见 `06-os-automation.md` |
+| `skills/` | 技能，即以文件形式存在的可插拔工具。详见 [04-writing-a-skill.md](04-writing-a-skill.md) |
+| `core/mcp_client.py` | MCP 客户端。详见 [05-mcp-servers.md](05-mcp-servers.md) |
+| `core/os_layer/` | 桌面自动化：命令执行、文件操作、窗口与输入模拟、屏幕视觉。详见 [06-os-automation.md](06-os-automation.md) |
 
 ### 存储与记忆层
 
 | 目录 | 内容 |
 |---|---|
 | `memory/` | 对话历史的存取 |
-| `core/context/` | 上下文治理：计量、预算、分层衰减、摘要。详见 `07-memory-and-context.md` |
-| `core/rag.py` | 知识库的入库与检索。详见 `08-knowledge-base.md` |
+| `core/context/` | 上下文治理：计量、预算、分层衰减、摘要。详见 [07-memory-and-context.md](07-memory-and-context.md) |
+| `core/rag.py` | 知识库的入库与检索。详见 [08-knowledge-base.md](08-knowledge-base.md) |
 | `core/runtime/` | 运行期设施：任务调度、后台作业、会话持久化、图片存储 |
 
 ### 其他
@@ -125,7 +125,7 @@ Nano 是一个单进程的桌面应用：
 
 **风险档（risk level）**
 桌面自动化动作的危险程度，用整数表示。它决定一个动作是否需要用户授权。
-计算方式见 `06-os-automation.md`。
+计算方式见 [06-os-automation.md](06-os-automation.md)。
 
 **绑 Task 的东西必须自带兜底**
 凡是把生命周期挂在某个 Task 上的东西（暂存器、「仅本次」的授权、per-task 计数、
@@ -141,7 +141,7 @@ Nano 是一个单进程的桌面应用：
 
 **上下文分层**
 长对话中，较旧的内容会被逐层提炼、压缩，以控制每轮送给模型的体积。
-层级用 L0 到 L4 表示，L0 是原文，数字越大越精简。详见 `07-memory-and-context.md`。
+层级用 L0 到 L4 表示，L0 是原文，数字越大越精简。详见 [07-memory-and-context.md](07-memory-and-context.md)。
 
 ---
 

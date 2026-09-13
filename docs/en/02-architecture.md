@@ -1,10 +1,10 @@
 # 02 · Architecture
 
-**What this page covers**: the process structure, module layout, and the path
+**What this page covers**: the process structure, module layout, and the path  
 a user message travels from input to reply.
-**After reading it you can**: decide which module a change belongs in, and
+**After reading it you can**: decide which module a change belongs in, and  
 understand the terms used throughout the other pages.
-**Prerequisites**: [01-getting-started.md](01-getting-started.md).
+**Prerequisites**: [01-getting-started.md](01-getting-started.md).  
 
 > Language: [中文](../zh/02-architecture.md) · English
 

@@ -1,10 +1,10 @@
 # 11 · Contributing
 
-**What this page covers**: what to know before submitting a PR, including
+**What this page covers**: what to know before submitting a PR, including  
 what we do not accept.
-**After reading it you can**: judge whether your change is likely to be
+**After reading it you can**: judge whether your change is likely to be  
 accepted, and run the pre-submission checklist.
-**Prerequisites**: whichever page matches your change.
+**Prerequisites**: whichever page matches your change.  
 
 > Language: [中文](../zh/11-contributing.md) · English
 
@@ -14,8 +14,8 @@ accepted, and run the pre-submission checklist.
 
 Before filing an issue, please confirm:
 
-- You have read the "common startup problems" section of `01-getting-started.md`.
-- You have checked `Changelog.txt` to make sure it is not a known or already-fixed issue.
+- You have read the "common startup problems" section of [01-getting-started.md](01-getting-started.md).
+- You have checked [Changelog.txt](../../Changelog.txt) to make sure it is not a known or already-fixed issue.
 - You have read the "Known Limits" section of the README — the limitations listed there
   (such as proactive intelligence not yet being enabled, or DeepSeek not being deeply
   tested) are out of scope for issue reports.
