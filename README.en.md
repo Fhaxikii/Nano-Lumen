@@ -14,10 +14,10 @@
 
 Today's common AI Agent paradigm is to temporarily move into the computer and complete a task:
 
-> Open a session.
-> Pick a workspace.
-> Give it a goal.
-> It calls a few tools.
+> Open a session →
+> Pick a workspace →
+> Give it a goal →
+> It calls a few tools
 
 Nano starts from a different assumption: **a computer should not be merely a set of tools an AI can call — it should be the environment an agent lives in.**
 
@@ -25,13 +25,13 @@ Files, applications, processes, knowledge, the network, external services — th
 
 So the question is no longer just:
 
-**What can an AI do?**
+> **What can an AI do?**
 
 It becomes:
 
-**What does an AI need to truly live inside a computer for the long term?**
+> **What does an AI need to truly live inside a computer for the long term?**
 
-Nano is an exploration of this question.
+💡 Nano is an exploration of this question.
 
 ---
 
