@@ -209,6 +209,8 @@ Nano-Lumen/
 
 六个权限开关随时可在设置中关闭。详见 [docs/zh/06-os-automation.md](docs/zh/06-os-automation.md)。
 
+安装或使用本软件，即表示你已阅读并同意[用户协议](docs/zh/user-agreement.md)。
+
 ---
 
 ## 🔐 隐私与信任

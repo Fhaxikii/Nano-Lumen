@@ -209,6 +209,8 @@ Desktop automation is the highest-risk capability, so Nano layers multiple defen
 
 The six permission switches can be turned off anytime in settings. See [docs/en/06-os-automation.md](docs/en/06-os-automation.md)
 
+Installing or using the software means you have read and agreed to the [User Agreement](docs/en/user-agreement.md).
+
 ---
 
 ## Privacy & Trust
