@@ -1,127 +1,89 @@
-﻿# 06 · 桌面自动化
+﻿# 06 · 桌面自动化（总览）
 
-**这篇讲什么**：桌面动作的执行链路、风险计算、权限开关与审计。  
-**读完你能做什么**：新增一个桌面动作，或修改风险与授权判定。  
-**前置**：[02-architecture.md](02-architecture.md)、[03-configuration.md](03-configuration.md)。  
+**这篇讲什么**：OS 执行层的地图——一条指令从模型到真实屏幕的完整路径、风险模型的核心、以及三个子篇的分工。  
+**读完你能做什么**：知道"我要改的东西在哪个子篇"，并理解这一层为什么长成这样。  
+**前置**：[02-architecture.md](02-architecture.md)。  
 
-> 语言：中文 · [English](../en/06-os-automation.md)
+> 语言：中文 · [English](../en/06-os-automation.md)  
 
 ---
 
-## 这一层做什么
+## 这一层管什么
 
-让模型能够操作本机：执行命令、读写文件、控制窗口、模拟鼠标键盘、
-以及通过截图理解屏幕内容。
+桌面自动化是 Nano 风险最高的能力：它操作的**不是沙箱，是真实电脑**。因此
+这一层的形态由两条硬约束钉死（`core/os_layer/dsl.py`）：
 
-代码位于 `core/os_layer/`。这是整个项目中风险最高的部分，
-改动前请先读完本篇。
+1. **ACTION 枚举封闭**——模型只能从登记过的动作里选，不能自创指令；
+   配合动态升级配置表加固。
+2. **状态转移表硬编码**——不留给模型自由发挥。
 
-## 模块划分
+⭐ 枚举一次定全：写操作与鼠标键盘的 action 从第一天起就登记在表里，
+只是用 `stage` 标记"从第几档起可执行"——放开新档位只需抬 `max_stage`，
+**不用改契约**。
 
-| 文件 | 职责 |
-|---|---|
-| `dsl.py` | 动作定义、权限映射、风险计算 |
-| `dispatch.py` | 调度入口，把一次动作分发到对应执行器 |
-| `safety.py` | 安全检查 |
-| `audit.py` | 审计日志 |
-| `executor_low.py` | 只读动作 |
-| `executor_write.py` | 写操作，通过系统 API，不涉及鼠标键盘 |
-| `executor_action.py` | 鼠标键盘与窗口控制 |
-| `executor_vision.py` | 屏幕视觉定位 |
-| `fileedit.py` | 文件编辑的纯计算部分，产出新内容与差异，不写盘 |
-| `filesearch.py` | 按文件名与按内容的递归搜索 |
-| `pathpolicy.py` | 路径策略，规定哪些位置不允许读取 |
-| `longcmd.py` | 长命令的承载，使一条命令能跨越单次工具调用继续运行并上报进度 |
-| `cmd_classifier.py` | 自动模式下的命令危险判定 |
-| `window_binding.py` | 记录当前正在操作的是哪个窗口 |
-| `canary.py` | 空闲时用已知目标自检视觉定位链路是否正常 |
+## 执行流水线（六步）
 
-## 风险模型
-
-每个动作有一个风险档，用整数表示。最终生效的风险按下式计算：
+一条 DSL 指令进来，`core/os_layer/dispatch.py` 按固定顺序走：
 
 ```
-effective_risk = max(声明风险, 静态地板, 命中的所有动态规则的升级值)
+1. validate_instruction   校验 + 算有效风险 + 档位门禁
+2. 控制流信号直接返回上层
+3. 定位前置   click/type_text 等带语义 target 的动作先由 VisionLocator
+              定位拿坐标 + 生成标注截图，再弹确认窗（让用户看到"要点哪"）
+4. 授权门禁   risk=1 直接放行；risk=2 查预授权或挂起等确认；
+              risk=3 永远挂起等确认
+5. 执行       路由到对应执行器，期间挂急停监听
+6. audit.record  写审计日志
 ```
 
-取最大值有两个后果：模型只能把风险抬高，不能压低；多条规则同时命中时
-以最严格的为准。
+## 风险模型的核心
 
-动态升级规则来自 `config/os_config.json`，用户可以增补，不硬编码在代码里。
-⚠️ 与之相对，六个权限开关的当前值不在那里，而在 `data/os_state.json`——
-规则跟着版本走，开关跟着用户走，两者不能同表。落盘位置由 `os_state_path()` 单点决定。
-代码中保留一份内置默认规则作为配置缺失时的兜底，见 `core/os_layer/dsl.py`
-的 `_DEFAULT_UPGRADE_RULES`。
+```
+risk = max( 声明风险, 静态地板, 动态升级规则命中 )
+```
 
-典型的升级规则例如：`launch_app` 本身风险不高，但目标是 `cmd`、`powershell`、
-`regedit` 这类系统命令行工具时升到最高档；`type_text` 本身风险不高，
-但当前前台窗口是终端时升到最高档。
+模型**只能把风险抬高、不能压低**；每个升级原因都进审计日志。
+为什么取 max、地板怎么定、动态规则怎么写——见 [06a](06a-instructions-risk.md)。
 
-## 权限开关
+## 安全网
 
-六个开关，定义在 `core/os_layer/dsl.py`：
+- **急停双保险**：甩鼠标 failsafe + Ctrl+` 热键，二者在 `executor_action.py`
+  的 `EmergencyStop` 里实现。曾有的第三种"软急停"（关键词判定）已删除——
+  它的 `_aborted` 标志进程级且无复位，触发一次进程就永久残废（故事在 06c）。
+- **Auto 模式兜底**：开启自动模式后，破坏性命令仍会被命令分类器拦下
+  （[06c](06c-permissions-audit.md)）。
+- **可解释拒绝**：权限拒绝时模型会告诉你需要打开哪个开关。
 
-| 常量 | 界面名称 |
-|---|---|
-| `PERM_WORKSPACE_WRITE` | 工作区写入 |
-| `PERM_WINDOW_CONTROL` | 窗口控制 |
-| `PERM_MOUSE_KEYBOARD` | 鼠标键盘模拟 |
-| `PERM_SYSTEM_SETTINGS` | 系统设置 |
-| `PERM_REGISTRY_WRITE` | 注册表写入 |
-| `PERM_DANGEROUS` | 高危操作总闸 |
+## 模块地图
 
-界面名称定义在这里而不是界面层，因为拒绝执行时给模型的说明中
-需要指明"你需要去打开哪一个开关"，那句话由模型读取。
-两处各写一份的话，改了一处另一处就开始说错。
+| 模块 | 一句话 | 详读 |
+|---|---|---|
+| `dsl.py` | 指令契约：枚举、风险计算、状态转移表 | [06a](06a-instructions-risk.md) |
+| `dispatch.py` | 六步流水线调度入口 | [06b](06b-execution-pipeline.md) |
+| `executor_vision.py` | 视觉定位：UIA → 多模态两级降级 | [06b](06b-execution-pipeline.md) |
+| `executor_action.py` | 鼠标键盘 + 急停双保险 | [06b](06b-execution-pipeline.md) |
+| `executor_write.py` / `executor_low.py` | 系统 API 写操作 / 只读原子能力 | [06b](06b-execution-pipeline.md) |
+| `longcmd.py` | 长命令载体：活过工具调用、看得见进度 | [06b](06b-execution-pipeline.md) |
+| `window_binding.py` / `filesearch.py` / `fileedit.py` | 窗口身份、文件搜索、文件编辑 | [06b](06b-execution-pipeline.md) |
+| `safety.py` | 授权作用域、步数计数 | [06c](06c-permissions-audit.md) |
+| `cmd_classifier.py` | Auto 模式意图一致性分类器 | [06c](06c-permissions-audit.md) |
+| `audit.py` / `pathpolicy.py` | append-only 审计、敏感路径黑名单 | [06c](06c-permissions-audit.md) |
+| `canary.py` | 空闲时视觉定位链路自检 | [06c](06c-permissions-audit.md) |
 
-### 总闸的特殊性
+## 三条铁律
 
-`PERM_DANGEROUS` 刻意不写进任何一行动作定义。它不是一个能力类别，
-而是一个风险档：当 `effective_risk` 达到最高档时自动要求它。
-
-如果总闸只对静态标记为高危的动作生效，那么被动态规则升上来的动作
-就会绕过它，总闸也就不成其为总闸。
-
-## 自动模式下的命令判定
-
-开启自动模式后，命令不再逐条询问。此时由 `cmd_classifier.py` 判断
-一条命令是只读查询还是破坏性操作，破坏性操作仍会被拦下。
-
-这一层是给自动模式加一道网，不是给手动模式减弹窗。手动模式的行为不受影响。
-
-## 视觉定位
-
-`executor_vision.py` 负责把"点击某个界面元素"这样的描述转成屏幕坐标。
-采用两级降级：优先读取系统无障碍接口（UI Automation）拿控件的真实坐标；
-拿不到时（Canvas、图片按钮、非标准控件）截图交给多模态模型。
-
-文件中还保留着一个基于 OCR 的定位实现，但它已不在调用链上。
-原因是它匹配的是目标描述中出现过的词而不是目标本身，
-且排序依据是 OCR 的识字置信度而非匹配程度。知识库使用的 OCR 是另一套实现，
-不受影响。
-
-视觉调用使用的模型由「设置 → 进阶配置 → 视觉」指定，
-解析入口是 `core/models.py` 的 `model_for_role`。不要在调用处硬编码模型名。
-
-## 新增一个动作
-
-1. 在 `core/os_layer/dsl.py` 中定义它：名称、所属工具、需要的权限、静态风险地板。
-2. 在对应的执行器中实现。选择执行器的依据是它需要什么手段：
-   只读、系统 API 写入、还是鼠标键盘。
-3. 如果它在某些条件下应当更危险，添加动态升级规则，而不是直接提高静态地板。
-   静态地板提高会影响所有场景。
-4. 确认它出现在审计日志中。
+1. **模型不可自创指令或转移路径**——枚举封闭、转移表硬编码。
+2. **风险只抬不压**——max 语义，声明再低也压不过地板和升级规则。
+3. **只报状态不决策**——dispatch 只抛执行结果，"要不要 replan"由上层
+   `_handle_os_task` 决定。
 
 ---
 
 ## 怎么验证你改对了
 
-1. 关闭对应的权限开关，确认该动作被拒绝，且拒绝说明中指出了应打开哪个开关。
-2. 打开开关，确认动作可以执行。
-3. 构造一个会触发动态升级的场景，确认风险被抬高且需要额外授权。
-4. 查看审计日志，确认该动作被记录。
-5. 在自动模式下重复以上步骤，确认破坏性操作仍被拦截。
-6. 运行 `bash run_tests.sh`。
+本页是地图。验证方式见各子篇末尾；全量回归 `bash run_tests.sh`
+（本层专属：`t_os_layer_primitives.py`、`t_cmd_classifier.py`、
+`t_os_capability_gate.py`、`t_window_binding.py`、`t_audit_semantics.py` 等）。
 
 ---
 
