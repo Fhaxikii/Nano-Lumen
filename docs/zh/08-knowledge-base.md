@@ -46,9 +46,10 @@
 
 `data/knowledge/_system/` 存 Nano 自己的手册（`nano_manual.md`），可见性规则
 特殊：对用户隐藏（不出现在界面的知识库列表）、对模型可见（进检索与清单）、
-拒绝删除。维护约定（改界面必须同步更新手册、头部写版本号、一节一个问题）
-见 [12-contributing.md](12-contributing.md) 相关约定与现有
-[撰写系统文档的要求](#撰写系统文档的要求)。
+拒绝删除。维护约定（改界面必须同步更新手册、头部写版本号、一节一个问题）见
+[10-builtin-tools.md](10-builtin-tools.md) 之外另见 docs/12-contributing.md 的
+「文档」一节与 [13-builtin](13-builtin-tools.md)——具体以
+[12-contributing.md](12-contributing.md) 为准。
 
 ## 三个子篇
 

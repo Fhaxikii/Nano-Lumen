@@ -50,11 +50,9 @@ are runtime files, not in the repository** (`data/` is whitelist-based, see
 
 `data/knowledge/_system/` holds Nano's own manual (`nano_manual.md`), with
 special visibility: hidden from the user (not in the UI's KB list), visible to
-the model (in retrieval and the file catalog), deletion refused. Maintenance
-rules (UI changes must update the manual in the same commit; version in the
-header; one section, one question) live in
-[12-contributing.md](12-contributing.md) and
-[the writing requirements](#writing-system-documents).
+the model (in retrieval and the file catalog), deletion refused. Maintenance rules (update the manual in the same commit as UI changes;
+version in the header; one section, one question) live in
+[12-contributing.md](12-contributing.md).
 
 ## The three sub-pages
 
