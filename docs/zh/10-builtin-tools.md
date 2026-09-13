@@ -29,7 +29,7 @@ MCP 和 Skill 不能**。凡是"该不该出现取决于 Nano 现在的状态"�
 把它们收成一条定义：
 
 ```
-ToolDefinition（D() 构造，builtin.py:470）
+ToolDefinition（D() 构造，builtin.py）
 ├── manifest      给模型的 schema（唯一权威）
 ├── awareness     给模型的一句话感知（必填，构造期拦截缺失）
 ├── card          工具卡文案 —— 答「Nano 正在做什么」
@@ -75,7 +75,7 @@ ToolDefinition（D() 构造，builtin.py:470）
 
 ### availability：工具与事实来源必须同条件
 
-运行时可用条件是 `ToolRuntimeView` 谓词（builtin.py:68-138），典型几个：
+运行时可用条件是 `ToolRuntimeView` 谓词（builtin.py-138），典型几个：
 
 - `_when_has_carrier`：有慢调用在跑（回看轮 ∨ 上一轮交还的）——两个来源
   覆盖不同时刻，缺一不可；只有前者时用户说"把它放后台"，工具不在表里。
@@ -95,7 +95,7 @@ ToolDefinition（D() 构造，builtin.py:470）
 - 卡片要出现**对用户有意义的字段**（如 `next_step`），不是函数名——
   一张工具卡答的是"在做什么"，不是"哪个函数被调用了"。
 
-## 执行作用域（ToolScope，catalog.py:124）
+## 执行作用域（ToolScope，catalog.py）
 
 `MAIN` / `EXPLORATION`（已无工具）/ `SKILL_WRITER` / `OS_LOOP` / `AGENT`。
 

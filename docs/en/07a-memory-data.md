@@ -14,7 +14,7 @@ Defined in `core/context/exchange.py`. **One exchange = the user's message plus
 everything up to the next user message.**
 
 ```
-Exchange                     # dataclass, read-only view (exchange.py:74)
+Exchange                     # dataclass, read-only view （在 exchange.py 中按函数名搜索）
 ├── index          which exchange this is (from 0)
 ├── start / end    [closed, open) range in the message list
 ├── messages       the messages themselves
@@ -39,7 +39,7 @@ Four properties you must know:
    change both.
 4. **It deliberately stays out of the Kernel and has no storage**.
    `split(messages)` and `user_cut_points(messages)` are pure functions
-   (exchange.py:162 / :190). Store it and you must answer "who is authoritative,
+   (exchange.py / :190). Store it and you must answer "who is authoritative,
    this table or the message table" — a question that should not exist.
    Historically this concept was computed inline three times in three shapes —
    the signal that it deserved to become a real entity.
@@ -68,7 +68,7 @@ symptom looks exactly like "the content really did change".
 
 ## Projection rebuild: `rebuild_projection`
 
-`core/context/decay.py:802`. The single place where the three-ledger promise is
+`core/context/decay.py`. The single place where the three-ledger promise is
 honored:
 
 ```
@@ -92,14 +92,14 @@ MemoryManager.storage (projection)
 ## Hands-on recipes
 
 **Case A: add a ledger column** (say, "how much this digest cost")
-1. Extend the INSERT and table schema in `DecayStore.record` (~decay_store.py:95).
+1. Extend the INSERT and table schema in `DecayStore.record` (~decay_store.py）.
 2. Check the three readers (`get` / `load_session` / `active_entries`) for the new column.
 3. Old databases: SQLite needs `ALTER TABLE ... ADD COLUMN`, next to the create
    logic in `__init__`.
 4. Test: `tests/t_f5_decay_store.py`.
 
 **Case B: change the split rule** (e.g. make a class of system notes open an exchange)
-1. Change only `_opens_exchange` (exchange.py:44).
+1. Change only `_opens_exchange`（在 exchange.py 中按函数名搜索）.
 2. **Check `Exchange.user_message`** (predicates must share one source, property 3).
 3. Confirm downstream: `decay.py` and `rebuild_projection` group via `split()`
    and follow automatically, but existing `exchange_decay` rows may have

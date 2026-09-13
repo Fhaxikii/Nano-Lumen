@@ -57,7 +57,7 @@ calibrate on the response, not at assembly time.
 
 ## Budget: three watermarks
 
-`core/context/budget.py:24-26`:
+`core/context/budget.py-26`:
 
 | Watermark | Value | Audience |
 |---|---|---|
@@ -98,7 +98,7 @@ the guard is the request-validity invariant ("can this request be sent at all")
 - Quotas are fractions of **each model's own window**, configured in
   `data/model_config.json` under `_quota` (summing to ~50%; the rest goes to
   system/tool-table floor noise, the current turn, bursts, and output).
-  Read via `quota_of` (`core/models.py:143`); fallback `_FALLBACK_QUOTA`
+  Read via `quota_of` (`core/models.py`); fallback `_FALLBACK_QUOTA`
   (L0 0.15 / L1 0.20 / L2 0.15).
 - ⚠️ These four numbers are **uncalibrated** — the meter's samples are
   accumulating the distribution needed to set them.
@@ -108,7 +108,7 @@ the guard is the request-validity invariant ("can this request be sent at all")
 
 ## Hands-on recipes
 
-**Case A: adjust watermarks** — the three constants at `budget.py:24-26`. Look
+**Case A: adjust watermarks** — the three constants at `budget.py-26`. Look
 at the distribution in `data/context_samples.jsonl` first; a threshold without
 distribution data is a guess.
 

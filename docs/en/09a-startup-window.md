@@ -28,7 +28,7 @@ process start
 1. The **RAG init thread** (a plain `threading.Thread`) starts during WebUI
    construction, before `ui.run()` — the textbook victim of the "background
    threads must explicitly enter the client context to write UI" rule
-   (comment at app.py:1115).
+   (comment at app.py）.
 2. **Cleanup left by the previous process must run synchronously before
    `ui.run()`** (:16687 comment: not on a ui.timer) — making it async means the
    user may act before cleanup finishes.

@@ -44,7 +44,7 @@ dispatch 在校验阶段逐一核对。
 
 ## 风险三来源取 max
 
-`compute_effective_risk`（dsl.py:365）：
+`compute_effective_risk`（dsl.py）：
 
 ```
 risk = max( declared_risk, action_floor, 命中规则的 upgrade_to )

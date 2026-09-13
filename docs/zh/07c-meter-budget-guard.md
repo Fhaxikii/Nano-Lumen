@@ -51,7 +51,7 @@ manifest→input_schema）——**Memory 里的变化量 ≠ provider 真正发�
 
 ## 预算：三档水位
 
-`core/context/budget.py:24-26`：
+`core/context/budget.py-26`：
 
 | 水位 | 值 | 给谁看 |
 |---|---|---|
@@ -93,7 +93,7 @@ manifest→input_schema）——**Memory 里的变化量 ≠ provider 真正发�
 
 ## 改动手把手
 
-**场景 A：调水位** —— `budget.py:24-26` 三个常量。动之前先看
+**场景 A：调水位** —— `budget.py-26` 三个常量。动之前先看
 `data/context_samples.jsonl` 的分布；没有分布数据支撑的阈值是拍脑袋。
 
 **场景 B：换/新增模型窗口** —— 只改 `data/model_config.json` 厂商表的

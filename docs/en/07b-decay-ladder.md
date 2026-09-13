@@ -48,7 +48,7 @@ Three points:
   own. L1 is aging — history is not worth carrying in full every turn. The two
   are orthogonal and never fight: whether the original 50K was valve-truncated
   to 12K or not, at L1 it is replaced whole.
-- **`MAX_PER_RUN = 40` (decay.py:54) is not about performance; it prevents
+- **`MAX_PER_RUN = 40` （在 decay.py 中按函数名搜索） is not about performance; it prevents
   runaway**: a "demote until target" loop, if the target can never be met for
   some other reason, would decay the entire history in one round. Better to
   fall short this round and continue next round.

@@ -13,7 +13,7 @@
 定义在 `core/context/exchange.py`。**一次交换 = 用户那句 + 直到下一句用户话之前的全部内容。**
 
 ```
-Exchange                     # dataclass，纯只读视图（exchange.py:74）
+Exchange                     # dataclass，纯只读视图（exchange.py）
 ├── index          第几次交换（从 0 起）
 ├── start / end    在消息列表里的 [闭, 开) 区间
 ├── messages       这段的消息原文
@@ -33,7 +33,7 @@ Exchange                     # dataclass，纯只读视图（exchange.py:74）
    完全相同——这里出过一次事故：改了切分规则却没改这个属性，
    「以系统注记开头的残段」被误认成有用户开口。改切分规则时，两处必须同改。
 4. **它刻意不进 Kernel、没有存储**。`split(messages)` 与 `user_cut_points(messages)`
-   是纯函数（exchange.py:162 / :190）。存了就要回答"它和消息表谁是权威"，
+   是纯函数（exchange.py / :190）。存了就要回答"它和消息表谁是权威"，
    而那个问题不该存在。历史上这个概念被临时算过三遍、每遍形状不同——
    那正是它该成为一个真实体的信号。
 
@@ -59,7 +59,7 @@ Exchange                     # dataclass，纯只读视图（exchange.py:74）
 
 ## 投影重建：`rebuild_projection`
 
-`core/context/decay.py:802`。三本账那句承诺的唯一兑现点：
+`core/context/decay.py`。三本账那句承诺的唯一兑现点：
 
 ```
 conversation_messages（事实） + exchange_decay（档位）
@@ -79,7 +79,7 @@ MemoryManager.storage（投影）
 ## 改动手把手
 
 **场景 A：给账本加一列**（比如想记录"这次提炼花了多少钱"）
-1. `DecayStore.record` 的 INSERT 与表结构（`decay_store.py:95` 附近）加列。
+1. `DecayStore.record` 的 INSERT 与表结构（`decay_store.py` 附近）加列。
 2. 检查 `get` / `load_session` / `active_entries` 三个读取方是否要带出新列。
 3. 老库迁移：SQLite 需 `ALTER TABLE ... ADD COLUMN`，放在 `__init__` 的建表逻辑旁。
 4. 测试：`tests/t_f5_decay_store.py`。

@@ -47,7 +47,7 @@ and dispatch checks each one during validation.
 
 ## Risk: max of three sources
 
-`compute_effective_risk` (dsl.py:365):
+`compute_effective_risk`（在 dsl.py 中按函数名搜索）:
 
 ```
 risk = max( declared_risk, action_floor, upgrade_to of matched rules )

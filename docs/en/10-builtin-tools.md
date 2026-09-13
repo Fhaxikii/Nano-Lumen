@@ -32,7 +32,7 @@ across **11 places** — missing one failed silently in its own way. The registr
 gathers them into one definition:
 
 ```
-ToolDefinition (constructed by D(), builtin.py:470)
+ToolDefinition (constructed by D(), builtin.py）
 ├── manifest      the schema the model sees (the single authority)
 ├── awareness     the one-line awareness the model sees (required, enforced at construction)
 ├── card          tool-card copy — answers "what Nano is doing"
@@ -87,7 +87,7 @@ the wrong place, silently.
 ### availability: a tool and its facts share one condition
 
 Runtime-availability predicates live over `ToolRuntimeView`
-(builtin.py:68-138). Typical ones:
+(builtin.py-138). Typical ones:
 
 - `_when_has_carrier`: a slow call is running (recheck round ∨ handed back from
   last round) — the two sources cover different moments; with only the first,
@@ -115,7 +115,7 @@ guess.
   not function names — a tool card answers "what is being done", not "which
   function was called".
 
-## Execution scopes (ToolScope, catalog.py:124)
+## Execution scopes (ToolScope, catalog.py）
 
 `MAIN` / `EXPLORATION` (no tools anymore) / `SKILL_WRITER` / `OS_LOOP` /
 `AGENT`.
