@@ -10,7 +10,7 @@
 
 ---
 
-## If an AI truly lived on your computer, what would it look like?
+## 💭 If an AI truly lived on your computer, what would it look like?
 
 Today's common AI Agent paradigm is to temporarily move into the computer and complete a task:
 
