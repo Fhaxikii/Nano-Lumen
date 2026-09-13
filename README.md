@@ -1,5 +1,7 @@
 # 🐨 Nano-Lumen
 
+![Python](https://img.shields.io/badge/Python-3.10-3776AB) ![Platform](https://img.shields.io/badge/Platform-Windows%20Desktop-0078D6) ![License](https://img.shields.io/badge/License-Apache--2.0-brightgreen) ![Release](https://img.shields.io/github/v/release/Fhaxikii/Nano-Lumen) ![Stars](https://img.shields.io/github/stars/Fhaxikii/Nano-Lumen?style=social)
+
 ![Nano-Lumen](assets/nano-banner.png)
 
 **Nano-Lumen v1.96** · Windows 桌面常驻型通用智能体 · [English](README.en.md)
