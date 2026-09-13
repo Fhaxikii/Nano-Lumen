@@ -24,7 +24,7 @@ a change belongs, and how to verify that a change is correct.
 | Add a tool (skill) | [04-writing-a-skill.md](04-writing-a-skill.md) |
 | Connect an MCP server | [05-mcp-servers.md](05-mcp-servers.md) |
 | Modify desktop automation, permissions, or risk decisions | [06-os-automation.md](06-os-automation.md) |
-| Modify context management or memory | [07-memory-and-context.md](07-memory-and-context.md) |
+| Modify context management or memory | [07 overview](07-memory-and-context.md) (sub-pages: [07a data & projection](07a-memory-data.md) · [07b decay ladder](07b-decay-ladder.md) · [07c metering & guard](07c-meter-budget-guard.md) · [07d long-term memory](07d-long-term-memory.md)) |
 | Modify the knowledge base and retrieval | [08-knowledge-base.md](08-knowledge-base.md) |
 | Modify the UI or add a panel | [09-ui.md](09-ui.md) |
 | Run or add tests | [10-testing.md](10-testing.md) |

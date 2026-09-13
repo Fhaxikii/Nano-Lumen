@@ -21,7 +21,7 @@
 | 新增一个工具（技能） | [04-writing-a-skill.md](04-writing-a-skill.md) |
 | 接入一个 MCP server | [05-mcp-servers.md](05-mcp-servers.md) |
 | 修改桌面自动化、权限或风险判定 | [06-os-automation.md](06-os-automation.md) |
-| 修改上下文管理或记忆 | [07-memory-and-context.md](07-memory-and-context.md) |
+| 修改上下文管理或记忆 | [07 总览](07-memory-and-context.md)（子篇：[07a 数据与投影](07a-memory-data.md) · [07b 衰减阶梯](07b-decay-ladder.md) · [07c 计量、预算与守卫](07c-meter-budget-guard.md) · [07d 长期记忆](07d-long-term-memory.md)） |
 | 修改知识库与检索 | [08-knowledge-base.md](08-knowledge-base.md) |
 | 修改界面或新增面板 | [09-ui.md](09-ui.md) |
 | 运行测试或新增测试 | [10-testing.md](10-testing.md) |
