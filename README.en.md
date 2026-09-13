@@ -4,28 +4,29 @@
 
 **Nano-Lumen v1.96** · A resident general-purpose agent for Windows desktop · [中文](README.md)
 
-`Resident agent` · `Cross-session persistent state` · `Local-first privacy` · `Windows desktop`
+`Resident agent` · `Task-level persistent state` · `Local-first privacy` · `Windows desktop`
 
 ---
 
-Sessions end. Processes crash. Machines reboot. Nano is different — **it never starts from zero.**
+Processes crash. Machines reboot. Nano is different — **it never starts from zero.**
 
-Nano is not another agent shell. It treats the agent as a **system that lives on your machine with persistent state**: state survives across sessions, crashes are recoverable, memory is not reset.
+Nano is not another agent shell. It treats the agent as a **system that lives on your machine with persistent state**: state survives across processes, tasks are recoverable, and one crash does not reset everything.
 
 ---
 
-## The Core Difference: Session-based vs Continuous
+## From Sessions to a Resident System: Why Nano Has No Sessions
 
-Most mainstream agent products (Claude Code, Cursor, etc.) are **session-based**:
+Mainstream agents take the "session" as their unit of lifecycle: context lives inside a session, and project memory or history files carry things across. As a design, that is coherent — it assumes an agent is a tool you open, use, and close.
 
-- When a session ends, working state, context, and memory are cleared.
-- Starting a new session means re-explaining background and prior context.
+Nano starts from a different premise: it is a resident, continuously running presence on the desktop. For a long-lived agent, relating to the user through many disconnected "sessions" is awkward by construction — you don't open a new session every time you talk to the same person.
 
-Nano is **continuous**, defining the agent's persistence at the architectural level:
+So Nano removed the session concept and uses the **Task** as its unit of state ownership:
 
-- State persists and is recoverable across sessions.
-- After a crash, reboot, or power loss, it recovers automatically and honestly asks "should that task continue?"
-- It remembers the files you asked it to find and the preferences you've expressed, across sessions.
+- **A Task owns one piece of work**: its context, authorizations, background resources, and cost accounting all attach to the Task; it can span many turns, be parked, or be preempted, and it does not vanish when a "session ends".
+- **The conversation record is a durable ledger**: written to disk (SQLite) as it happens, until you explicitly reset it; continuity of context comes from persistence and layered compaction, not from "which session you are in".
+- **After a crash, power loss, or reboot**, unfinished Tasks are recovered honestly, and Nano asks "should that task continue?" instead of starting from zero.
+
+This is not "remembering longer" — it is a different unit of lifecycle: **an agent is not a string of sessions, but a continuously existing system.**
 
 ---
 
@@ -37,7 +38,7 @@ To deliver persistent state, Nano builds a complete state-guarantee layer into t
 - **End-to-end crash recovery**: write-ahead logging plus a startup reconciler that also covers native crashes that `excepthook` cannot catch.
 - **Durable inbox**: your messages are persisted the moment they're written and are never lost; on crash repost, it tells you honestly.
 - **Triple fallback for waiting**: timeout / deadline / unconditional orphan reclamation, so tasks never hang indefinitely and the system stays responsive.
-- **Cross-session memory**: a two-tier stack of working memory and durable semantic memory supporting active recall.
+- **Persistent memory**: a two-tier stack of working memory and durable semantic memory supporting active recall.
 
 > Design view: **build the agent as a distributed system with persistent state, not as a one-shot process.**
 
@@ -82,7 +83,7 @@ Nano itself never collects usage statistics or behavioral data.
 
 - **Full conversation history persisted** in SQLite; survives restarts, and long conversations are layered-compacted automatically to control cost.
 - **Context governance**: conversation content is organized dynamically by context budget, content freshness, and memory levels, keeping continuity while controlling context size and model call cost.
-- **Semantic long-term memory**: remembers your preferences and corrections across sessions.
+- **Semantic long-term memory**: remembers your preferences and corrections over the long term.
 - **Session data export**: exports all sessions to Markdown, raw JSON, and image copies; export respects the user-visibility boundary, so history that no longer appears in the UI keeps a complete data outlet.
 
 **📚 Knowledge Base (RAG)**
