@@ -23,8 +23,6 @@ Nano starts from a different assumption: **a computer should not be merely a set
 
 Files, applications, processes, knowledge, the network, external services — they should not be features wired into an AI one by one, but a world an agent can know, use, and act within.
 
-Nano is an attempt to build that world.
-
 So the question is no longer just:
 
 **What can an AI do?**
@@ -69,7 +67,7 @@ Around the goal of persistent state, Nano builds a complete state-guarantee laye
 
 **🧠 Memory & Context**
 
-- **Full conversation history persisted** in SQLite; survives restarts, and long conversations are layered-compacted automatically to control cost.
+- **Full conversation history persisted (SQLite)**: survives restarts, and long conversations are layered-compacted automatically to control cost.
 - **Context governance**: conversation content is organized dynamically by context budget, content freshness, and memory levels, keeping continuity while controlling context size and model call cost.
 - **Semantic long-term memory**: remembers your preferences and corrections over the long term.
 - **Session data export**: exports all sessions to Markdown, raw JSON, and image copies; export respects the user-visibility boundary, so history that no longer appears in the UI keeps a complete data outlet.
