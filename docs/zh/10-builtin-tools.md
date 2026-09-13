@@ -24,7 +24,7 @@ MCP 和 Skill 不能**。凡是"该不该出现取决于 Nano 现在的状态"�
 
 ## 统一注册表：`ToolDefinition`
 
-`core/tools/builtin.py` 是内置工具的**唯一一处声明**（43 个 `D(...)` 条目）。
+`core/tools/builtin.py` 是内置工具的**唯一一处声明**（全部 `D(...)` 条目在此声明）。
 改造前一个工具的事实散在 **11 处**，漏一处各有各的坏法且都不报错；这份文件
 把它们收成一条定义：
 
@@ -52,7 +52,7 @@ ToolDefinition（D() 构造，builtin.py:470）
 - `_tool_pool` 保留全部过门控的 manifest，是 `load_tools` 真正 append 的
   schema 来源——它不是第二份名单，内容整个来自 `advertised`。
 
-**优势**：普通主循环不背全部 43 个工具的 schema，每轮 token 成本被压低；
+**优势**：普通主循环不背全部工具的 schema，每轮 token 成本被压低；
 核心集小而稳定，缓存前缀（tools 在最前）命中率高。
 
 **劣势与边界**：模型要先"知道要什么"才能 `load_tools`——感知行写得不好，

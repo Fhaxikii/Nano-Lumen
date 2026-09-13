@@ -27,7 +27,7 @@ management) can only be a built-in tool.
 ## The unified registry: `ToolDefinition`
 
 `core/tools/builtin.py` is the **single place** built-in tools are declared
-(43 `D(...)` entries). Before the rework, one tool's facts were scattered
+(all `D(...)` entries live here). Before the rework, one tool's facts were scattered
 across **11 places** — missing one failed silently in its own way. The registry
 gathers them into one definition:
 
@@ -57,7 +57,7 @@ ToolDefinition (constructed by D(), builtin.py:470)
   `load_tools` actually appends — it is not a second list; its content comes
   entirely from `advertised`.
 
-**Pros**: the regular main loop does not carry all 43 schemas every turn,
+**Pros**: the regular main loop does not carry every tool schema every turn,
 keeping per-turn token cost low; the core set is small and stable, so the
 cache prefix (tools come first) hits well.
 
