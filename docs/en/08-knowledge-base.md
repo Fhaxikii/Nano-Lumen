@@ -12,10 +12,10 @@
 
 | Block | Function region (lines) | Contents | Read in |
 |---|---|---|---|
-| Model loading | `_resolve_hf_snapshot`(:184) / `_load_embedder`(:207) / `_load_reranker`(:596) | safetensors snapshots, lazy embedder/reranker, error classification | [08a](08a-parsing-indexing.md) |
-| Parsing & indexing | `_parse_file`(:2465) / `_chunk_text`(:2499) / `_index_one_file`(:2724) / `index_documents`(:2801) | ten formats, chunking, incremental indexing | [08a](08a-parsing-indexing.md) |
-| Retrieval & fusion | `_build_bm25_index`(:380) / `_bm25_search`(:460) / `_rrf_fuse`(:522) / `_rerank`(:640) / `search`(:3021) / `query_for_agent`(:3413) | vector + BM25 fused by RRF + rerank | [08b](08b-retrieval-ranking.md) |
-| Temp attachments | `index_temp_file`(:3510) / `register_temp_file`(:3604) / `cleanup_stale_temp_files`(:3573) | registration-based lazy build for uploads | [08c](08c-health-temp.md) |
+| Model loading | `_resolve_hf_snapshot` / `_load_embedder` / `_load_reranker` | safetensors snapshots, lazy embedder/reranker, error classification | [08a](08a-parsing-indexing.md) |
+| Parsing & indexing | `_parse_file` / `_chunk_text` / `_index_one_file` / `index_documents` | ten formats, chunking, incremental indexing | [08a](08a-parsing-indexing.md) |
+| Retrieval & fusion | `_build_bm25_index` / `_bm25_search` / `_rrf_fuse` / `_rerank` / `search` / `query_for_agent` | vector + BM25 fused by RRF + rerank | [08b](08b-retrieval-ranking.md) |
+| Temp attachments | `index_temp_file` / `register_temp_file` / `cleanup_stale_temp_files` | registration-based lazy build for uploads | [08c](08c-health-temp.md) |
 
 Cross-cutting: **health probes** (`_register_health_probes`, :863 — four probes
 watching embedder/reranker/bm25/vector store) and **parse_report** (per-file

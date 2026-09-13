@@ -18,7 +18,7 @@ process start
 → skills loaded (registry, the six official skills)
 → WebUI() constructed
 → [synchronous init] (~:16687)   ⚠️ must run synchronously before ui.run(); never on a ui.timer
-→ ui.run() (:16847)
+→ ui.run() 
 → WebView2 native window
 → _on_browser_connect (client connect; re-applies theme; conversation state kept)
 ```
@@ -45,7 +45,7 @@ process start
 ## The native window layer
 
 - pywebview + WebView2 rendering; window APIs like
-  `nano_set_min_size` (:416) go through a compatibility shim.
+  `nano_set_min_size`  go through a compatibility shim.
 - **Per-Monitor DPI awareness must be declared** (log `[OS-Coord]`) — it
   determines the coordinate system of visual locating (see the
   coordinate-consistency check in 06b).
@@ -65,7 +65,7 @@ half-activated states like "window open but monitoring off".
 
 ## Theming
 
-- `_apply_theme_visuals` (:10688) is the single entry; after a theme switch the
+- `_apply_theme_visuals`  is the single entry; after a theme switch the
   **current view is re-applied** (on client reconnect too — theme re-applied,
   conversation state untouched; see `_on_browser_connect`).
 - Styles lean on CSS variables (`var(--nano-fg)` etc.) — new components should
@@ -74,7 +74,7 @@ half-activated states like "window open but monitoring off".
 - After UI changes, walk the area under **both themes** (overview checklist
   item 2).
 
-## SkillWatcher (:816)
+## SkillWatcher 
 
 File watcher (watchdog) implementing the "detect" half of skill hot-reload;
 the reload itself is `core/registry.py`'s `reload_all` (see

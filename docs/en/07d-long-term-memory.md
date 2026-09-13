@@ -41,8 +41,8 @@ Two universal disciplines:
   creating a new row** (:151-177). Otherwise the same task pattern multiplies
   with usage.
 - **Redaction is a hard code rule, never the model's judgment**:
-  `redact_sensitive` (:30) hard-blocks passwords/tokens/long random strings via
-  the `_SENSITIVE_PATTERNS` regexes (:19). Prefer false positives (replace with
+  `redact_sensitive`  hard-blocks passwords/tokens/long random strings via
+  the `_SENSITIVE_PATTERNS` regexes . Prefer false positives (replace with
   `[REDACTED_*]`): what enters long-term memory lives a long time, and a missed
   redaction is irreversible.
 
@@ -69,15 +69,15 @@ authority; the vector store is association**.
 | SQLite by type | `find_semantic_candidates` (memory_store side) | whole path fails |
 | Vector association | `memory_index.search` (:88, chroma + the shared `_load_embedder`) | degrade + warn loudly |
 
-Three read entries: `retrieve_task_pattern_hint` (:51),
-`retrieve_correction_hints` (:79), `bridge.recall` (:207) — each bound to its own
+Three read entries: `retrieve_task_pattern_hint` ,
+`retrieve_correction_hints` , `bridge.recall`  — each bound to its own
 `memory_type`. **The wrong type makes a recall leg return irrelevant results,
 silently.**
 
 ## Hands-on recipes
 
 **Case A: add a new memory_type**
-1. Schema/fields in `memory_store.add_semantic_memory` (:432).
+1. Schema/fields in `memory_store.add_semantic_memory` .
 2. Write trigger: copy `maybe_write_task_pattern`'s trio — narrow trigger,
    dedupe, redaction.
 3. Recall leg: copy `retrieve_*_hint`, **bound to the new type**; never reuse an

@@ -28,7 +28,7 @@ Two designs that are easy to misread:
   read-only but `stage=3` — it needs VisionLocator, which low tiers do not
   mount; better rejected at validation than failing at execution with "not
   mounted".
-- **An unknown action is treated as highest risk**. `action_floor` (:276)
+- **An unknown action is treated as highest risk**. `action_floor` 
   returns 3 for anything not in the dictionary — fail-closed: what the registry
   does not know is handled as most dangerous, not most optimistic.
 
@@ -61,7 +61,7 @@ level".
 
 ## Writing dynamic upgrade rules
 
-Built-ins live in `_DEFAULT_UPGRADE_RULES` (:315); users can add more under
+Built-ins live in `_DEFAULT_UPGRADE_RULES` ; users can add more under
 `dynamic_upgrade_rules` in `config/os_config.json` (no code change needed).
 Rule shape:
 
@@ -91,7 +91,7 @@ execution.
 
 ## The state transition table
 
-`_STATE_TRANSITIONS` (:568) is hardcoded: a task's legal state progressions are
+`_STATE_TRANSITIONS`  is hardcoded: a task's legal state progressions are
 exactly the ones in the table; the model cannot invent paths.
 `request_replan` is another branch of the same state machine.
 

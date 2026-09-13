@@ -32,11 +32,11 @@
 
 两条通用纪律：
 
-- **去重后才写**：先 `find_semantic_candidates`（SQLite 按类型取候选，:472）
+- **去重后才写**：先 `find_semantic_candidates`（SQLite 按类型取候选）
   再向量 search，命中已有条目则**更新置信度而非新建**（:151-177）。
   否则同类任务模式会随使用次数无限增殖。
-- **脱敏是硬代码规则，不能交给模型**：`redact_sensitive`（:30）用正则硬拦
-  密码/token/长随机串（`_SENSITIVE_PATTERNS`，:19）。宁可误杀（替换成
+- **脱敏是硬代码规则，不能交给模型**：`redact_sensitive`（用正则硬拦
+  密码/token/长随机串（`_SENSITIVE_PATTERNS`）。宁可误杀（替换成
   `[REDACTED_*]`），因为写进长期记忆的东西会活很久。
 
 ## 工作记忆：`core/memory_store.py`
@@ -44,7 +44,7 @@
 与 `memory/manager.py`（对话历史，重置时清空）刻意区分：这里存**跨会话的操作
 事件**，永久保存。
 
-- **双向写入**：代码埋点写（`add`，:176）+ 模型通过伪工具
+- **双向写入**：代码埋点写（`add`）+ 模型通过伪工具
   `recall_working_memory` 主动读（`search` → `format_for_model`，:219/:291）。
 - ⚠️ **一条已修的教训**（:252 附近）：删除的记忆曾照样被 recall 出来——
   因为 `search` 不筛 status。`user_note` 的 pending 状态只在 UI 显示、
@@ -60,14 +60,14 @@
 | SQLite 按类型 | `find_semantic_candidates`（memory_store 侧） | 整体失败 |
 | 向量联想 | `memory_index.search`（:88，chroma + 共享 `_load_embedder` 嵌入） | 降级 + 响亮告警 |
 
-三个读取入口：`retrieve_task_pattern_hint`（:51）、
-`retrieve_correction_hints`（:79）、`bridge.recall`（:207）——各自绑定自己的
+三个读取入口：`retrieve_task_pattern_hint`（、
+`retrieve_correction_hints`（、`bridge.recall`（——各自绑定自己的
 `memory_type`，**类型错了召回腿就开始返回不相干的东西，且不报错**。
 
 ## 改动手把手
 
 **场景 A：新增一种 memory_type**
-1. `memory_store.add_semantic_memory` 的 schema/字段（:432）。
+1. `memory_store.add_semantic_memory` 的 schema/字段（。
 2. 写入触发点：模仿 `maybe_write_task_pattern` 的"窄触发 + 去重 + 脱敏"三件套。
 3. 召回腿：模仿 `retrieve_*_hint`，**绑定新类型**，绝不复用旧类型的检索。
 4. 若由阶梯交接产生：在 `bridge.py` 加显式映射（参考 `MEMORY_TYPE`）。

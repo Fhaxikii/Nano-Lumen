@@ -18,7 +18,7 @@
 → 技能装载（registry，六个官方技能）
 → WebUI() 构造
 → 【同步初始化】(:16687 一带)   ⚠️ 必须在 ui.run() 之前同步跑，不能挂 ui.timer
-→ ui.run() (:16847)
+→ ui.run() 
 → WebView2 原生窗口
 → _on_browser_connect（客户端连接，重贴主题；对话状态保持不变）
 ```
@@ -42,7 +42,7 @@
 
 ## 原生窗口层
 
-- pywebview + WebView2 渲染；`nano_set_min_size`（:416）等窗口 API 走
+- pywebview + WebView2 渲染；`nano_set_min_size`（等窗口 API 走
   兼容层封装。
 - **Per-Monitor DPI 感知必须声明**（日志 `[OS-Coord] 已声明`）——
   它直接决定视觉定位的坐标系（见 06b 的坐标一致性校验）。
@@ -60,13 +60,13 @@
 
 ## 主题
 
-- `_apply_theme_visuals`（:10688）是统一入口；明暗切换后**重贴当前
+- `_apply_theme_visuals`（是统一入口；明暗切换后**重贴当前
   视图**（客户端重连时也是重贴主题、对话状态不动，见 `_on_browser_connect`）。
 - 样式大量使用 CSS 变量（`var(--nano-fg)` 等）——新组件用它而不是写死颜色，
   主题切换才能自动跟随。
 - 变更 UI 后在**两套主题下各过一遍**（09 总览验证清单第 2 条）。
 
-## SkillWatcher（:816）
+## SkillWatcher（
 
 技能文件监听（watchdog），实现技能热重载的"检测"半边；重载动作在
 `core/registry.py` 的 `reload_all`（见 [04-writing-a-skill.md](04-writing-a-skill.md)）。

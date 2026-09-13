@@ -15,10 +15,10 @@ each round's `finally` (see [07 overview](07-memory-and-context.md)).
 
 | Arrow | Function | LLM? | Driven by | Product |
 |---|---|---|---|---|
-| L0→L1 | `run_l0_to_l1` (:215) | no | until L0 usage drops below target, or `MAX_PER_RUN` demotions this round | tool-result bodies → placeholders |
-| L1→L2 | `run_l1_to_l2` (:404) | **yes, one call each** | L1 usage over the model's quota (`_quota.L1` × window) | Digest lines |
-| L2→L3 | `run_l2_to_l3` (:560) | no (digest already stored) | exchanges meeting the L3 condition | semantic memory + index entry |
-| L3→L4 | `run_l3_to_l4` (:681) | no | index entry expiry | index entry removed (**semantic memory kept**) |
+| L0→L1 | `run_l0_to_l1`  | no | until L0 usage drops below target, or `MAX_PER_RUN` demotions this round | tool-result bodies → placeholders |
+| L1→L2 | `run_l1_to_l2`  | **yes, one call each** | L1 usage over the model's quota (`_quota.L1` × window) | Digest lines |
+| L2→L3 | `run_l2_to_l3`  | no (digest already stored) | exchanges meeting the L3 condition | semantic memory + index entry |
+| L3→L4 | `run_l3_to_l4`  | no | index entry expiry | index entry removed (**semantic memory kept**) |
 
 ## Three red lines (learn before touching any arrow)
 

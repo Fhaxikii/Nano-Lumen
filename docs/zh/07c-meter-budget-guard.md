@@ -39,11 +39,11 @@ predicted = anchor.actual + (estimate(now) − anchor.estimate)
 
 | 位置 | 作用 |
 |---|---|
-| `ContextMeter`（:359） / `_Anchor`（:349） | 计量器与锚 |
-| `estimate_request`（:315） / `estimate_text`（:302） | 发出前的估算 |
-| `normalize_prompt_input`（:121） / `_PROMPT_INPUT_FIELDS`（:95） | 各厂商 usage 字段归一 |
+| `ContextMeter`（ / `_Anchor`（ | 计量器与锚 |
+| `estimate_request`（ / `estimate_text`（ | 发出前的估算 |
+| `normalize_prompt_input`（ / `_PROMPT_INPUT_FIELDS`（ | 各厂商 usage 字段归一 |
 | `_sample`（:184，`_SAMPLE_MAX=5000` 满了丢最老） | 预测 vs 实际的分布采样（`data/context_samples.jsonl`）——这是**分布**，不是账本 |
-| `last_known`（:252）/ `forget_conversation_size`（:263） | 重启后第一轮的"上次已知值"及其失效 |
+| `last_known`（/ `forget_conversation_size`（ | 重启后第一轮的"上次已知值"及其失效 |
 
 ⚠️ provider 在真正发出前还会再变形三次（防 400 丢弃消息 / 切 stable-dynamic /
 manifest→input_schema）——**Memory 里的变化量 ≠ provider 真正发出去的变化量**，
@@ -62,21 +62,21 @@ manifest→input_schema）——**Memory 里的变化量 ≠ provider 真正发�
 - **单位是"占自己窗口的百分比"，不是绝对 token 数**：200K 与 1M 模型共用同一个
   绝对阈值毫无意义。凡是跨模型复用的阈值，单位必须是相对量。
 - **这一层只观察，不衰减**。三档暂时不触发动作是刻意的：先量出真实分布再定
-  阈值（ meter 的采样就是那份分布）。`level_for`（:31）定档、`snapshot`（:41）
-  出快照、`pressure_block`（:94）生成给模型的压力段。
+  阈值（ meter 的采样就是那份分布）。`level_for`（定档、`snapshot`（
+  出快照、`pressure_block`（生成给模型的压力段。
 
 ## 守卫：确定性兜底
 
 `core/context/guard.py`。阶梯是启发式（"什么时候该开始遗忘"），guard 是请求
 合法性不变量（"这次到底能不能发"）——**启发式底下必须垫一个确定性的兜底**。
 
-- `admissible_input`（:57）：`窗口 × (1 − OUTPUT_RESERVE)`，为输出留余量。
-- `preflight`（:62）：发请求前筛查，**永不抛**。`predicted is None` → 放行——
+- `admissible_input`（：`窗口 × (1 − OUTPUT_RESERVE)`，为输出留余量。
+- `preflight`（：发请求前筛查，**永不抛**。`predicted is None` → 放行——
   "我不知道"不该被当成"超了"，否则每次重启后的第一句话就会被拦。
-- `in_red_zone`（:92）：够不够格启动紧急降级 / 精确计量。
-- **两种超限必须区分**（`classify`，:140）：可通过回收旧上下文解决的 →
+- `in_red_zone`（：够不够格启动紧急降级 / 精确计量。
+- **两种超限必须区分**（`classify`）：可通过回收旧上下文解决的 →
   emergency decay；**当前这一轮本身就装不下的** → 直接告诉用户
-  （`ContextWindowExceeded`，:116）。反例：用户说"按刚才那个方案改生产配置"，
+  （`ContextWindowExceeded`）。反例：用户说"按刚才那个方案改生产配置"，
   关键约束在 30 轮前——guard 说"最老，删"，API 成功了，但 Nano 会**自信地按
   错误约束操作真实电脑**。窗口溢出允许导致本次请求失败，不允许导致不受控的
   语义删除。
@@ -85,7 +85,7 @@ manifest→input_schema）——**Memory 里的变化量 ≠ provider 真正发�
 
 - 配额 = 各档占**该模型自己窗口**的比例，配置在 `data/model_config.json` 的
   `_quota`（合计约 50%，其余留给 system/工具表底噪、当前轮、突发、输出）。
-  读取走 `core/models.py` 的 `quota_of`（:143）；无配置时用
+  读取走 `core/models.py` 的 `quota_of`（；无配置时用
   `_FALLBACK_QUOTA`（L0 0.15 / L1 0.20 / L2 0.15）。
 - ⚠️ 这四个数**未标定**——meter 的采样正在积累标定所需分布。
 - **实测加速**：`_settings.quota_override` 填 `{"L0":0.03,"L1":0.02,...}`

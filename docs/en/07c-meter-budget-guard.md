@@ -44,11 +44,11 @@ Key locations (`core/context/meter.py`):
 
 | Location | Role |
 |---|---|
-| `ContextMeter` (:359) / `_Anchor` (:349) | the meter and the anchor |
-| `estimate_request` (:315) / `estimate_text` (:302) | pre-send estimation |
-| `normalize_prompt_input` (:121) / `_PROMPT_INPUT_FIELDS` (:95) | per-vendor usage normalization |
+| `ContextMeter`  / `_Anchor`  | the meter and the anchor |
+| `estimate_request`  / `estimate_text`  | pre-send estimation |
+| `normalize_prompt_input`  / `_PROMPT_INPUT_FIELDS`  | per-vendor usage normalization |
 | `_sample` (:184, `_SAMPLE_MAX=5000`, oldest dropped when full) | predicted-vs-actual distribution (`data/context_samples.jsonl`) — a **distribution**, not a ledger |
-| `last_known` (:252) / `forget_conversation_size` (:263) | "last known" across restarts, and its invalidation |
+| `last_known`  / `forget_conversation_size`  | "last known" across restarts, and its invalidation |
 
 ⚠️ The provider reshapes the payload three more times before sending (drop
 messages to prevent 400 / split stable-dynamic / manifest→input_schema) —
@@ -70,8 +70,8 @@ calibrate on the response, not at assembly time.
   now" on a 200K model. Any threshold reused across models must be relative.
 - **This layer only observes; it never acts.** The three levels deliberately do
   not trigger anything yet: measure the real distribution first, then set
-  thresholds (the meter's samples are that distribution). `level_for` (:31)
-  classifies, `snapshot` (:41) builds the snapshot, `pressure_block` (:94)
+  thresholds (the meter's samples are that distribution). `level_for` 
+  classifies, `snapshot`  builds the snapshot, `pressure_block` 
   renders the pressure block for the model.
 
 ## Guard: the deterministic backstop
@@ -80,11 +80,11 @@ calibrate on the response, not at assembly time.
 the guard is the request-validity invariant ("can this request be sent at all")
 — **a heuristic must sit on a deterministic backstop**.
 
-- `admissible_input` (:57): `window × (1 − OUTPUT_RESERVE)`, reserving room for output.
-- `preflight` (:62): fast screening before the request, **never raises**.
+- `admissible_input` : `window × (1 − OUTPUT_RESERVE)`, reserving room for output.
+- `preflight` : fast screening before the request, **never raises**.
   `predicted is None` → pass — "I don't know" must not be treated as "over the
   limit", or the first message after every restart gets blocked.
-- `in_red_zone` (:92): eligibility for emergency decay / precise metering.
+- `in_red_zone` : eligibility for emergency decay / precise metering.
 - **Two kinds of overflow must be distinguished** (`classify`, :140): solvable by
   recycling old context → emergency decay; **this turn itself does not fit** →
   tell the user outright (`ContextWindowExceeded`, :116). Counter-example: the

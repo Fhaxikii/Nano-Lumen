@@ -10,7 +10,7 @@
 
 ## ActionDef：一条指令的静态档案
 
-每个 action 在 `core/os_layer/dsl.py` 的 `_ACTIONS` 注册表（:154）里登记：
+每个 action 在 `core/os_layer/dsl.py` 的 `_ACTIONS` 注册表（里登记：
 
 ```
 ActionDef
@@ -27,7 +27,7 @@ ActionDef
 - **`readonly` 与 `stage` 不等价**。`read_screen_region` 是只读的，但
   `stage=3`——它依赖 VisionLocator，而低档位的 dispatch 路由表没挂载它；
   让它在校验层就被拒绝，好过拖到执行层报"未挂载"。
-- **未知 action 当最高危**。`action_floor`（:276）对不认识的 action 返回 3——
+- **未知 action 当最高危**。`action_floor`（对不认识的 action 返回 3——
   fail-closed：字典里没有的东西按最危险处理，不按最乐观处理。
 
 ## 六个能力开关为什么真的有效
@@ -56,7 +56,7 @@ reasons = [每次抬升的原因]   ← 全部进审计日志
 
 ## 动态升级规则怎么写
 
-内置规则在 `_DEFAULT_UPGRADE_RULES`（:315），用户可在
+内置规则在 `_DEFAULT_UPGRADE_RULES`（，用户可在
 `config/os_config.json` 的 `dynamic_upgrade_rules` 里增补（不需要改代码）。
 规则形状：
 
@@ -83,7 +83,7 @@ reasons = [每次抬升的原因]   ← 全部进审计日志
 
 ## 状态转移表
 
-`_STATE_TRANSITIONS`（:568）硬编码：一次 OS 任务的合法状态推进只有表里那几条，
+`_STATE_TRANSITIONS`（硬编码：一次 OS 任务的合法状态推进只有表里那几条，
 模型不能自创路径；`request_replan` 与它是同一个状态机的两个分支。
 
 ## 改动手把手

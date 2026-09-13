@@ -47,7 +47,7 @@ Four properties you must know:
 ## The decay ledger: `exchange_decay`
 
 Implementation: `core/context/decay_store.py` (class `DecayStore`, :69). Levels
-are strings `L0/L1/L2/L3/L4` (:43): readable at a glance in logs and SQLite, and
+are strings `L0/L1/L2/L3/L4` : readable at a glance in logs and SQLite, and
 adding a level (a future L5) never shifts the meaning of existing data.
 
 | Method | Line | Purpose |

@@ -47,7 +47,7 @@ succeeding requires fooling both the user and the judge.
 
 Engineering details: the session cache key **must include an intent
 fingerprint** (`_cache_key`, :98) — the same command under a different intent is
-a different question; `reset_cache` (:106) on session change. Script commands
+a different question; `reset_cache`  on session change. Script commands
 get an AST pre-scan first (`prescan_script`, :166): a safe stdlib-only script
 passes without asking intent, saving even the model call.
 

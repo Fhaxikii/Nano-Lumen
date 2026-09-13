@@ -54,7 +54,7 @@ seam is broken.
   the monitor panel only (comment at :4405). The criterion: "the user needs to
   see the process" goes to chat; "debug info" goes to the monitor.
 - Memory actions ("Nano remembered something") go through a **unified bubble +
-  pending-confirmation card in the memory drawer** (:4754), not a flood of
+  pending-confirmation card in the memory drawer** , not a flood of
   detail in chat.
 
 ## Scroll policy
@@ -66,7 +66,7 @@ history (the v1.95 fix). Scroll updates from streaming appends must respect
 
 ## Conversation replay
 
-`_replay_durable_conversation` (:11074): repaints the persisted ledger as
+`_replay_durable_conversation` : repaints the persisted ledger as
 bubbles after restart / session switch. Two disciplines:
 
 1. **It only paints** — rendering the durable conversation's projection, not

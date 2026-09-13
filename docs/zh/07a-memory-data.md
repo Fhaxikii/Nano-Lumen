@@ -39,8 +39,8 @@ Exchange                     # dataclass，纯只读视图（exchange.py:74）
 
 ## 衰减账本：`exchange_decay` 表
 
-实现在 `core/context/decay_store.py`（`DecayStore` 类，:69）。档位是**字符串**
-`L0/L1/L2/L3/L4`（:43）：日志和 SQLite 里一眼能读，将来加一档（L5）也不会
+实现在 `core/context/decay_store.py`（`DecayStore` 类）。档位是**字符串**
+`L0/L1/L2/L3/L4`（：日志和 SQLite 里一眼能读，将来加一档（L5）也不会
 挪已有数据的含义。
 
 | 方法 | 行 | 用途 |
@@ -85,7 +85,7 @@ MemoryManager.storage（投影）
 4. 测试：`tests/t_f5_decay_store.py`。
 
 **场景 B：改交换的切分规则**（比如让某类系统消息也开启一次交换）
-1. 只改 `exchange.py` 的 `_opens_exchange`（:44）。
+1. 只改 `exchange.py` 的 `_opens_exchange`（。
 2. **同步检查 `Exchange.user_message`**（判据必须同源，见上文性质 3）。
 3. 下游消费方确认：`decay.py` 与 `rebuild_projection` 都按 `split()` 分组，
    规则变了它们自动跟随，但**已入库的 `exchange_decay` 条目的 start_ordinal

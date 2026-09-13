@@ -36,7 +36,7 @@
 
 - **聊天区（给用户看）：只有【不可用】才出卡；degraded 只进监控面板**
   （:7899 注释）——落点是让监控卡说真话，不是往聊天区塞卡片。
-- 配色档位（:7935）：**前三档是可用性，后三档是活动状态**——故障态覆盖
+- 配色档位（：**前三档是可用性，后三档是活动状态**——故障态覆盖
   活动态显示（`_refresh_health_card`，:8105 按 HealthRegistry 重绘）。
   RAG 这类"降级但能用"的能力只在监控面板里降档显示。
 - 监控卡刷新是**被动触发**（健康事件/操作后），不是定时轮询刷屏。
@@ -44,8 +44,8 @@
 ## 上下文圆环：同一个数，两个出口
 
 - **监控卡的「上下文」与输入框右下角的圆环是同一个数**——都读
-  `budget.snapshot`（:8008）。两个出口显示不一致 = 消费方各自取数的 bug。
-- `_refresh_context_card`（:7966）/ `_refresh_context_ring`（:8033）；
+  `budget.snapshot`（。两个出口显示不一致 = 消费方各自取数的 bug。
+- `_refresh_context_card`（/ `_refresh_context_ring`（；
   画环纪律：**量不到 / 失准 → 空心灰环，不是 0%**（与监控卡同一条纪律：
   "不知道"不许被画成"很好"）。
 
@@ -53,19 +53,19 @@
 
 | 页 | 构建 | 内容 |
 |---|---|---|
-| OS 权限 | `_build_settings_permissions`（:7104） | 六个权限开关（生效机制见 06a 的 perms） |
-| 个人信息 | `_build_settings_profile`（:8520） | persona 相关 |
-| 花费上限 | `_build_settings_cost_cap`（:9151） | 软/硬上限，硬上限停发请求 |
-| MCP 连接 | `_build_settings_mcp`（:9270） | server 列表、状态、授权卡入口 |
-| 进阶配置 | `_build_settings_advanced`（:10218） | 视觉模型、主动程度档位（预留，无实际影响）等 |
-| 通用 | `_build_settings_general`（:10299） | 语言 / 用量限额 / 环境配置 / **导出数据** |
+| OS 权限 | `_build_settings_permissions`（ | 六个权限开关（生效机制见 06a 的 perms） |
+| 个人信息 | `_build_settings_profile`（ | persona 相关 |
+| 花费上限 | `_build_settings_cost_cap`（ | 软/硬上限，硬上限停发请求 |
+| MCP 连接 | `_build_settings_mcp`（ | server 列表、状态、授权卡入口 |
+| 进阶配置 | `_build_settings_advanced`（ | 视觉模型、主动程度档位（预留，无实际影响）等 |
+| 通用 | `_build_settings_general`（ | 语言 / 用量限额 / 环境配置 / **导出数据** |
 
 通用约定：配置落盘后**立刻刷新受影响的显示，不需要重启**（:10182 的
 "落盘 + 立刻刷新监控卡"）。
 
 ## 数据导出
 
-入口在「设置 → 通用 → 导出数据」（:10454）。两条已在 UI 文案里说清的语义：
+入口在「设置 → 通用 → 导出数据」（。两条已在 UI 文案里说清的语义：
 
 - **导出的是全部对话记录，包括已经重置掉的**（"重置"是放弃不是删除，
   与 07a 的 export 语义一致）。

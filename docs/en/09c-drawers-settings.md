@@ -40,7 +40,7 @@ entry to the drawer, same source as the drawer badge (`_tasks_badge_label`).
 - **Chat area (what the user sees): only "unavailable" gets a card; degraded
   goes to the monitor panel only** (:7899 comment) — the goal is a monitor card
   that tells the truth, not stuffing cards into chat.
-- Color tiers (:7935): **the first three are availability, the last three are
+- Color tiers : **the first three are availability, the last three are
   activity state** — fault states override activity display
   (`_refresh_health_card`, :8105, redraws from the HealthRegistry). Something
   like RAG ("degraded but usable") only shows its degraded tier in the panel.
@@ -50,9 +50,9 @@ entry to the drawer, same source as the drawer badge (`_tasks_badge_label`).
 ## The context ring: one number, two outlets
 
 - **The monitor card's "context" and the little ring at the input box's
-  bottom-right are the same number** — both read `budget.snapshot` (:8008).
+  bottom-right are the same number** — both read `budget.snapshot` .
   Two outlets disagreeing = consumers fetching independently, a bug.
-- `_refresh_context_card` (:7966) / `_refresh_context_ring` (:8033); ring
+- `_refresh_context_card`  / `_refresh_context_ring` ; ring
   discipline: **unmeasurable / inaccurate → an empty gray ring, never 0%**
   (the monitor-card discipline again: "don't know" must not be drawn as "fine").
 
@@ -60,19 +60,19 @@ entry to the drawer, same source as the drawer badge (`_tasks_badge_label`).
 
 | Page | Builder | Contents |
 |---|---|---|
-| OS Permissions | `_build_settings_permissions` (:7104) | the six permission switches (enforcement via 06a perms) |
-| Profile | `_build_settings_profile` (:8520) | persona |
-| Cost caps | `_build_settings_cost_cap` (:9151) | soft/hard caps; the hard cap stops requests |
-| MCP connections | `_build_settings_mcp` (:9270) | server list, states, authorization-card entry |
-| Advanced | `_build_settings_advanced` (:10218) | vision model, proactivity tier (reserved, no effect yet) |
-| General | `_build_settings_general` (:10299) | language / usage caps / environment config / **data export** |
+| OS Permissions | `_build_settings_permissions`  | the six permission switches (enforcement via 06a perms) |
+| Profile | `_build_settings_profile`  | persona |
+| Cost caps | `_build_settings_cost_cap`  | soft/hard caps; the hard cap stops requests |
+| MCP connections | `_build_settings_mcp`  | server list, states, authorization-card entry |
+| Advanced | `_build_settings_advanced`  | vision model, proactivity tier (reserved, no effect yet) |
+| General | `_build_settings_general`  | language / usage caps / environment config / **data export** |
 
 Common rule: after a config is persisted, **affected displays refresh
 immediately, no restart** (:10182's "persist + refresh monitor card").
 
 ## Data export
 
-Entry: Settings → General → Export data (:10454). Two semantics already stated
+Entry: Settings → General → Export data . Two semantics already stated
 in the UI copy:
 
 - **It exports all conversations, including reset ones** ("reset" means

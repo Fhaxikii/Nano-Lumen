@@ -234,7 +234,7 @@ Desktop automation is the highest-risk capability, so Nano layers multiple defen
 - **Explainable denials**: when denied, the model tells you which permission switch to enable.
 - **Auto-mode backstop**: even with Auto mode on, destructive commands are still caught by the command classifier.
 
-The six permission switches can be turned off anytime in settings. See [docs/en/06-os-automation.md](docs/en/06-os-automation.md)
+The six permission switches can be turned off anytime in settings.
 
 Installing or using the software means you have read and agreed to the [User Agreement](docs/en/user-agreement.md).
 
