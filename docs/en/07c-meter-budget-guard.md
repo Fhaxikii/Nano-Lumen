@@ -47,7 +47,7 @@ Key locations (`core/context/meter.py`):
 | `ContextMeter`  / `_Anchor`  | the meter and the anchor |
 | `estimate_request`  / `estimate_text`  | pre-send estimation |
 | `normalize_prompt_input`  / `_PROMPT_INPUT_FIELDS`  | per-vendor usage normalization |
-| `_sample` (:184, `_SAMPLE_MAX=5000`, oldest dropped when full) | predicted-vs-actual distribution (`data/context_samples.jsonl`) — a **distribution**, not a ledger |
+| `_sample` , `_SAMPLE_MAX=5000`, oldest dropped when full) | predicted-vs-actual distribution (`data/context_samples.jsonl`) — a **distribution**, not a ledger |
 | `last_known`  / `forget_conversation_size`  | "last known" across restarts, and its invalidation |
 
 ⚠️ The provider reshapes the payload three more times before sending (drop
@@ -85,9 +85,9 @@ the guard is the request-validity invariant ("can this request be sent at all")
   `predicted is None` → pass — "I don't know" must not be treated as "over the
   limit", or the first message after every restart gets blocked.
 - `in_red_zone` : eligibility for emergency decay / precise metering.
-- **Two kinds of overflow must be distinguished** (`classify`, :140): solvable by
+- **Two kinds of overflow must be distinguished** (`classify`): solvable by
   recycling old context → emergency decay; **this turn itself does not fit** →
-  tell the user outright (`ContextWindowExceeded`, :116). Counter-example: the
+  tell the user outright (`ContextWindowExceeded`). Counter-example: the
   user says "apply that plan we discussed" with the key constraint 30 turns
   back — the guard says "oldest, delete", the API succeeds, and Nano **confidently
   operates the real computer under the wrong constraint**. Window overflow may

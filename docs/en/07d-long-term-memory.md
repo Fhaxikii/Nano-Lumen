@@ -37,8 +37,8 @@ narrower than originally designed:
 Two universal disciplines:
 
 - **Dedupe before writing**: `find_semantic_candidates` (SQLite candidates by
-  type, :472) then a vector search; on a hit, **update confidence instead of
-  creating a new row** (:151-177). Otherwise the same task pattern multiplies
+  type) then a vector search; on a hit, **update confidence instead of
+  creating a new row** -177). Otherwise the same task pattern multiplies
   with usage.
 - **Redaction is a hard code rule, never the model's judgment**:
   `redact_sensitive`  hard-blocks passwords/tokens/long random strings via
@@ -51,9 +51,9 @@ Two universal disciplines:
 Deliberately distinct from `memory/manager.py` (conversation history, cleared on
 reset): this stores **cross-session operation events**, permanently.
 
-- **Two-way writing**: code instrumentation (`add`, :176) plus the model reading
+- **Two-way writing**: code instrumentation (`add`) plus the model reading
   actively through the `recall_working_memory` pseudo-tool
-  (`search` → `format_for_model`, :219/:291).
+  (`search` → `format_for_model`/:291).
 - ⚠️ **One fixed lesson** (~:252): deleted memories used to come back through
   recall — `search` did not filter status. A `user_note`'s pending state shows
   only in the UI and is excluded from model recall; "deleted" must be excluded
@@ -67,7 +67,7 @@ authority; the vector store is association**.
 | Leg | Function | On failure |
 |---|---|---|
 | SQLite by type | `find_semantic_candidates` (memory_store side) | whole path fails |
-| Vector association | `memory_index.search` (:88, chroma + the shared `_load_embedder`) | degrade + warn loudly |
+| Vector association | `memory_index.search` , chroma + the shared `_load_embedder`) | degrade + warn loudly |
 
 Three read entries: `retrieve_task_pattern_hint` ,
 `retrieve_correction_hints` , `bridge.recall`  — each bound to its own
@@ -92,7 +92,7 @@ false positives**; do not introduce "let the model judge sensitivity" —
 redacted content lives long, and a missed redaction is irreversible.
 
 **Case C: improve recall quality**
-`search` in `memory_index.py` (:88, default top_k 5) and the embedding (shared
+`search` in `memory_index.py` , default top_k 5) and the embedding (shared
 `_load_embedder`, see [07c](07c-meter-budget-guard.md)). Changing the embedding
 model = re-embedding the whole store — a big-window project, never a drive-by.
 

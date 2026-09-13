@@ -10,7 +10,7 @@
 
 ## The right drawer: one drawer, many panels
 
-⭐ **The structure was deliberately changed** (:1042 comment): there used to be
+⭐ **The structure was deliberately changed** (comment): there used to be
 three independent `ui.right_drawer`s fighting for the same layout slot —
 NiceGUI/Quasar's q-layout assumes one drawer per side; with several right
 drawers, hide()/toggle() switching made the layout's `padding-right` order-
@@ -38,11 +38,11 @@ entry to the drawer, same source as the drawer badge (`_tasks_badge_label`).
 ## Monitor cards: availability first, tell the truth
 
 - **Chat area (what the user sees): only "unavailable" gets a card; degraded
-  goes to the monitor panel only** (:7899 comment) — the goal is a monitor card
+  goes to the monitor panel only** (comment) — the goal is a monitor card
   that tells the truth, not stuffing cards into chat.
 - Color tiers : **the first three are availability, the last three are
   activity state** — fault states override activity display
-  (`_refresh_health_card`, :8105, redraws from the HealthRegistry). Something
+  (`_refresh_health_card`, redraws from the HealthRegistry). Something
   like RAG ("degraded but usable") only shows its degraded tier in the panel.
 - Card refreshes are **passively triggered** (health events / after operations),
   not a polling flood.
@@ -68,7 +68,7 @@ entry to the drawer, same source as the drawer badge (`_tasks_badge_label`).
 | General | `_build_settings_general`  | language / usage caps / environment config / **data export** |
 
 Common rule: after a config is persisted, **affected displays refresh
-immediately, no restart** (:10182's "persist + refresh monitor card").
+immediately, no restart** 's "persist + refresh monitor card").
 
 ## Data export
 

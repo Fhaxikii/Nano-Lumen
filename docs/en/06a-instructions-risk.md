@@ -10,7 +10,7 @@
 
 ## ActionDef: the static profile of one instruction
 
-Every action is registered in `_ACTIONS` (`core/os_layer/dsl.py`, :154):
+Every action is registered in `_ACTIONS` (`core/os_layer/dsl.py`):
 
 ```
 ActionDef
@@ -83,7 +83,7 @@ execution.
 ## Tiers and M1/M2/M3
 
 - `stage`: 1=readonly / 2=writes / 3=mouse & keyboard.
-- `M1/M2/M3_ALLOWED_ACTIONS` (:226-228) are **derived from `_ACTIONS`** — never
+- `M1/M2/M3_ALLOWED_ACTIONS` -228) are **derived from `_ACTIONS`** — never
   hand-copied: a hand-copied list once had 29 entries against the real 39,
   missing exactly the high-frequency ones.
 - `m1_mode` → `max_stage=1` (iron rule: read-only only; click and friends are

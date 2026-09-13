@@ -46,7 +46,7 @@ Four properties you must know:
 
 ## The decay ledger: `exchange_decay`
 
-Implementation: `core/context/decay_store.py` (class `DecayStore`, :69). Levels
+Implementation: `core/context/decay_store.py` (class `DecayStore`). Levels
 are strings `L0/L1/L2/L3/L4` : readable at a glance in logs and SQLite, and
 adding a level (a future L5) never shifts the meaning of existing data.
 
@@ -59,7 +59,7 @@ adding a level (a future L5) never shifts the meaning of existing data.
 | `level_of(session_id, start)` | :202 | current level of one stretch |
 
 **Iron rule: `source_hash` hashes the persisted ledger, not the projection**
-(`_hash_rows`, :52, reads the original text straight from SQLite). Why: the
+(`_hash_rows`, reads the original text straight from SQLite). Why: the
 projection is deliberately different from the ledger — images become
 placeholders and notes are recomputed on restart, both projection-only. Hash the
 projection and every restart produces new hashes, every Digest is judged stale,

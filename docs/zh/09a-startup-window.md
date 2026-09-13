@@ -17,7 +17,7 @@
 → reconciler 启动恢复（崩溃遗留任务的"要不要继续"在这里问）
 → 技能装载（registry，六个官方技能）
 → WebUI() 构造
-→ 【同步初始化】(:16687 一带)   ⚠️ 必须在 ui.run() 之前同步跑，不能挂 ui.timer
+→ 【同步初始化】 一带)   ⚠️ 必须在 ui.run() 之前同步跑，不能挂 ui.timer
 → ui.run() 
 → WebView2 原生窗口
 → _on_browser_connect（客户端连接，重贴主题；对话状态保持不变）

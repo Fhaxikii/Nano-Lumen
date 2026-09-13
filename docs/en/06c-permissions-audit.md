@@ -46,9 +46,9 @@ dangerous command, but it **cannot change what the user actually said** —
 succeeding requires fooling both the user and the judge.
 
 Engineering details: the session cache key **must include an intent
-fingerprint** (`_cache_key`, :98) — the same command under a different intent is
+fingerprint** (`_cache_key`) — the same command under a different intent is
 a different question; `reset_cache`  on session change. Script commands
-get an AST pre-scan first (`prescan_script`, :166): a safe stdlib-only script
+get an AST pre-scan first (`prescan_script`): a safe stdlib-only script
 passes without asking intent, saving even the model call.
 
 ## The audit trail (`audit.py`)

@@ -30,7 +30,7 @@ process start
    threads must explicitly enter the client context to write UI" rule
    (comment at app.py）.
 2. **Cleanup left by the previous process must run synchronously before
-   `ui.run()`** (:16687 comment: not on a ui.timer) — making it async means the
+   `ui.run()`** (comment: not on a ui.timer) — making it async means the
    user may act before cleanup finishes.
 3. **Recovery notices (`arm_restart_notice`) attach before WebUI** — restart
    notices depend on the runtime identity (`rt_*`); late means lost.
@@ -53,7 +53,7 @@ process start
 ## Mini window & passive suspension (a three-way binding)
 
 ⭐ **mini window open = GUI mode = full passive-suspension monitoring — three
-behaviors, one state** (:5333 / :5370):
+behaviors, one state** :
 
 - mini open → GUI mode → Nano's passive suspension starts monitoring (Nano
   restrains itself while the user types in other windows).

@@ -59,7 +59,7 @@ seam is broken.
 
 ## Scroll policy
 
-`_pin_chat_bottom` / `_scroll_chat_to_bottom` (:5219/:5232): **stay glued to
+`_pin_chat_bottom` / `_scroll_chat_to_bottom` : **stay glued to
 the bottom** without yanking the user back while they scroll up through
 history (the v1.95 fix). Scroll updates from streaming appends must respect
 "the user is currently reading upward".

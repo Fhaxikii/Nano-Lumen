@@ -17,7 +17,7 @@
 | Retrieval & fusion | `_build_bm25_index` / `_bm25_search` / `_rrf_fuse` / `_rerank` / `search` / `query_for_agent` | vector + BM25 fused by RRF + rerank | [08b](08b-retrieval-ranking.md) |
 | Temp attachments | `index_temp_file` / `register_temp_file` / `cleanup_stale_temp_files` | registration-based lazy build for uploads | [08c](08c-health-temp.md) |
 
-Cross-cutting: **health probes** (`_register_health_probes`, :863 — four probes
+Cross-cutting: **health probes** (`_register_health_probes` — four probes
 watching embedder/reranker/bm25/vector store) and **parse_report** (per-file
 parsing report, `data/parse_reports.json`, feeding the health panel) — see
 [08c](08c-health-temp.md).
