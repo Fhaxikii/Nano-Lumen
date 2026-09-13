@@ -181,6 +181,29 @@ LOAD_FULL_MAX_CHARS = 1 << 62
 # 内部工具
 # ══════════════════════════════════════════════
 
+def _resolve_hf_snapshot(repo_id: str) -> str:
+    """把模型快照显式备齐到本地（只取 safetensors），返回可加载的目录路径。
+
+    🔴 为什么不让 SentenceTransformer 直接吃 hub id（2026-09-14 实测）：
+       transformers 在快照缺 safetensors 时会**静默回退** pytorch_model.bin，
+       而 transformers 5.x 又因 CVE-2025-32434 拒载 .bin（要求 torch≥2.6）。
+       实测新机器上镜像源解析出的快照只有 .bin → WEIGHTS_FORMAT_REJECTED，
+       且重启无法自愈——refs 指向的那份快照里永远等不来 safetensors，
+       后补下载的 safetensors 反而落进另一个 revision 的目录（缓存三份互不相认）。
+       ⇒ 显式 allow_patterns 只取 safetensors 和配置，让 .bin 根本不进缓存；
+       格式选择权收回自己手里，而不是托付给上游的回退顺序。
+    """
+    from huggingface_hub import snapshot_download
+    return snapshot_download(
+        repo_id,
+        allow_patterns=[
+            "*.json", "*.txt", "*.model",
+            "model.safetensors",
+            "1_Pooling/*", "2_Dense/*",
+        ],
+    )
+
+
 def _load_embedder():
     """加载 bge-m3。
 
@@ -209,9 +232,10 @@ def _load_embedder():
                 # bge-m3：智源 2024 年发布的多语言嵌入模型，中文 RAG 业界默认选择
                 # 上一代 paraphrase-multilingual-MiniLM-L12-v2 在中文短查询场景下相似度信号过弱
                 # （实测"解释权"对原文 chunk 余弦相似度仅 0.24，远低于无关 Excel cell 的 0.47）
-                # bge-m3 模型大小约 2.27GB，首次启动会从 HuggingFace 下载
+                # bge-m3 模型大小约 2.27GB，首次启动会从 HuggingFace 下载（只取 safetensors，
+                # 见 _resolve_hf_snapshot）
                 # 推理内存约 1-2GB，比 MiniLM 高一个数量级，但召回质量显著提升
-                _embedder = SentenceTransformer("BAAI/bge-m3")
+                _embedder = SentenceTransformer(_resolve_hf_snapshot("BAAI/bge-m3"))
         except Exception as e:
             # 2026-08-03 实测：三次不同根因的失败全被上游一个 except 吞掉，UI 零提示。
             # 这里按根因分类上报，让用户在界面上看得见、也让模型知道这个工具坏了。
@@ -595,7 +619,8 @@ def _load_reranker():
                 from sentence_transformers import CrossEncoder
                 # bge-reranker-v2-m3：智源 2024 年发布的多语言 cross-encoder
                 # max_length=512：bge-reranker-v2-m3 的最大输入长度
-                _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", max_length=512)
+                # 同 _load_embedder：显式备齐 safetensors 快照，不走 hub id
+                _reranker = CrossEncoder(_resolve_hf_snapshot("BAAI/bge-reranker-v2-m3"), max_length=512)
         except Exception as e:
             # 重排缺失只是质量下降（保持 RRF 原序），不是失能 → degraded 不是 fault。
             # 但仍要登记，否则用户永远不知道检索质量为什么变差了。
