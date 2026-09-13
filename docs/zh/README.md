@@ -20,11 +20,11 @@
 | 修改配置项或增加配置 | [03-configuration.md](03-configuration.md) |
 | 新增一个工具（技能） | [04-writing-a-skill.md](04-writing-a-skill.md) |
 | 接入一个 MCP server | [05-mcp-servers.md](05-mcp-servers.md) |
-| 修改内置工具或新增一个 | [10-builtin-tools.md](10-builtin-tools.md) |
 | 修改桌面自动化、权限或风险判定 | [06 总览](06-os-automation.md)（子篇：[06a 指令与风险](06a-instructions-risk.md) · [06b 执行链路](06b-execution-pipeline.md) · [06c 权限、分类器与审计](06c-permissions-audit.md)） |
 | 修改上下文管理或记忆 | [07 总览](07-memory-and-context.md)（子篇：[07a 数据与投影](07a-memory-data.md) · [07b 衰减阶梯](07b-decay-ladder.md) · [07c 计量、预算与守卫](07c-meter-budget-guard.md) · [07d 长期记忆](07d-long-term-memory.md)） |
 | 修改知识库与检索 | [08-knowledge-base.md](08-knowledge-base.md) |
 | 修改界面或新增面板 | [09 总览](09-ui.md)（子篇：[09a 启动、窗口与主题](09a-startup-window.md) · [09b 聊天区与事件流](09b-chat-events.md) · [09c 抽屉、监控与设置](09c-drawers-settings.md)） |
+| 修改内置工具或新增一个 | [10-builtin-tools.md](10-builtin-tools.md) |
 | 运行测试或新增测试 | [11-testing.md](11-testing.md) |
 | 提交 PR 之前 | [12-contributing.md](12-contributing.md) |
 | 发布一个新版本 | [13-release.md](13-release.md) |
