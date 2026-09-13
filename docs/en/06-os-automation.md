@@ -1,11 +1,8 @@
 # 06 · Desktop automation
 
-**What this page covers**: the execution chain for desktop actions, risk  
-computation, permission switches, and auditing.
-**After reading it you can**: add a desktop action, or modify risk and  
-authorization decisions.
-**Prerequisites**: [02-architecture.md](02-architecture.md),  
-[03-configuration.md](03-configuration.md).
+**What this page covers**: the execution chain for desktop actions, risk computation, permission switches, and auditing.  
+**After reading it you can**: add a desktop action, or modify risk and authorization decisions.  
+**Prerequisites**: [02-architecture.md](02-architecture.md), [03-configuration.md](03-configuration.md).
 
 > Language: [中文](../zh/06-os-automation.md) · English
 

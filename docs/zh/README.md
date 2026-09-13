@@ -15,7 +15,7 @@
 
 | 你想做的事 | 应该读 |
 |---|---|
-| 把项目跑起来 | [01-getting-started.md](01-getting-started.md) |
+| 安装并启动 | [01-getting-started.md](01-getting-started.md) |
 | 了解整体结构再决定改哪里 | [02-architecture.md](02-architecture.md) |
 | 修改配置项或增加配置 | [03-configuration.md](03-configuration.md) |
 | 新增一个工具（技能） | [04-writing-a-skill.md](04-writing-a-skill.md) |

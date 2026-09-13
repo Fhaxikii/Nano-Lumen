@@ -1,11 +1,8 @@
 # 05 · Connecting an MCP server
 
-**What this page covers**: how MCP is integrated in this project, the config  
-shape, the authorization flow, and the project's constraints on it.
-**After reading it you can**: add a new MCP server, or modify how existing  
-ones are integrated.
-**Prerequisites**: [02-architecture.md](02-architecture.md),  
-[03-configuration.md](03-configuration.md).
+**What this page covers**: how MCP is integrated in this project, the config shape, the authorization flow, and the project's constraints on it.  
+**After reading it you can**: add a new MCP server, or modify how existing ones are integrated.  
+**Prerequisites**: [02-architecture.md](02-architecture.md), [03-configuration.md](03-configuration.md).
 
 > Language: [中文](../zh/05-mcp-servers.md) · English
 

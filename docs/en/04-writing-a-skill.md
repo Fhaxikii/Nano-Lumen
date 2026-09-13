@@ -1,10 +1,8 @@
 ﻿# 04 · Writing a skill
 
-**What this page covers**: the skill protocol, directory conventions, a  
-complete walkthrough, and how to deploy and debug.
-**After reading it you can**: add a tool the model can call, and verify it  
-loads and runs correctly.
-**Prerequisites**: [02-architecture.md](02-architecture.md).  
+**What this page covers**: the skill protocol, directory conventions, a complete walkthrough, and how to deploy and debug.  
+**After reading it you can**: add a tool the model can call, and verify it loads and runs correctly.  
+**Prerequisites**: [02-architecture.md](02-architecture.md).
 
 > Language: [中文](../zh/04-writing-a-skill.md) · English
 

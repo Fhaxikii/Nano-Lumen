@@ -1,10 +1,8 @@
 ﻿# Nano Developer Documentation
 
-**What this page covers**: the structure of this documentation set and which  
-page to start from.
-**After reading it you can**: tell which pages are relevant to your goal and  
-skip the rest.
-**Prerequisites**: none.  
+**What this page covers**: the structure of this documentation set and which page to start from.  
+**After reading it you can**: tell which pages are relevant to your goal and skip the rest.  
+**Prerequisites**: none.
 
 > Language: 中文 → see [zh/README.md](../zh/README.md) · English
 

@@ -1,10 +1,8 @@
 # 01 · Getting Started
 
-**What this page covers**: requirements, installation, launch, and the minimal  
-configuration needed for your first conversation.
-**After reading it you can**: run Nano on your machine and complete one  
-conversation.
-**Prerequisites**: none.  
+**What this page covers**: requirements, installation, launch, and the minimal configuration needed for your first conversation.  
+**After reading it you can**: run Nano on your machine and complete one conversation.  
+**Prerequisites**: none.
 
 > Language: [中文](../zh/01-getting-started.md) · English
 

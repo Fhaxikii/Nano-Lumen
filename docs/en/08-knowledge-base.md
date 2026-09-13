@@ -1,10 +1,8 @@
 # 08 · Knowledge base and retrieval
 
-**What this page covers**: how files are ingested, how retrieval works, and  
-the special handling of system documents.
-**After reading it you can**: modify the ingest flow or retrieval strategy,  
-and locate why something cannot be retrieved.
-**Prerequisites**: [02-architecture.md](02-architecture.md).  
+**What this page covers**: how files are ingested, how retrieval works, and the special handling of system documents.  
+**After reading it you can**: modify the ingest flow or retrieval strategy, and locate why something cannot be retrieved.  
+**Prerequisites**: [02-architecture.md](02-architecture.md).
 
 > Language: [中文](../zh/08-knowledge-base.md) · English
 

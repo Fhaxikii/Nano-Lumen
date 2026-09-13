@@ -1,10 +1,8 @@
 # 11 · Contributing
 
-**What this page covers**: what to know before submitting a PR, including  
-what we do not accept.
-**After reading it you can**: judge whether your change is likely to be  
-accepted, and run the pre-submission checklist.
-**Prerequisites**: whichever page matches your change.  
+**What this page covers**: what to know before submitting a PR, including what we do not accept.  
+**After reading it you can**: judge whether your change is likely to be accepted, and run the pre-submission checklist.  
+**Prerequisites**: whichever page matches your change.
 
 > Language: [中文](../zh/11-contributing.md) · English
 
