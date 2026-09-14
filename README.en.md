@@ -328,3 +328,11 @@ This project is licensed under the [**Apache-2.0**](LICENSE) license.
 - Claude ([Anthropic](https://www.anthropic.com)) — extensive assistance with parts of the code and debugging
 - GPT ([OpenAI](https://openai.com)) — provided early-stage architecture design ideas for the kernel and OS control layer
 - GLM ([Zhipu AI](https://www.zhipuai.cn)) — documentation and internationalization
+
+<details>
+<summary><b>Safety Notes · Disclaimer</b></summary>
+
+- **User Agreement** — Installing or using the software constitutes your acceptance of all its terms; please read it in full before use. See the [User Agreement](docs/en/user-agreement.md).
+- **Security Policy** — If you discover a security vulnerability, please report it following the process in this project's security policy. See the [Security Policy](SECURITY.md).
+
+</details>
