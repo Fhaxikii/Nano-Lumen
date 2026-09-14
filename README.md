@@ -294,10 +294,18 @@ bash run_tests.sh
 
 ---
 
-## 📚 文档
+## 🔗 相关链接
 
-- 入口：[docs/zh/README.md](docs/zh/README.md)
-- 版本历史：[Changelog.txt](Changelog.txt)
+- **开发者文档**：[docs/zh/README.md](docs/zh/README.md)
+- **版本历史**：[Changelog.txt](Changelog.txt)
+
+<details>
+<summary><b>安全须知 · 安全政策</b></summary>
+
+- **用户协议** — 安装或使用本软件即视为你已阅读并同意用户协议全部条款，请在使用前阅读全文。详见 [用户协议](docs/zh/user-agreement.md)。
+- **安全政策** — 发现安全漏洞时请遵循本项目安全政策中的流程提交报告。详见 [安全政策](SECURITY.md)。
+
+</details>
 
 ---
 
@@ -328,13 +336,3 @@ bash run_tests.sh
 - Claude（[Anthropic](https://www.anthropic.com)）— 在部分代码实现与调试中提供了大量协助
 - GPT（[OpenAI](https://openai.com)）— 提供了内核、OS 控制层早期架构设计的思路
 - GLM（[智谱](https://www.zhipuai.cn)）— 文档规范化与国际化
-
----
-
-<details>
-<summary><b>安全须知 · 安全政策</b></summary>
-
-- **用户协议** — 安装或使用本软件即视为你已阅读并同意用户协议全部条款，请在使用前阅读全文。详见 [用户协议](docs/zh/user-agreement.md)。
-- **安全政策** — 发现安全漏洞时请遵循本项目安全政策中的流程提交报告。详见 [安全政策](SECURITY.md)。
-
-</details>
