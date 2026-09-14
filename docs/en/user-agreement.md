@@ -2,7 +2,7 @@
 
 **Last updated: 2026-09-14**
 
-The whole agreement comes down to one sentence: **Nano is software that genuinely operates your computer, and installing or using it means you understand and accept this.**
+The core principle of this agreement can be summarized in one sentence: **Nano is software that genuinely operates your computer, and installing or using the software means that you understand and accept the foregoing.**
 
 ## 1. Acceptance of terms
 
@@ -65,7 +65,7 @@ This agreement may be revised with version updates; the latest text in the repos
 
 ## 11. Contact
 
-Questions about this agreement: open a GitHub Issue in the repository. Security issues: follow [SECURITY.md](../../SECURITY.md).
+Questions about this agreement: open a GitHub Issue in the repository, or email **ziyihukala@gmail.com**. Security issues: follow [SECURITY.md](../../SECURITY.md).
 
 ---
 
