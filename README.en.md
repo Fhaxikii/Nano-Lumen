@@ -298,14 +298,8 @@ Full **bug report** and **feature request** templates are in the "Reporting Issu
 
 - **Developer docs**: [docs/en/README.md](docs/en/README.md)
 - **Version history**: [Changelog.txt](Changelog.txt)
-
-<details>
-<summary><b>Safety Notes · Security Policy</b></summary>
-
-- **User Agreement** — Installing or using the software constitutes your acceptance of all its terms; please read it in full before use. See the [User Agreement](docs/en/user-agreement.md).
-- **Security Policy** — If you discover a security vulnerability, please report it following the process in this project's security policy. See the [Security Policy](SECURITY.md).
-
-</details>
+- **User Agreement**: [docs/en/user-agreement.md](docs/en/user-agreement.md)
+- **Security Policy**: [SECURITY.md](SECURITY.md)
 
 ---
 
