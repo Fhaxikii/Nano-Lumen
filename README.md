@@ -321,10 +321,10 @@ bash run_tests.sh
 **作者与贡献者**
 
 - [Koala](https://github.com/Fhaxikii) — 项目作者与主要开发者
-- [lebangjames](https://github.com/lebangjames) — 数据收集 / 测试及早期原型设计思路
+- [lebangjames](https://github.com/lebangjames) — 数据收集、测试及早期原型设计思路
 
 **AI 协作贡献者**
 
 - Claude（[Anthropic](https://www.anthropic.com)）— 在部分代码实现与调试中提供了大量协助
-- GPT（[OpenAI](https://openai.com)）— 内核、OS 控制层架构设计
+- GPT（[OpenAI](https://openai.com)）— 提供了内核、OS 控制层早期架构设计的思路
 - GLM（[智谱](https://www.zhipuai.cn)）— 文档规范化与国际化

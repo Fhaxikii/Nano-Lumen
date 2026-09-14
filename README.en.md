@@ -303,7 +303,7 @@ Full **bug report** and **feature request** templates are in the "Reporting Issu
 
 ## License
 
-This project is licensed under the **Apache-2.0** license.
+This project is licensed under the [**Apache-2.0**](LICENSE) license.
 
 ---
 
@@ -321,10 +321,10 @@ This project is licensed under the **Apache-2.0** license.
 **Authors & Contributors**
 
 - [Koala](https://github.com/Fhaxikii) — project author and lead developer
-- [lebangjames](https://github.com/lebangjames) — data collection / testing and early prototype design
+- [lebangjames](https://github.com/lebangjames) — data collection, testing and early prototype design
 
 **AI collaborators**
 
 - Claude ([Anthropic](https://www.anthropic.com)) — extensive assistance with parts of the code and debugging
-- GPT ([OpenAI](https://openai.com)) — kernel and OS-control-layer architecture design
+- GPT ([OpenAI](https://openai.com)) — provided early-stage architecture design ideas for the kernel and OS control layer
 - GLM ([Zhipu AI](https://www.zhipuai.cn)) — documentation and internationalization
