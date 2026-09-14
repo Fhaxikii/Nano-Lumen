@@ -329,6 +329,8 @@ bash run_tests.sh
 - GPT（[OpenAI](https://openai.com)）— 提供了内核、OS 控制层早期架构设计的思路
 - GLM（[智谱](https://www.zhipuai.cn)）— 文档规范化与国际化
 
+---
+
 <details>
 <summary><b>安全须知 · 免责声明</b></summary>
 
