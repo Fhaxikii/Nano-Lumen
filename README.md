@@ -272,7 +272,7 @@ bash run_tests.sh
 ```
 
 - 开发者文档在 `docs/`（`zh/` 与 `en/`，另附 `docs/GLOSSARY.md` 术语表）
-- 运行测试、构建、贡献规范见 [docs/zh/10-testing.md](docs/zh/10-testing.md) 与 [docs/zh/11-contributing.md](docs/zh/11-contributing.md)
+- 运行测试、构建、贡献规范见 [docs/zh/11-testing.md](docs/zh/11-testing.md) 与 [docs/zh/12-contributing.md](docs/zh/12-contributing.md)
 
 ---
 
@@ -290,7 +290,7 @@ bash run_tests.sh
 - 复现步骤、期望行为、实际行为
 - 相关日志（`data/` 目录或控制台输出）
 
-完整的 **Bug 报告模板**与 **功能建议模板**见 [docs/zh/11-contributing.md](docs/zh/11-contributing.md)「报告问题」一节，可直接照模板填写。
+完整的 **Bug 报告模板**与 **功能建议模板**见 [docs/zh/12-contributing.md](docs/zh/12-contributing.md)「报告问题」一节，可直接照模板填写。
 
 ---
 

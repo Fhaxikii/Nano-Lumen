@@ -272,7 +272,7 @@ bash run_tests.sh
 ```
 
 - Developer docs are in `docs/` (both `en/` and `zh/`, with a `docs/GLOSSARY.md` glossary).
-- Testing and contribution guidelines: [docs/en/10-testing.md](docs/en/10-testing.md) and [docs/en/11-contributing.md](docs/en/11-contributing.md)
+- Testing and contribution guidelines: [docs/en/11-testing.md](docs/en/11-testing.md) and [docs/en/12-contributing.md](docs/en/12-contributing.md)
 
 ---
 
@@ -290,7 +290,7 @@ When reporting a bug, please include:
 - Reproduction steps, expected behavior, and actual behavior.
 - Relevant logs (from the `data/` directory or console output).
 
-Full **bug report** and **feature request** templates are in the "Reporting Issues" section of [docs/en/11-contributing.md](docs/en/11-contributing.md) — you can fill them in directly.
+Full **bug report** and **feature request** templates are in the "Reporting Issues" section of [docs/en/12-contributing.md](docs/en/12-contributing.md) — you can fill them in directly.
 
 ---
 
