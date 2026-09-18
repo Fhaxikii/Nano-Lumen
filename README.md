@@ -329,7 +329,7 @@ bash run_tests.sh
 
 提交 Issue 前，请先确认：
 
-- 已阅读 [docs/zh/01-getting-started.md](docs/zh/01-getting-started.md) 的「常见问题」
+- 已阅读 [「常见问题」](docs/zh/01-getting-started.md#常见问题)
 - 已看「⚠️ 已知边界」一节 —— 其中列出的当前限制不在反馈范围内
 
 报告 Bug 时请附：
@@ -339,7 +339,7 @@ bash run_tests.sh
 - 复现步骤、期望行为、实际行为
 - 相关日志（`data/` 目录下或控制台输出）
 
-完整的 **Bug 报告模板**与 **功能建议模板**见 [docs/zh/12-contributing.md](docs/zh/12-contributing.md)「报告问题」一节，可直接照模板填写。
+完整的 **Bug 报告模板**与 **功能建议模板**见 [「报告问题」](docs/zh/12-contributing.md#报告问题) 一节，可直接照模板填写。
 
 ---
 

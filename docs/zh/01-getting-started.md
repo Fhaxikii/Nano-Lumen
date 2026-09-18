@@ -61,7 +61,7 @@ start.bat
 配置会写入项目根目录的 `.env`。也可以直接编辑该文件，可用的键见
 [03-configuration.md](03-configuration.md)。
 
-## 常见启动问题
+## 常见问题
 
 **知识库检索不可用，提示模型文件缺失**
 先确认 `~/.cache/huggingface/hub/models--BAAI--bge-m3/` 下的
