@@ -58,7 +58,9 @@ Nano sees it differently: files, apps, processes, knowledge, the network, extern
 
 ### 🚫 Session-less Design: not multiple sessions, but one Nano
 
-Traditional agents tie everything to a "session" — history, state, lifecycle all squeezed into one session object. Nano has no concept of sessions. **State ownership, chat history, context management, and cross-session memory are four independent, non-interchangeable systems:**
+Traditional agents tie everything to a "session" — history, state, lifecycle all squeezed into one session object.
+
+Nano has no concept of sessions. **State ownership, chat history, context management, and cross-session memory are four independent, non-interchangeable systems:**
 
 | Traditional session's job | Nano's replacement |
 |---------------------------|-------------------|
@@ -77,13 +79,15 @@ In the traditional model, sessions are "schizophrenic" — they don't know each 
 
 Traditional agents define their capability by "the tools I currently have." Whether a task is possible depends on whether that capability exists in the current toolset — **your boundaries are defined by what you've plugged in.**
 
-Nano doesn't define its capability by "what tools do I have now," but by "what capabilities can I get." So Nano has a new capability model:
+Nano doesn't define its capability by "what tools do I have now," but by "what capabilities can I get."
+
+So Nano has a new capability model:
 
 > **Nano's abilities aren't fixed — they're acquired dynamically based on the task. The upper limit isn't set by Nano itself, but by the whole ecosystem.**
 
-**Skill (single-file plugin) — Nano writes it itself.** Can't find an existing capability? It writes a Skill directly: the system auto-validates it, then shows you the code and explanation for approval before deploying.
+🧩 **Skill (single-file plugin) — Nano writes it itself.** Can't find an existing capability? It writes a Skill directly: the system auto-validates it, then shows you the code and explanation for approval before deploying.
 
-**MCP — Nano finds it, vets it, and connects it itself.** Existing online service out there? Nano walks the full chain from discovery → engineering due diligence → authorized integration.
+🔌 **MCP — Nano finds it, vets it, and connects it itself.** Existing online service out there? Nano walks the full chain from discovery → engineering due diligence → authorized integration.
 
 > Nano doesn't get better by knowing more tricks. It gets better by knowing **who to hand each task to.**
 
@@ -102,7 +106,8 @@ Usually, the more features a piece of software has, the more the settings screen
 
 ### 📡 Trajectory-aware: it never left, you don't need to explain
 
-"I just edited a file at..."" I just set the working directory, can you check..."
+> "I just edited a file at..."  
+> "I just set the working directory, can you check..."
 
 Nano doesn't need you to do this. It continuously tracks your work trajectory: which window you're in, what files you changed, what you did, how long you've been doing it. It watches and understands, instead of waiting for you to explain the backstory.
 
@@ -122,7 +127,7 @@ That's seamless collaboration: Nano isn't a tool that only wakes up when you cal
 
 Context full, session expired, window dead — you can only watch it become a corpse. You don't want to lose it, you can't take it with you, and what was said months ago is truly gone forever.
 
-There is only one Nano, so it doesn't allow itself to fail — it builds its state guarantee system from the kernel up:
+And Nano doesn't let that happen. There is only one of it, so it builds its state guarantee system from the kernel up:
 
 - **Context never explodes, it only thins**: old content is progressively compressed by freshness; Nano never suddenly says "this session is unavailable"
 - **Reset ≠ delete, history always travels with you**: compressing context or manually resetting just moves it out of view; history lives locally, never expires, and supports one-click export
@@ -133,7 +138,7 @@ There is only one Nano, so it doesn't allow itself to fail — it builds its sta
 
 ### ⚡ Proactive Intelligence: a partner that's more than just "ask and answer" (Beta, not yet enabled)
 
-#### Knowing what moment it is
+**🕐 Knowing what moment it is**
 
 It's always watching your rhythm — are you writing docs or code, in a meeting or researching, what you just saved, how long you've been away. So it opens its mouth at the right moments:
 
@@ -145,13 +150,13 @@ It's always watching your rhythm — are you writing docs or code, in a meeting 
 
 Nano calls these moments "**productivity moments**": not for show, only speaking when it can save you the next step.
 
-#### Deciding how to speak and how much
+**🎭 Deciding how to speak and how much**
 
 - **Affect**: your approval makes its tone lighter; your cold shoulder makes it more reserved. Mood only colors the tone, never affects functionality
 - **Patience**: one "leave me alone" and it goes quiet immediately, then slowly recovers. It doesn't hold a grudge, but it remembers the lesson
 - **Rapport**: it keeps a ledger of "which reminders you like, which ones annoy you," guiding how it collaborates with you long-term
 
-#### Learning from your semantics
+**📖 Learning from your semantics**
 
 | What you say | What it learns |
 |--------------|----------------|
@@ -162,7 +167,7 @@ Nano calls these moments "**productivity moments**": not for show, only speaking
 | "Don't remind me about this ever" | Remember permanently |
 | "Don't speak up at all" | Shut up completely |
 
-#### Having its own bottom line
+**🚧 Having its own bottom line**
 
 It only suggests, never acts on its own — every action requires your approval. It won't speak up in inappropriate situations, like during a video call or online meeting.
 
