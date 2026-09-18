@@ -270,7 +270,7 @@ Nano 仍处于 **Beta 开发期**，仅列举当前限制，不预设发布日�
 
 ![Nano 架构](assets/architecture.zh.svg)
 
-*完整架构图（含主动智能、运行时内核、记忆/上下文治理等细节）见 [docs/zh/02-architecture.md](docs/zh/02-architecture.md)*
+*完整架构图见 [docs/zh/02-architecture.md](docs/zh/02-architecture.md)*
 
 ### 目录结构
 

@@ -12,7 +12,7 @@
 
 Nano is a single-process desktop application:
 
-![Nano single-process structure](../../assets/architecture.en.svg)
+![Nano single-process structure](../../assets/architecture.en.detailed.svg)
 
 The UI layer and the orchestration layer live in the same process and
 communicate through async generators passing events.

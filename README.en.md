@@ -269,7 +269,7 @@ Nano is still in **Beta development**. Current limitations are listed below; no 
 
 ![Nano Architecture](assets/architecture.en.svg)
 
-*Full architecture diagram (including proactive intelligence, runtime kernel, memory/context governance, etc.) see [docs/en/02-architecture.md](docs/en/02-architecture.md)*
+*Full architecture diagram see [docs/en/02-architecture.md](docs/en/02-architecture.md)*
 
 ### Directory Layout
 

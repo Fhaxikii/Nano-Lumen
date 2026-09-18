@@ -12,7 +12,7 @@
 
 Nano 是一个单进程的桌面应用：
 
-![Nano 单进程结构](../../assets/architecture.zh.svg)
+![Nano 单进程结构](../../assets/architecture.zh.detailed.svg)
 
 界面层和编排层在同一个进程内，通过异步生成器传递事件。
 界面不直接调用模型或工具，全部经过编排层。
