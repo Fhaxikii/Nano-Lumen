@@ -106,9 +106,9 @@ Usually, the more features a piece of software has, the more the settings screen
 
 Nano doesn't need you to do this. It continuously tracks your work trajectory: which window you're in, what files you changed, what you did, how long you've been doing it. It watches and understands, instead of waiting for you to explain the backstory.
 
-- You don't need to say "I just changed..." — Nano knows which one
-- You don't need to say "I'm currently doing..." — it's watching you do it
-- You say "keep going" — it picks up right where you left off
+> You don't need to say "I just changed..." — Nano knows which one
+> You don't need to say "I'm currently doing..." — it's watching you do it
+> You say "keep going" — it picks up right where you left off
 
 That's seamless collaboration: Nano isn't a tool that only wakes up when you call it. It's a partner who's always there — **you keep your head down working, it watches the road.**
 
@@ -116,7 +116,7 @@ That's seamless collaboration: Nano isn't a tool that only wakes up when you cal
 
 ### ♾️ Persistent State: the one and only, indestructible
 
-You're using it, and suddenly: "This session is no longer available."
+> You're using it, and suddenly: "This session is no longer available."
 
 Context full, session expired, window dead — you can only watch it become a corpse. You don't want to lose it, you can't take it with you, and what was said months ago is truly gone forever.
 
@@ -265,6 +265,8 @@ Nano is still in **Beta development**. Current limitations are listed below; no 
 
 ![Nano Architecture](assets/architecture.en.svg)
 
+*Full architecture diagram (including proactive intelligence, runtime kernel, memory/context governance, etc.) see [docs/en/02-architecture.md](docs/en/02-architecture.md)*
+
 ### Directory Layout
 
 ```
@@ -299,7 +301,7 @@ Nano-Lumen/
 
 ## 🧪 Development & Testing
 
-- The test suite lives in `tests/`, shipped with the repo. Run full regression via `run_tests.sh`:
+The test suite lives in `tests/`, shipped with the repo. Run full regression via `run_tests.sh`:
 
 Single test:
 
