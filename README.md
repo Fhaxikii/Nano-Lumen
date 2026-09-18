@@ -379,6 +379,7 @@ bash run_tests.sh
 
 ## 🔗 相关链接
 
+- **常见问题**：[docs/zh/01-getting-started.md#常见问题](docs/zh/01-getting-started.md#常见问题)
 - **开发者文档**：[docs/zh/README.md](docs/zh/README.md)
 - **版本历史**：[Changelog.txt](Changelog.txt)
 - **用户协议**：[docs/zh/user-agreement.md](docs/zh/user-agreement.md)

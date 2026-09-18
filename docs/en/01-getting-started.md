@@ -82,6 +82,21 @@ message explicitly says the file is fine and does not need re-downloading.
 Check the console output. The rendering layer is WebView2 and requires the
 Microsoft Edge WebView2 Runtime to be installed.
 
+**Why does it download 2GB after installation?**
+That's the local embedding model (bge-m3), used for knowledge-base RAG retrieval — not your LLM. It runs entirely on your local machine with telemetry disabled. You can skip this step if you don't use the knowledge-base feature; the UI will show a missing-environment warning, which is expected.
+
+**Where is the settings menu?**
+The settings entry is the three colored dots (red, yellow, green) in the top-left corner of the window.
+
+**Where are chat history and memories stored?**
+Everything is stored locally in the `data/` directory. Nothing is uploaded to the cloud. To clear everything, just delete that directory. You can also export readable chat history from the settings menu.
+
+**How do I use this software? Is there a tutorial?**
+Nano doesn't have a traditional tutorial — it has its own built-in manual that it can consult. You don't need to read any guides. Just ask it directly: "Where's the settings menu?" "How do I enable OS permissions?" "How do I export my chats?" It knows the answers.
+
+**Does it track my computer usage? Is there a privacy risk?**
+Nano collects minimal necessary behavioral metadata for trajectory awareness: foreground window / process switching, keyboard events (only key types like Ctrl+S / Backspace, not what you type), and CPU sampling. All traces store only a one-line summary of "which app + what it's doing" — no raw events or plaintext content, and records expire after 18 hours. All data stays local, nothing is uploaded to the cloud.
+
 ---
 
 ## How to verify you got it right

@@ -378,6 +378,7 @@ This project is licensed under the [Apache-2.0](LICENSE) License.
 
 ## 🔗 Links
 
+- **FAQ**: [docs/en/01-getting-started.md#faq](docs/en/01-getting-started.md#faq)
 - **Developer docs**: [docs/en/README.md](docs/en/README.md)
 - **Changelog**: [Changelog.txt](Changelog.txt)
 - **User Agreement**: [docs/en/user-agreement.md](docs/en/user-agreement.md)
