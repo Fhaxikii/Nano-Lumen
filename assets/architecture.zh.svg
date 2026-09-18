@@ -8,9 +8,9 @@
       <path d="M0,0 L10,5 L0,10 z" fill="#db2777"/>
     </marker>
     <style>
-      .hdr   { font-size: 16px; font-weight: 700; fill: #0f172a; }
-      .hdrSm { font-size: 14px; font-weight: 700; fill: #0f172a; }
-      .lab   { font-size: 12px; fill: #334155; }
+      .hdr   { font-size: 24px; font-weight: 700; fill: #0f172a; }
+      .hdrSm { font-size: 21px; font-weight: 700; fill: #0f172a; }
+      .lab   { font-size: 18px; fill: #334155; }
     </style>
   </defs>
   <rect width="1900" height="1080" fill="#ffffff"/>
