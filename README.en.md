@@ -328,7 +328,7 @@ bash run_tests.sh
 
 Before submitting an issue, please check:
 
-- You've read the [FAQ in docs/en/01-getting-started.md](docs/en/01-getting-started.md)
+- You've read the [FAQ](docs/en/01-getting-started.md#faq)
 - You've checked the [⚠️ Known Limitations](#️-known-limitations) section — listed current limitations are not eligible for bug reports
 
 When reporting a bug, please include:
@@ -338,7 +338,7 @@ When reporting a bug, please include:
 - Reproduction steps, expected behavior, actual behavior
 - Relevant logs (`data/` directory or console output)
 
-Full **Bug Report** and **Feature Request** templates are in [docs/en/12-contributing.md](docs/en/12-contributing.md) under "Reporting Issues" — fill them in directly.
+Full **Bug Report** and **Feature Request** templates are in the ["Reporting Issues"](docs/en/12-contributing.md#reporting-issues) section — fill them in directly.
 
 ---
 

@@ -70,7 +70,7 @@ Settings are written to `.env` in the project root. You can also edit that
 file directly; the available keys are listed in
 [03-configuration.md](03-configuration.md).
 
-## Common startup problems
+## FAQ
 
 **Knowledge-base retrieval unavailable, complaining about missing model files**
 First check that `~/.cache/huggingface/hub/models--BAAI--bge-m3/` contains
