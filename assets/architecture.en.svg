@@ -1,49 +1,124 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 460" font-family="'Segoe UI',system-ui,sans-serif">
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1900 1080" font-family="-apple-system, 'Segoe UI', Roboto, sans-serif">
   <defs>
-    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#a1a1aa"/>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
     </marker>
+    <marker id="arrPink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#db2777"/>
+    </marker>
+    <style>
+      .hdr   { font-size: 16px; font-weight: 700; fill: #0f172a; }
+      .hdrSm { font-size: 14px; font-weight: 700; fill: #0f172a; }
+      .lab   { font-size: 12px; fill: #334155; }
+    </style>
   </defs>
+  <rect width="1900" height="1080" fill="#ffffff"/>
 
-  <!-- Window layer -->
-  <rect x="170" y="16" width="380" height="54" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
-  <text x="360" y="49" text-anchor="middle" font-size="16" font-weight="600" fill="#18181b">Window layer · pywebview / WebView2</text>
+  <!-- user + UI -->
+  <rect x="280" y="70" width="120" height="56" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="340" y="104" text-anchor="middle" class="hdr">User</text>
+  <rect x="720" y="62" width="400" height="72" rx="12" fill="#eef2ff" stroke="#6366f1" stroke-width="1.8"/>
+  <text x="920" y="103" text-anchor="middle" class="hdr">Frontend UI</text>
+  <line x1="400" y1="92" x2="716" y2="92" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="558" y="86" text-anchor="middle" class="lab">Input</text>
+  <line x1="716" y1="118" x2="404" y2="118" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="558" y="134" text-anchor="middle" class="lab">Event stream</text>
 
-  <line x1="360" y1="70" x2="360" y2="100" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="374" y="90" font-size="12" fill="#71717a">renders</text>
+  <!-- Orchestrator -->
+  <rect x="370" y="170" width="1080" height="180" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <text x="392" y="198" class="hdr">Orchestrator · ReAct main loop</text>
+  <rect x="390" y="230" width="250" height="100" rx="10" fill="#fff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="515" y="288" text-anchor="middle" class="hdrSm">Assemble system prompt</text>
+  <rect x="660" y="230" width="250" height="100" rx="10" fill="#fff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="785" y="288" text-anchor="middle" class="hdrSm">Streaming decision</text>
+  <rect x="930" y="230" width="250" height="100" rx="10" fill="#fff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="1055" y="288" text-anchor="middle" class="hdrSm">Batch tool execution</text>
+  <rect x="1200" y="230" width="230" height="100" rx="10" fill="#fff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="1315" y="288" text-anchor="middle" class="hdrSm">Write results back</text>
+  <line x1="640" y1="280" x2="656" y2="280" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="910" y1="280" x2="926" y2="280" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="1180" y1="280" x2="1196" y2="280" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <path d="M 1315 330 L 1315 344 L 785 344 L 785 334" fill="none" stroke="#475569" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+  <text x="1055" y="341" text-anchor="middle" class="lab">Continue thinking</text>
+  <line x1="870" y1="134" x2="870" y2="166" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="970" y1="166" x2="970" y2="134" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
 
-  <!-- UI layer -->
-  <rect x="170" y="104" width="380" height="54" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
-  <text x="360" y="137" text-anchor="middle" font-size="16" font-weight="600" fill="#18181b">UI layer · app.py (NiceGUI)</text>
+  <!-- Provider -->
+  <rect x="680" y="395" width="270" height="60" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.8"/>
+  <text x="815" y="431" text-anchor="middle" class="hdr">Provider · Model access</text>
+  <rect x="1000" y="395" width="240" height="60" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.6"/>
+  <text x="1120" y="431" text-anchor="middle" class="hdrSm">LLM API</text>
+  <line x1="815" y1="350" x2="815" y2="391" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="845" y1="391" x2="845" y2="350" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <line x1="950" y1="425" x2="996" y2="425" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
 
-  <line x1="360" y1="158" x2="360" y2="188" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="374" y="178" font-size="12" fill="#71717a">calls</text>
+  <!-- ToolCatalog -->
+  <rect x="680" y="500" width="270" height="56" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="1.8"/>
+  <text x="815" y="534" text-anchor="middle" class="hdr">ToolCatalog · Tool registry</text>
+  <line x1="815" y1="455" x2="815" y2="496" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <rect x="440" y="590" width="210" height="56" rx="10" fill="#f0fdf4" stroke="#10b981" stroke-width="1.5"/>
+  <text x="545" y="624" text-anchor="middle" class="hdrSm">Built-in tools</text>
+  <rect x="670" y="590" width="210" height="56" rx="10" fill="#f0fdf4" stroke="#10b981" stroke-width="1.5"/>
+  <text x="775" y="624" text-anchor="middle" class="hdrSm">Local skills</text>
+  <rect x="900" y="590" width="210" height="56" rx="10" fill="#f0fdf4" stroke="#10b981" stroke-width="1.5"/>
+  <text x="1005" y="624" text-anchor="middle" class="hdrSm">MCP</text>
+  <line x1="720" y1="556" x2="580" y2="586" stroke="#475569" stroke-width="1.4" marker-end="url(#arr)"/>
+  <line x1="815" y1="556" x2="780" y2="586" stroke="#475569" stroke-width="1.4" marker-end="url(#arr)"/>
+  <line x1="910" y1="556" x2="980" y2="586" stroke="#475569" stroke-width="1.4" marker-end="url(#arr)"/>
+  <rect x="1080" y="500" width="200" height="56" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.4" stroke-dasharray="4 3"/>
+  <text x="1180" y="534" text-anchor="middle" class="hdrSm">Health gate</text>
+  <line x1="950" y1="528" x2="1076" y2="528" stroke="#d97706" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#arr)"/>
 
-  <!-- Orchestration -->
-  <rect x="110" y="192" width="500" height="70" rx="10" fill="#fff8eb" stroke="#f59e0b"/>
-  <text x="360" y="222" text-anchor="middle" font-size="16" font-weight="600" fill="#18181b">Orchestration · core/orchestrator.py</text>
-  <text x="360" y="246" text-anchor="middle" font-size="13" fill="#71717a">ReAct main loop</text>
+  <!-- OS layer -->
+  <rect x="440" y="690" width="450" height="56" rx="12" fill="#fff7ed" stroke="#ea580c" stroke-width="1.8"/>
+  <text x="665" y="724" text-anchor="middle" class="hdr">OS automation layer</text>
+  <line x1="545" y1="646" x2="600" y2="686" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
 
-  <!-- Three columns -->
-  <line x1="170" y1="262" x2="170" y2="292" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="360" y1="262" x2="360" y2="292" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="550" y1="262" x2="550" y2="292" stroke="#a1a1aa" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- bottom: kernel -->
+  <rect x="150" y="820" width="600" height="160" rx="12" fill="#f0f9ff" stroke="#0284c7" stroke-width="1.8"/>
+  <text x="450" y="910" text-anchor="middle" class="hdr">RuntimeKernel · Runtime kernel</text>
+  <path d="M 370 260 L 290 260 L 290 820" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="300" y="530" class="lab">Submit command / read state</text>
 
-  <rect x="70" y="296" width="200" height="150" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
-  <text x="170" y="326" text-anchor="middle" font-size="15" font-weight="600" fill="#18181b">Model layer</text>
-  <text x="170" y="356" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/provider</text>
-  <text x="170" y="380" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/models</text>
+  <!-- bottom: memory + governance -->
+  <rect x="800" y="820" width="680" height="90" rx="12" fill="#faf5ff" stroke="#9333ea" stroke-width="1.8"/>
+  <text x="1140" y="872" text-anchor="middle" class="hdr">Memory system</text>
+  <rect x="800" y="925" width="680" height="90" rx="12" fill="#fefce8" stroke="#ca8a04" stroke-width="1.8"/>
+  <text x="1140" y="977" text-anchor="middle" class="hdr">Context governance</text>
+  <line x1="1110" y1="910" x2="1110" y2="921" stroke="#475569" stroke-width="1.4" marker-end="url(#arr)"/>
+  <line x1="1170" y1="921" x2="1170" y2="910" stroke="#475569" stroke-width="1.4" marker-end="url(#arr)"/>
 
-  <rect x="260" y="296" width="200" height="150" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
-  <text x="360" y="326" text-anchor="middle" font-size="15" font-weight="600" fill="#18181b">Tools &amp; capabilities</text>
-  <text x="360" y="356" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/tools</text>
-  <text x="360" y="380" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/os_layer</text>
-  <text x="360" y="404" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/mcp_client</text>
-  <text x="360" y="428" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">skills/</text>
+  <!-- orchestrator -> memory: x=1380 -->
+  <path d="M 1380 350 L 1380 816" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="1388" y="650" class="lab">History R/W / injection</text>
+  <!-- orchestrator <-> governance: x=1300 dashed bidirectional -->
+  <line x1="1300" y1="350" x2="1300" y2="921" stroke="#475569" stroke-width="1.4" stroke-dasharray="5 4" marker-start="url(#arr)" marker-end="url(#arr)"/>
+  <text x="1293" y="650" text-anchor="end" class="lab">Pre-request: meter / guard / decay</text>
 
-  <rect x="450" y="296" width="200" height="150" rx="10" fill="#ffffff" stroke="#d4d4d8"/>
-  <text x="550" y="326" text-anchor="middle" font-size="15" font-weight="600" fill="#18181b">Storage &amp; memory</text>
-  <text x="550" y="356" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">memory/</text>
-  <text x="550" y="380" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/context</text>
-  <text x="550" y="404" text-anchor="middle" font-size="13" fill="#3f3f46" font-family="ui-monospace,Consolas,monospace">core/rag</text>
+  <!-- proactive column: vertically centered -->
+  <rect x="1560" y="305" width="310" height="470" rx="14" fill="#fdf2f8" stroke="#db2777" stroke-width="1.8"/>
+  <text x="1715" y="331" text-anchor="middle" class="hdr">Proactive intelligence</text>
+  <rect x="1580" y="345" width="270" height="50" rx="9" fill="#fff" stroke="#ec4899" stroke-width="1.3"/>
+  <text x="1715" y="375" text-anchor="middle" class="hdrSm">Environment monitor</text>
+  <rect x="1580" y="407" width="270" height="50" rx="9" fill="#fff" stroke="#ec4899" stroke-width="1.3"/>
+  <text x="1715" y="437" text-anchor="middle" class="hdrSm">Activity capture</text>
+  <rect x="1580" y="469" width="270" height="50" rx="9" fill="#fff" stroke="#ec4899" stroke-width="1.3"/>
+  <text x="1715" y="499" text-anchor="middle" class="hdrSm">Scene recognition</text>
+  <rect x="1580" y="531" width="270" height="50" rx="9" fill="#fff" stroke="#ec4899" stroke-width="1.3"/>
+  <text x="1715" y="561" text-anchor="middle" class="hdrSm">Trigger scoring</text>
+  <rect x="1580" y="593" width="270" height="50" rx="9" fill="#fff" stroke="#ec4899" stroke-width="1.5"/>
+  <text x="1715" y="623" text-anchor="middle" class="hdrSm">Proactive engine</text>
+  <rect x="1580" y="655" width="270" height="50" rx="9" fill="#fff" stroke="#ec4899" stroke-width="1.3"/>
+  <text x="1715" y="685" text-anchor="middle" class="hdrSm">Proactive push</text>
+  <line x1="1715" y1="395" x2="1715" y2="401" stroke="#475569" stroke-width="1.3" marker-end="url(#arr)"/>
+  <line x1="1715" y1="457" x2="1715" y2="463" stroke="#475569" stroke-width="1.3" marker-end="url(#arr)"/>
+  <line x1="1715" y1="519" x2="1715" y2="525" stroke="#475569" stroke-width="1.3" marker-end="url(#arr)"/>
+  <line x1="1715" y1="581" x2="1715" y2="587" stroke="#475569" stroke-width="1.3" marker-end="url(#arr)"/>
+  <line x1="1715" y1="643" x2="1715" y2="649" stroke="#475569" stroke-width="1.3" marker-end="url(#arr)"/>
+  <!-- engine -> orchestrator: pink L -->
+  <path d="M 1580 618 L 1450 618 L 1450 350" fill="none" stroke="#db2777" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrPink)"/>
+  <text x="1458" y="500" class="lab" fill="#db2777">Context injection</text>
+  <!-- push -> UI: pink right channel -->
+  <path d="M 1850 680 L 1885 680 L 1885 98 L 1124 98" fill="none" stroke="#db2777" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrPink)"/>
 </svg>
