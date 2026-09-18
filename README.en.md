@@ -257,9 +257,11 @@ Nano itself never collects or tracks any user behavior data.
 
 ---
 
-## ⚠️ Known Limitations
+## ⚠️ Known Limitations & Roadmap
 
-Nano is still in **Beta development**. Current limitations are listed below; no release date is set, and contributions are welcome.
+Nano is still in **Beta development**. Contributions are welcome.
+
+### Current Known Limitations
 
 - Windows 10 or later only; no cross-platform version
 - The proactive behavior engine is in shadow observation mode, with no active interaction capability. **Users cannot manually enable it.** The "proactivity" slider in the UI is a placeholder and **has no effect yet**. It will be opened once shadow logs are sufficiently validated and reliability is confirmed
@@ -267,6 +269,13 @@ Nano is still in **Beta development**. Current limitations are listed below; no 
 - Development testing was done entirely with the Claude API. DeepSeek tool-calling stability and token cache hit rate are **not deeply tested**
 - I18N is incomplete: language switching currently only affects model output language preferences, **not the UI language. The UI currently only supports Simplified Chinese**
 - NiceGUI cannot implement a built-in browser
+
+### Beta Roadmap
+
+- **OpenAI-compatible API**: support other providers (Zhipu / Kimi / OpenRouter, etc.)
+- **I18N**: full UI multi-language support
+- **Enable proactive intelligence**: officially release the proactive behavior engine from shadow observation
+- **Stable release**: ship the first stable version
 
 ---
 
