@@ -91,10 +91,10 @@ Nano doesn't define its capability by "what tools do I have now," but by "what c
 
 ### 🛠️ Self-operating: you just say it, Nano handles the rest
 
-- **It knows its own problems** — environment, Skill, and MCP health are continuously monitored; errors and fix suggestions are injected directly into its context
-- **It manages its own ecosystem** — installing, deleting, disabling, enabling, or modifying Skills and MCPs is just one sentence away
-- **It manages its own memory** — say "delete this memory" and it's gone; if memory injection is eating too many tokens, it proactively suggests pruning outdated entries
-- **It knows its own limits** — it warns you before context compression kicks in; it warns you before you hit today's token limit
+- **It knows its own problems**: environment, Skill, and MCP health are continuously monitored; errors and fix suggestions are injected directly into its context
+- **It manages its own ecosystem**: installing, deleting, disabling, enabling, or modifying Skills and MCPs is just one sentence away
+- **It manages its own memory**: say "delete this memory" and it's gone; if memory injection is eating too many tokens, it proactively suggests pruning outdated entries
+- **It knows its own limits**: it warns you before context compression kicks in; it warns you before you hit today's token limit
 
 Usually, the more features a piece of software has, the more the settings screen looks like a cockpit. Nano has full operational control over its own capability ecosystem — **you don't need to hunt for switches in the cockpit.** It provides entry points, but managing tools shouldn't be a human-only job.
 
@@ -120,12 +120,12 @@ You're using it, and suddenly: "This session is no longer available."
 
 Context full, session expired, window dead — you can only watch it become a corpse. You don't want to lose it, you can't take it with you, and what was said months ago is truly gone forever.
 
-Nano builds its state guarantee system from the kernel up. **There is only one Nano, so it doesn't allow itself to fail. This isn't a wish — it's the foundation:**
+There is only one Nano, so it doesn't allow itself to fail — it builds its state guarantee system from the kernel up:
 
-- **Context never explodes, it only thins** — old content is progressively compressed by freshness; Nano never suddenly says "this session is unavailable"
-- **Reset ≠ delete, history always travels with you** — compressing context or manually resetting just moves it out of view; history lives locally, never expires, and supports one-click export
-- **Crash doesn't cause amnesia** — accidental process kill, power outage, crash, even native segfault — it cleans up the mess on restart and asks you if you want to redo what was interrupted
-- **Never permanently stuck** — expiration wake-up, deadline abandonment, unconditional orphan collection — the system always stays responsive
+- **Context never explodes, it only thins**: old content is progressively compressed by freshness; Nano never suddenly says "this session is unavailable"
+- **Reset ≠ delete, history always travels with you**: compressing context or manually resetting just moves it out of view; history lives locally, never expires, and supports one-click export
+- **Crash doesn't cause amnesia**: accidental process kill, power outage, crash, even native segfault — it cleans up the mess on restart and asks you if you want to redo what was interrupted
+- **Never permanently stuck**: expiration wake-up, deadline abandonment, unconditional orphan collection — the system always stays responsive
 
 ---
 
@@ -143,9 +143,9 @@ Nano calls these moments "**productivity moments**": not for show, only speaking
 
 #### Deciding how to speak and how much
 
-- **Affect** — your approval makes its tone lighter; your cold shoulder makes it more reserved. Mood only colors the tone, never affects functionality
-- **Patience** — one "leave me alone" and it goes quiet immediately, then slowly recovers. It doesn't hold a grudge, but it remembers the lesson
-- **Rapport** — it keeps a ledger of "which reminders you like, which ones annoy you," guiding how it collaborates with you long-term
+- **Affect**: your approval makes its tone lighter; your cold shoulder makes it more reserved. Mood only colors the tone, never affects functionality
+- **Patience**: one "leave me alone" and it goes quiet immediately, then slowly recovers. It doesn't hold a grudge, but it remembers the lesson
+- **Rapport**: it keeps a ledger of "which reminders you like, which ones annoy you," guiding how it collaborates with you long-term
 
 #### Learning from your semantics
 
@@ -166,17 +166,17 @@ It only suggests, never acts on its own — every action requires your approval.
 
 ### ✨ Other Features
 
-- **⚡ Streaming visualization** — tool inputs and outputs visible in real-time
-- **🔧 Built-in tools** — file read/write/search/edit, RAG retrieval, task lists, OS automation, Mini window, and 30+ built-in tools
-- **🔍 Dynamic awareness** — tools are injected on demand, minimizing per-turn context cost
-- **📚 Knowledge base** — local embedding models, offline retrieval, no cloud upload (telemetry disabled)
-- **🤖 Sub-agents** — spawn sub-agents to explore or execute tasks in parallel
-- **🛡️ AUTO mode** — even in auto mode, there's still an independent third-party danger classifier that blocks dangerous commands conflicting with your intent
-- **⏰ Background tasks** — run tasks in parallel in the background, report back when done
-- **📖 Iterative reading** — reading huge files doesn't blow up context or waste tokens on blind full injection: test-read to locate, then read in chunks, compress read portions into notes, discard raw text
-- **👁️ Visual self-check** — in idle time, it tests whether the UIA visual positioning pipeline is healthy: if it degrades, it tells you proactively instead of waiting for you to notice "it's been failing to locate things lately"
-- **🖱️ Yield to user** — during GUI operations, detecting any user click, keystroke, or scroll automatically yields and doesn't steal foreground focus; when resuming, it doesn't assume the scene is unchanged — first re-checks windows, coordinates, and content, confirms whether the task was already completed by the user, then decides whether to re-observe
-- **🔒 Permission control** — system actions are split into six independent permission switches by risk level; every OS action (read-only included) is logged with a trail
+- **⚡ Streaming visualization**: tool inputs and outputs visible in real-time
+- **🔧 Built-in tools**: file read/write/search/edit, RAG retrieval, task lists, OS automation, Mini window, and 30+ built-in tools
+- **🔍 Dynamic awareness**: tools are injected on demand, minimizing per-turn context cost
+- **📚 Knowledge base**: local embedding models, offline retrieval, no cloud upload (telemetry disabled)
+- **🤖 Sub-agents**: spawn sub-agents to explore or execute tasks in parallel
+- **🛡️ AUTO mode**: even in auto mode, there's still an independent third-party danger classifier that blocks dangerous commands conflicting with your intent
+- **⏰ Background tasks**: run tasks in parallel in the background, report back when done
+- **📖 Iterative reading**: reading huge files doesn't blow up context or waste tokens on blind full injection: test-read to locate, then read in chunks, compress read portions into notes, discard raw text
+- **👁️ Visual self-check**: in idle time, it tests whether the UIA visual positioning pipeline is healthy: if it degrades, it tells you proactively instead of waiting for you to notice "it's been failing to locate things lately"
+- **🖱️ Yield to user**: during GUI operations, detecting any user click, keystroke, or scroll automatically yields and doesn't steal foreground focus; when resuming, it doesn't assume the scene is unchanged — first re-checks windows, coordinates, and content, confirms whether the task was already completed by the user, then decides whether to re-observe
+- **🔒 Permission control**: system actions are split into six independent permission switches by risk level; every OS action (read-only included) is logged with a trail
 
 ---
 
