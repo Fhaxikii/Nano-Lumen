@@ -107,7 +107,9 @@ Usually, the more features a piece of software has, the more the settings screen
 Nano doesn't need you to do this. It continuously tracks your work trajectory: which window you're in, what files you changed, what you did, how long you've been doing it. It watches and understands, instead of waiting for you to explain the backstory.
 
 > You don't need to say "I just changed..." — Nano knows which one
+>
 > You don't need to say "I'm currently doing..." — it's watching you do it
+>
 > You say "keep going" — it picks up right where you left off
 
 That's seamless collaboration: Nano isn't a tool that only wakes up when you call it. It's a partner who's always there — **you keep your head down working, it watches the road.**
@@ -136,7 +138,9 @@ There is only one Nano, so it doesn't allow itself to fail — it builds its sta
 It's always watching your rhythm — are you writing docs or code, in a meeting or researching, what you just saved, how long you've been away. So it opens its mouth at the right moments:
 
 > You come back after being away → "Want to pick up where you left off?"
+>
 > You just finished a chunk of work → "Want me to compile a checklist?"
+>
 > You've been grinding hard and suddenly stop → "Take a break? Want me to help with the next step?"
 
 Nano calls these moments "**productivity moments**": not for show, only speaking when it can save you the next step.
