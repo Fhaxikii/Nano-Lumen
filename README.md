@@ -10,7 +10,6 @@
 
 <p align="center">A persistent AI runtime for Windows that never forgets — across sessions, crashes, and restarts.</p>
 
-<br>
 
 <div align="center">
 

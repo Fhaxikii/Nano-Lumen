@@ -10,7 +10,6 @@
 
 <p align="center">运行在 Windows 上的持久化 AI Runtime——跨会话、跨崩溃、跨重启，从不遗忘。</p>
 
-<br>
 
 <div align="center">
 
