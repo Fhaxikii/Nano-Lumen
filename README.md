@@ -371,7 +371,7 @@ This project is licensed under the [Apache-2.0](LICENSE) License.
 
 **AI Collaboration Contributors**
 
-- Claude ([Anthropic](https://www.anthropic.com)) — extensive assistance with code implementation and debugging, and the architecture draws heavily on [Claude Code's design paradigm](https://www.anthropic.com/engineering)
+- Claude ([Anthropic](https://www.anthropic.com)) — extensive assistance with code implementation and debugging, and the architecture draws heavily on Claude Code's design paradigm. See [Anthropic Engineering](https://www.anthropic.com/engineering)
 
 ---
 

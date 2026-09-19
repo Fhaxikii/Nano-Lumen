@@ -372,7 +372,7 @@ bash run_tests.sh
 
 **AI 协作贡献者**
 
-- Claude（[Anthropic](https://www.anthropic.com)）— 在代码实现与调试中提供了大量协助，架构上也大量借鉴了 [Claude Code 的设计范式](https://www.anthropic.com/engineering)
+- Claude（[Anthropic](https://www.anthropic.com)）— 在代码实现与调试中提供了大量协助，架构上也大量借鉴了 Claude Code 的设计范式，详见 [Anthropic 工程文档](https://www.anthropic.com/engineering)
 
 ---
 
