@@ -13,7 +13,7 @@
 
 <div align="center">
 
-| **[🚀 Quick Start](#-installation--quick-start)** | **[🐛 Report Issues](https://github.com/Fhaxikii/Nano-Lumen/issues/new)** | **[⚙️ Core Architecture](docs/en/02-architecture.md#process-structure)** |
+| **[🚀 Quick Start](#-installation--quick-start)** | **[🐛 Report Issues](https://github.com/Fhaxikii/Nano-Lumen/issues/new/choose)** | **[⚙️ Core Architecture](docs/en/02-architecture.md#process-structure)** |
 |:--:|:--:|:--:|
 | **[📖 Developer Docs](docs/README.md)** | **[❓ FAQ](docs/en/01-getting-started.md#faq)** | **[📜 User Agreement](docs/en/user-agreement.md)** |
 

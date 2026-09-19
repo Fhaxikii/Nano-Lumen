@@ -13,7 +13,7 @@
 
 <div align="center">
 
-| **[🚀 快速开始](#-安装与快速开始)** | **[🐛 报告问题](https://github.com/Fhaxikii/Nano-Lumen/issues/new)** | **[⚙️ 核心架构](docs/zh/02-architecture.md#进程结构)** |
+| **[🚀 快速开始](#-安装与快速开始)** | **[🐛 报告问题](https://github.com/Fhaxikii/Nano-Lumen/issues/new/choose)** | **[⚙️ 核心架构](docs/zh/02-architecture.md#进程结构)** |
 |:--:|:--:|:--:|
 | **[📖 开发者文档](docs/README.md)** | **[❓ 常见问题](docs/zh/01-getting-started.md#常见问题)** | **[📜 用户协议](docs/zh/user-agreement.md)** |
 
