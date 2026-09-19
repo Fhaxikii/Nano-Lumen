@@ -4,18 +4,21 @@
 
 ![Nano-Lumen](assets/nano-banner.png)
 
-<p align="center"><b>Talk to Your Computer.</b></p>
+<p align="center">🌐 <b>English</b> · <a href="README.zh.md">简体中文</a></p>
 
-<p align="center">Nano is a persistent AI runtime for Windows that connects models to applications, files, tools, and system capabilities. It preserves state across sessions and restarts.</p>
+<h3 align="center">Talk to Your Computer.</h3>
 
-<p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.zh.md">简体中文</a>
-</p>
+<p align="center">A persistent AI runtime for Windows that never forgets — across sessions, crashes, and restarts.</p>
 
-| [🚀 Quick Start](#-installation--quick-start) | [⚙️ Core Architecture](#️-core-architecture) | [📸 Preview](#-preview) |
+<br>
+
+<div align="center">
+
+| **[🚀 Quick Start](#-installation--quick-start)** | **[⚙️ Core Architecture](#️-core-architecture)** | **[📸 Preview](#-preview)** |
 |:--|:--|:--|
-| [🛡️ Security](#️-security) | [🐛 Issues](https://github.com/Fhaxikii/Nano-Lumen/issues) | [🧪 Development & Testing](#-development--testing) |
+| **[🛡️ Security](#️-security)** | **[🐛 Issues](https://github.com/Fhaxikii/Nano-Lumen/issues)** | **[🧪 Development & Testing](#-development--testing)** |
+
+</div>
 
 ---
 

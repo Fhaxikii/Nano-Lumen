@@ -4,18 +4,21 @@
 
 ![Nano-Lumen](assets/nano-banner.png)
 
-<p align="center"><b>Talk to Your Computer.</b></p>
+<p align="center">🌐 <a href="README.md">English</a> · <b>简体中文</b></p>
 
-<p align="center">Nano 是一个运行于 Windows 的持久化 AI Runtime，将模型连接到应用、文件、工具与系统能力，并跨会话、跨重启保持状态。</p>
+<h3 align="center">Talk to Your Computer.</h3>
 
-<p align="center">
-  <a href="README.md">English</a> ·
-  <a href="README.zh.md">简体中文</a>
-</p>
+<p align="center">运行在 Windows 上的持久化 AI Runtime——跨会话、跨崩溃、跨重启，从不遗忘。</p>
 
-| [🚀 快速开始](#-安装与快速开始) | [⚙️ 核心架构设计](#-核心架构设计) | [📸 预览](#-预览) |
+<br>
+
+<div align="center">
+
+| **[🚀 快速开始](#-安装与快速开始)** | **[⚙️ 核心架构设计](#-核心架构设计)** | **[📸 预览](#-预览)** |
 |:--|:--|:--|
-| [🛡️ 安全说明](#️-安全说明) | [🐛 反馈问题](https://github.com/Fhaxikii/Nano-Lumen/issues) | [🧪 开发与测试](#-开发与测试) |
+| **[🛡️ 安全说明](#️-安全说明)** | **[🐛 反馈问题](https://github.com/Fhaxikii/Nano-Lumen/issues)** | **[🧪 开发与测试](#-开发与测试)** |
+
+</div>
 
 ---
 
