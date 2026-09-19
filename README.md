@@ -14,9 +14,9 @@
 
 <div align="center">
 
-| **[🚀 Quick Start](#-installation--quick-start)** | **[⚙️ Core Architecture](#️-core-architecture)** | **[📸 Preview](#-preview)** |
+| **[🚀 Quick Start](#-installation--quick-start)** | **[🐛 Report Issues](https://github.com/Fhaxikii/Nano-Lumen/issues/new)** | **[⚙️ Core Architecture](docs/en/02-architecture.md#process-structure)** |
 |:--:|:--:|:--:|
-| **[🛡️ Security](#️-security)** | **[🐛 Issues](https://github.com/Fhaxikii/Nano-Lumen/issues)** | **[🧪 Development & Testing](#-development--testing)** |
+| **[📖 Developer Docs](docs/README.md)** | **[❓ FAQ](docs/en/01-getting-started.md#faq)** | **[📜 User Agreement](docs/en/user-agreement.md)** |
 
 </div>
 
