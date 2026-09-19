@@ -15,7 +15,7 @@
 <div align="center">
 
 | **[🚀 Quick Start](#-installation--quick-start)** | **[⚙️ Core Architecture](#️-core-architecture)** | **[📸 Preview](#-preview)** |
-|:--|:--|:--|
+|:--:|:--:|:--:|
 | **[🛡️ Security](#️-security)** | **[🐛 Issues](https://github.com/Fhaxikii/Nano-Lumen/issues)** | **[🧪 Development & Testing](#-development--testing)** |
 
 </div>
