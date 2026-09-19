@@ -8,7 +8,7 @@
 
 <h3 align="center">Talk to Your Computer.</h3>
 
-<p align="center">A persistent AI runtime for Windows that never forgets — across sessions, crashes, and restarts.</p>
+<p align="center">A persistent AI runtime for Windows that connects models to applications, files, tools, and system capabilities. It preserves state across sessions and restarts.</p>
 
 
 <div align="center">
