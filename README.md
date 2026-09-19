@@ -31,6 +31,7 @@
 - [🧪 Development & Testing](#-development--testing)
 - [🐛 Reporting Issues](#-reporting-issues)
 - [📄 License](#-license)
+- [👥 Authors & Contributors](#-authors--contributors)
 - [🔗 Links](#-links)
 
 ---
@@ -363,7 +364,7 @@ This project is licensed under the [Apache-2.0](LICENSE) License.
 
 ---
 
-**Authors & Contributors**
+## 👥 Authors & Contributors
 
 - [Koala](https://github.com/Fhaxikii) — project author and primary developer
 - [lebangjames](https://github.com/lebangjames) — data collection, testing, and early prototype design
