@@ -8,7 +8,7 @@
 
 <h3 align="center">Talk to Your Computer.</h3>
 
-<p align="center">一个运行于 Windows 的持久化 AI Runtime，将模型连接到应用、文件、工具与系统能力，并跨会话、跨重启保持状态。</p>
+<p align="center">一个运行于 Windows 的持久化 AI Runtime，将模型连接到文件、工具与系统能力，并跨会话、跨重启保持状态。</p>
 
 
 <div align="center">
