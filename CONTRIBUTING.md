@@ -1,16 +1,16 @@
-# 贡献指南 / Contributing
-
-感谢你有兴趣为 Nano-Lumen 贡献！
+# Contributing / 贡献指南
 
 Thanks for your interest in contributing to Nano-Lumen!
 
-## 完整贡献指南 / Full Contributing Guide
+感谢你有兴趣为 Nano-Lumen 贡献！
 
-- **中文**：[docs/zh/12-contributing.md](docs/zh/12-contributing.md)
-- **English**：[docs/en/12-contributing.md](docs/en/12-contributing.md)
+## Full Contributing Guide / 完整贡献指南
 
-## 快速入口 / Quick Links
+- **English**: [docs/en/12-contributing.md](docs/en/12-contributing.md)
+- **中文**: [docs/zh/12-contributing.md](docs/zh/12-contributing.md)
 
-- 🐛 [报告 Bug / Report a Bug](.github/ISSUE_TEMPLATE/bug_report.md)
-- ✨ [功能建议 / Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
-- 📖 [常见问题 / FAQ](docs/zh/01-getting-started.md#常见问题)
+## Quick Links / 快速入口
+
+- 🐛 [Report a Bug / 报告 Bug](.github/ISSUE_TEMPLATE/bug_report.md)
+- ✨ [Feature Request / 功能建议](.github/ISSUE_TEMPLATE/feature_request.md)
+- 📖 [FAQ / 常见问题](docs/en/01-getting-started.md#faq)

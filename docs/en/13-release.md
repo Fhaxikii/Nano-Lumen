@@ -1,4 +1,4 @@
-# 13 · Releases and versioning
+﻿# 13 · Releases and versioning
 
 **What this page covers**: the full flow for releasing a new version (vX.YZ) — how version numbers work, which places in the repository carry the version, and the format rules for the Changelog and Release notes.  
 **After reading it you can**: run a complete release, from a code change to a published GitHub Release.  
@@ -20,7 +20,7 @@
 | Append a `## vX.YZ` section at the end of `Changelog.txt` | format below |
 | The UI greeting `// nano-lumen vX.YZ` in `app.py` | search for `nano-lumen v` |
 | The "manual matches Nano version" header of `data/knowledge/_system/nano_manual.md` | |
-| `**Nano-Lumen vX.YZ**` under the titles of `README.md` / `README.en.md` | |
+| `**Nano-Lumen vX.YZ**` under the titles of `README.md` / `README.zh.md` | |
 | The "as of version X" proactive-mode note in `nano_manual.md` | conditional: must change when the shadow status changes; otherwise bump it in passing |
 
 - Version numbers inside docs 08/11 and test comments are **examples or history**; never update them.
@@ -51,7 +51,7 @@ gh release create vX.YZ --target main --title "Nano-Lumen vX.YZ" --notes-file <n
    - The last two lines are always:
 
 ```
-- 安装方式见 [README](https://github.com/Fhaxikii/Nano-Lumen#安装) · Install: see the [English README](https://github.com/Fhaxikii/Nano-Lumen/blob/main/README.en.md#installation--quick-start)
+- 安装方式见 [README](https://github.com/Fhaxikii/Nano-Lumen#安装) · Install: see the [English README](https://github.com/Fhaxikii/Nano-Lumen/blob/main/README.zh.md#installation--quick-start)
 - 完整变更历史见 [Changelog.txt](Changelog.txt) · Full changelog: [Changelog.txt](Changelog.txt)
 ```
 

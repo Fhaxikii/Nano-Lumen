@@ -9,11 +9,8 @@ shared assets of the docs tree.
 
 ## Languages
 
-The Chinese tree is the original. Other languages are translations of it:
-
-- **中文** — [zh/README.md](zh/README.md)（原始版本 / original）
-- **English** — [en/README.md](en/README.md)（translated from the Chinese
-  original）
+- **English** — [en/README.md](en/README.md)
+- **中文** — [zh/README.md](zh/README.md)
 
 Each page carries a language switch line at the top linking to its
 counterparts in the other trees.

@@ -1,395 +1,394 @@
-# <img src="assets/nano_icon_preview.png" height="34" alt="Nano" align="top"> Nano-Lumen
+﻿# <img src="assets/nano_icon_preview.png" height="34" alt="Nano" align="top"> Nano-Lumen
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB) ![Platform](https://img.shields.io/badge/Platform-Windows%20Desktop-0078D6) ![License](https://img.shields.io/badge/License-Apache--2.0-brightgreen) ![Beta](https://img.shields.io/badge/v1.97-Beta-orange)
 
 ![Nano-Lumen](assets/nano-banner.png)
 
-**Nano-Lumen v1.97 (Beta)** · Windows 桌面常驻型通用智能体 · [English](README.en.md)
+**Nano-Lumen v1.97 (Beta)** · A persistent AI agent that lives on your Windows desktop · [简体中文](README.zh.md)
 
-`常驻 AI Agent` · `任务级持久状态` · `本地优先隐私` · `Windows 桌面端`
-
----
-
-## 📑 目录
-
-- [📸 预览](#-预览)
-- [⚙️ 核心架构设计](#-核心架构设计)
-  - [🚫 无 Session 化](#-无-session-化不是一个个会话而是一个-nano)
-  - [🎯 目标导向](#-目标导向完成这个目标世界上有哪些方式)
-  - [🛠️ 自我运维](#️-自我运维你只需要说剩下的交给-nano)
-  - [📡 轨迹感知](#-轨迹感知它从未离开你无需解释)
-  - [♾️ 持久状态系统](#️-持久状态系统唯一的那一个也是无法摧毁的那一个)
-  - [⚡ 主动智能](#-主动智能一个不局限于你问我答的伙伴beta阶段暂未启用)
-  - [✨ 其他特性](#-其他特性)
-- [🚀 安装与快速开始](#-安装与快速开始)
-- [🛡️ 安全说明](#️-安全说明)
-- [🔐 隐私与信任](#-隐私与信任)
-- [⚠️ 已知边界](#️-已知边界)
-- [🏗️ 架构概览](#️-架构概览)
-- [🧪 开发与测试](#-开发与测试)
-- [🐛 反馈问题](#-反馈问题)
-- [📄 开源许可](#-开源许可)
-- [💛 致谢](#-致谢)
-- [🔗 相关链接](#-相关链接)
+`Resident AI Agent` · `Task-level persistent state` · `Local-first privacy` · `Windows Desktop`
 
 ---
 
-## 💭 如果 AI 真正生活在你的电脑里，会是什么样？
+## 📑 Table of Contents
 
-当前普遍的 AI Agent 设计范式，都是临时入驻电脑并完成任务：
-
-> 打开一个会话 → 选择一个工作区 → 给它一个目标 → 调用工具完成任务
-
-Nano 认为：文件、应用程序、进程、知识、网络、外部服务 —— 它们不应该只是一个个被接入 AI 的功能，而应该成为智能体可以认识、使用和行动于其中的世界。
-
-**Nano 所构建的，就是这样的一个世界。**
-
----
-
-## 📸 预览
-
-| 深色                                  | 浅色                                   |
-| ----------------------------------- | ------------------------------------ |
-| ![深色主题](assets/preview/ui-dark.png) | ![浅色主题](assets/preview/ui-light.png) |
-
----
-
-## ⚙️ 核心架构设计
-
-### 🚫 无 Session 化：不是一个个会话，而是一个 Nano
-
-传统 Agent 的一切都挂在 "会话" 上：历史、状态、生命周期，全挤在一个 session 里。
-
-Nano 没有 session 的概念 ——**状态归属、聊天原文、上下文治理、跨会话记忆，是四个互相独立、互不替代的系统**：
-
-| 传统 session 的职责 | Nano 的替代                      |
-| -------------- | ----------------------------- |
-| 状态归属 / 生命周期    | **Task**：代表 "一件事"             |
-| 对话历史           | **Conversation**：存储聊天原文，不承载状态 |
-| 上下文管理          | **Context 治理**：按照新鲜程度逐级压缩     |
-| 跨会话记忆          | **Memory**：语义长期记忆             |
-
-传统范式里，session 是 "人格分裂" 的 —— 它们互不相识。每开一个新会话，你都像面对一个陌生人。
-
-> **Nano 永远只有一个，那个一直认识你、始终在场的它。**
+- [📸 Preview](#-preview)
+- [⚙️ Core Architecture](#️-core-architecture)
+  - [🚫 Session-less Design](#-session-less-design-not-multiple-sessions-but-one-nano)
+  - [🎯 Goal-driven](#-goal-driven-how-many-ways-can-the-world-get-this-done)
+  - [🛠️ Self-operating](#️-self-operating-you-just-say-it-nano-handles-the-rest)
+  - [📡 Trajectory-aware](#-trajectory-aware-its-never-left-you-dont-need-to-explain)
+  - [♾️ Persistent State](#️-persistent-state-the-one-and-only-indestructible)
+  - [⚡ Proactive Intelligence](#-proactive-intelligence-more-than-just-ask-and-answer-beta)
+  - [✨ Other Features](#-other-features)
+- [🚀 Installation & Quick Start](#-installation--quick-start)
+- [🛡️ Security](#️-security)
+- [🔐 Privacy & Trust](#-privacy--trust)
+- [⚠️ Known Limitations](#️-known-limitations)
+- [🏗️ Architecture Overview](#️-architecture-overview)
+- [🧪 Development & Testing](#-development--testing)
+- [🐛 Reporting Issues](#-reporting-issues)
+- [📄 License](#-license)
+- [💛 Acknowledgments](#-acknowledgments)
+- [🔗 Links](#-links)
 
 ---
 
-### 🎯 目标导向：完成这个目标，世界上有哪些方式？
+## 💭 What if AI truly lived on your computer?
 
-传统智能体通常将自身能力定义为 "当前已经拥有的工具集合"。一个任务能否完成，取决于当前工具集中是否存在对应能力 ——**能力边界被工具集合所限制**。
+Every mainstream AI agent works the same way: it temporarily moves in, completes a task, and leaves.
 
-Nano 不希望以 "当前拥有什么工具" 定义自己的能力，而是以 "当前能够获得什么能力" 来定义。
+> Open a session → Pick a workspace → Give it a goal → It calls tools to get it done
 
-因此，Nano 提出新的能力模型：
+Nano sees it differently: files, apps, processes, knowledge, the network, external services — they shouldn't just be features plugged into the AI. They should be the world the agent knows, uses, and acts within.
 
-> **Nano 的能力并非固定存在，而是可以根据任务动态获取。能力上限不由自身决定，而由整个生态决定。**
-
-🧩 **Skill（单文件插件）——Nano 会自己写。** 发现没有现成的能力？它直接写一个 Skill：写完系统自动校验，代码会连同说明一起交给你确认，你授权才部署上线。
-
-🔌 **MCP——Nano 会自己找、自己验、自己接。** 互联网上有现成的在线服务？Nano 会走完从搜索发现 → 工程尽调 → 授权接入的完整链路。
-
-> Nano 的成长不是自己会得越来越多，而是越来越知道**该把什么任务交给谁**。
+**Nano is building that world.**
 
 ---
 
-### 🛠️ 自我运维：你只需要说，剩下的交给 Nano
+## 📸 Preview
 
-- **知道自己的问题** —— 环境、Skill、MCP 的健康状态它实时感知，报错和修复建议直接注入给它
-- **配置自己的生态** —— Skill 和 MCP 的安装、删除、禁用、启用、修改，只是你一句话的事
-- **管理自己的记忆** —— 你说 "删掉这段记忆" 它就删；如果记忆注入太多 token，会主动建议清除过时和不再适用的部分
-- **清楚自己的边界** —— 上下文快触发压缩了会提前提醒你；今天快超 token 限额了也会提前告诉你
-
-通常来说，软件功能越强，设置界面越像飞机驾驶舱。Nano 对自己的能力生态有完整的操作权，**不需要你在驾驶舱里找开关**——它提供操作的入口，但管理工具这件事，不该只由人来做。
+| Dark Theme | Light Theme |
+|------------|-------------|
+| ![Dark theme](assets/preview/ui-dark.png) | ![Light theme](assets/preview/ui-light.png) |
 
 ---
 
-### 📡 轨迹感知：它从未离开，你无需解释
+## ⚙️ Core Architecture
 
-> "我刚才改了一个文件，路径是……"  
-> "我刚配置了工作目录，帮我看看……"
+### 🚫 Session-less Design: not multiple sessions, but one Nano
 
-Nano 不需要你这么做。它持续感知你的工作轨迹：你正在操作哪个窗口、改了什么文件、做过什么、这件事做了多久。它在一旁看着、理解着，而不是等你把前因后果讲一遍。
+Traditional agents tie everything to a "session" — history, state, lifecycle all squeezed into one session object.
 
-> 你不需要说 "我刚才改了……" —— Nano 知道是哪一个
+Nano has no concept of sessions. **State ownership, chat history, context management, and cross-session memory are four independent, non-interchangeable systems:**
+
+| Traditional session's job | Nano's replacement |
+|---------------------------|-------------------|
+| State ownership / lifecycle | **Task**: represents "one thing" |
+| Conversation history | **Conversation**: stores raw chat text, no state |
+| Context management | **Context governance**: progressive compression by freshness |
+| Cross-session memory | **Memory**: semantic long-term memory |
+
+In the traditional model, sessions are "schizophrenic" — they don't know each other. Every new session feels like meeting a stranger.
+
+> **Nano is always the same one — the one that has always known you, that never left.**
+
+---
+
+### 🎯 Goal-driven: how many ways can the world get this done?
+
+Traditional agents define their capability by "the tools I currently have." Whether a task is possible depends on whether that capability exists in the current toolset — **your boundaries are defined by what you've plugged in.**
+
+Nano doesn't define its capability by "what tools do I have now," but by "what capabilities can I get."
+
+So Nano has a new capability model:
+
+> **Nano's abilities aren't fixed — they're acquired dynamically based on the task. The upper limit isn't set by Nano itself, but by the whole ecosystem.**
+
+🧩 **Skill (single-file plugin) — Nano writes it itself.** Can't find an existing capability? It writes a Skill directly: the system auto-validates it, then shows you the code and explanation for approval before deploying.
+
+🔌 **MCP — Nano finds it, vets it, and connects it itself.** Existing online service out there? Nano walks the full chain from discovery → engineering due diligence → authorized integration.
+
+> Nano doesn't get better by knowing more tricks. It gets better by knowing **who to hand each task to.**
+
+---
+
+### 🛠️ Self-operating: you just say it, Nano handles the rest
+
+- **It knows its own problems**: environment, Skill, and MCP health are continuously monitored; errors and fix suggestions are injected directly into its context
+- **It manages its own ecosystem**: installing, deleting, disabling, enabling, or modifying Skills and MCPs is just one sentence away
+- **It manages its own memory**: say "delete this memory" and it's gone; if memory injection is eating too many tokens, it proactively suggests pruning outdated entries
+- **It knows its own limits**: it warns you before context compression kicks in; it warns you before you hit today's token limit
+
+Usually, the more features a piece of software has, the more the settings screen looks like a cockpit. Nano has full operational control over its own capability ecosystem — **you don't need to hunt for switches in the cockpit.** It provides entry points, but managing tools shouldn't be a human-only job.
+
+---
+
+### 📡 Trajectory-aware: it never left, you don't need to explain
+
+> "I just edited a file at..."  
+> "I just set the working directory, can you check..."
+
+Nano doesn't need you to do this. It continuously tracks your work trajectory: which window you're in, what files you changed, what you did, how long you've been doing it. It watches and understands, instead of waiting for you to explain the backstory.
+
+> You don't need to say "I just changed..." — Nano knows which one
 >
-> 你不需要说 "我现在在做……" —— 它看着你做
+> You don't need to say "I'm currently doing..." — it's watching you do it
 >
-> 你说一句 "接着做" —— 它从你停下的地方继续
+> You say "keep going" — it picks up right where you left off
 
-这就是无缝协同：Nano 不是 "你叫它才醒" 的工具，而是一个一直在场的伙伴 ——**你低头做事，它抬头看路。**
-
----
-
-### ♾️ 持久状态系统：唯一的那一个，也是无法摧毁的那一个
-
-> 用着用着，AI 突然弹出一句："该会话不可用。"
-
-上下文满了、会话失效、窗口不可用 —— 你只能眼睁睁看着它变成一具尸体：舍不得，带不走，几个月前说过的话，丢了就真的丢了。
-
-而 Nano 不允许这种事发生。它只有一个，所以从内核层面就构建了完整的状态保障体系：
-
-- **上下文永远不会爆，只会变薄** —— 旧内容自动逐级降级压缩，Nano 永远存在，不会某一天突然 "该会话不可用"
-- **重置 ≠ 删除，历史永远带得走** —— 压缩上下文 / 手动重置对话只是把它从界面里收起来；历史存在本地且永远不随时间过期，支持一键导出
-- **崩溃不会失忆** —— 误触关闭进程、断电、崩溃、甚至原生段错误，重启后自动收拾残局，主动问你被打断的事要不要重做
-- **不会永远卡死** —— 到期唤醒、截止放弃、无条件回收，保障系统始终处于可响应状态
+That's seamless collaboration: Nano isn't a tool that only wakes up when you call it. It's a partner who's always there — **you keep your head down working, it watches the road.**
 
 ---
 
-### ⚡ 主动智能：一个不局限于 "你问我答" 的伙伴（Beta 阶段暂未启用）
+### ♾️ Persistent State: the one and only, indestructible
 
-**🕐 判断现在是什么时刻**
+> You're using it, and suddenly: "This session is no longer available."
 
-它一直在观察你的节奏 —— 写文档还是写代码、开会还是查资料、刚保存了什么、离开电脑多久了。于是它总能在对的时机开口：
+Context full, session expired, window dead — you can only watch it become a corpse. You don't want to lose it, you can't take it with you, and what was said months ago is truly gone forever.
 
-> 你离开又回来 → "要接着刚才那个继续吗？"
+And Nano doesn't let that happen. There is only one of it, so it builds its state guarantee system from the kernel up:
+
+- **Context never explodes, it only thins**: old content is progressively compressed by freshness; Nano never suddenly says "this session is unavailable"
+- **Reset ≠ delete, history always travels with you**: compressing context or manually resetting just moves it out of view; history lives locally, never expires, and supports one-click export
+- **Crash doesn't cause amnesia**: accidental process kill, power outage, crash, even native segfault — it cleans up the mess on restart and asks you if you want to redo what was interrupted
+- **Never permanently stuck**: expiration wake-up, deadline abandonment, unconditional orphan collection — the system always stays responsive
+
+---
+
+### ⚡ Proactive Intelligence: a partner that's more than just "ask and answer" (Beta, not yet enabled)
+
+**🕐 Knowing what moment it is**
+
+It's always watching your rhythm — are you writing docs or code, in a meeting or researching, what you just saved, how long you've been away. So it opens its mouth at the right moments:
+
+> You come back after being away → "Want to pick up where you left off?"
 >
-> 你保存完一段工作 → "要我顺手整理一版清单吗？"
+> You just finished a chunk of work → "Want me to compile a checklist?"
 >
-> 你高强度写了很久突然停下 → "歇一下？下一步要不要我帮你想？"
+> You've been grinding hard and suddenly stop → "Take a break? Want me to help with the next step?"
 
-Nano 把这些时机称为 "**生产力时刻**"：不是表演，只为能帮你省下一步成本时开口。
+Nano calls these moments "**productivity moments**": not for show, only speaking when it can save you the next step.
 
-**🎭 决定怎么说话、说多少**
+**🎭 Deciding how to speak and how much**
 
-- **情绪** —— 你的采纳让它语气更轻快，你的冷淡让它更收敛。情绪只渲染语气，不影响任何功能
-- **耐心** —— 你一句 "别烦我"，它立刻安静，然后慢慢恢复。它不会记仇，但会记住教训
-- **默契** —— 它有一本记录 "哪种提醒你喜欢、哪种你嫌烦" 的账本，决定了它未来如何跟你长期协同
+- **Affect**: your approval makes its tone lighter; your cold shoulder makes it more reserved. Mood only colors the tone, never affects functionality
+- **Patience**: one "leave me alone" and it goes quiet immediately, then slowly recovers. It doesn't hold a grudge, but it remembers the lesson
+- **Rapport**: it keeps a ledger of "which reminders you like, which ones annoy you," guiding how it collaborates with you long-term
 
-**📖 从你的语义中持续学习**
+**📖 Learning from your semantics**
 
-| 你说           | 它学到    |
-| ------------ | ------ |
-| "这个有用" / 采纳了 | 同类可以开口 |
-| 嫌它烦          | 同类降权   |
-| "猜错了"        | 修正准确性  |
-| "别烦我"        | 安静下来   |
-| "以后别提醒这个"    | 永远记住   |
-| "以后别主动说话"    | 闭嘴     |
+| What you say | What it learns |
+|--------------|----------------|
+| "That's useful" / approves it | Speak up more in similar situations |
+| Finds it annoying | Speak up less in similar situations |
+| "You guessed wrong" | Correct its accuracy |
+| "Stop bothering me" | Go quiet |
+| "Don't remind me about this ever" | Remember permanently |
+| "Don't speak up at all" | Shut up completely |
 
-**🚧 有自己的底线**
+**🚧 Having its own bottom line**
 
-它只提出建议，永远不擅自动手 —— 所有动作都要你点头。在不适当的场景下不会开口说话，比如视频聊天、进行在线会议等等。
-
----
-
-### ✨ 其他特性
-
-- **⚡ 过程可视化**：工具的输入输出信息实时可见
-- **🔧 内置工具**：文件读写 / 搜索 / 编辑、RAG 检索、任务列表、OS 自动化、Mini 窗口等 30+ 内置工具
-- **🔍 动态感知**：工具按需动态感知注入，压低每轮上下文成本
-- **📚 知识库**：本地嵌入模型，离线检索不上传云端（已关闭遥测）
-- **🤖 子智能体**：派生子智能体并行探索或执行任务
-- **🛡️ AUTO 模式**：自动模式下仍有一道 "独立第三方" 危险判定，与意图不符的危险命令将被拦截
-- **⏰ 后台任务**：后台可并行跑任务，完成后再向你汇报
-- **📖 迭代阅读**：阅读超大文件不会撑爆上下文或无脑全量注入造成 token 浪费：先试读定位，再分片精读，读过的部分压缩成笔记、原文即弃
-- **👁️ 视觉自检**：空闲时检验 UIA 视觉定位链路是否正常：能力退化了主动告诉你，而不是等你发现 "它最近总是定位失败"
-- **🖱️ 操作让位**：GUI 操作时检测到用户点击、按键或滚动即自动让位，不抢占前台焦点；恢复时不假设现场未变 —— 先核对窗口、坐标与内容是否被改动，确认任务是否已由用户完成，再决定是否重新观察
-- **🔒 权限管控**：系统操作按风险分为六个独立的权限开关，OS 动作（含只读）逐条写入日志留痕
+It only suggests, never acts on its own — every action requires your approval. It won't speak up in inappropriate situations, like during a video call or online meeting.
 
 ---
 
-## 🚀 安装与快速开始
+### ✨ Other Features
 
-### 环境要求
+- **⚡ Streaming visualization**: tool inputs and outputs visible in real-time
+- **🔧 Built-in tools**: file read/write/search/edit, RAG retrieval, task lists, OS automation, Mini window, and 30+ built-in tools
+- **🔍 Dynamic awareness**: tools are injected on demand, minimizing per-turn context cost
+- **📚 Knowledge base**: local embedding models, offline retrieval, no cloud upload (telemetry disabled)
+- **🤖 Sub-agents**: spawn sub-agents to explore or execute tasks in parallel
+- **🛡️ AUTO mode**: even in auto mode, there's still an independent third-party danger classifier that blocks dangerous commands conflicting with your intent
+- **⏰ Background tasks**: run tasks in parallel in the background, report back when done
+- **📖 Iterative reading**: reading huge files doesn't blow up context or waste tokens on blind full injection: test-read to locate, then read in chunks, compress read portions into notes, discard raw text
+- **👁️ Visual self-check**: in idle time, it tests whether the UIA visual positioning pipeline is healthy: if it degrades, it tells you proactively instead of waiting for you to notice "it's been failing to locate things lately"
+- **🖱️ Yield to user**: during GUI operations, detecting any user click, keystroke, or scroll automatically yields and doesn't steal foreground focus; when resuming, it doesn't assume the scene is unchanged — first re-checks windows, coordinates, and content, confirms whether the task was already completed by the user, then decides whether to re-observe
+- **🔒 Permission control**: system actions are split into six independent permission switches by risk level; every OS action (read-only included) is logged with a trail
 
-| 项目     | 要求                      |
-| ------ | ----------------------- |
-| 操作系统   | Windows 10 及以上          |
-| Python | **3.10**（版本敏感，更高版本未验证）  |
-| 磁盘空间   | 约 6 GB（含本地嵌入模型约 2.3 GB） |
-| 内存     | 建议 8 GB 以上              |
+---
 
-### 安装
+## 🚀 Installation & Quick Start
 
-执行 `install.bat` 一键安装：
+### Requirements
+
+| Item | Requirement |
+|------|-------------|
+| OS | Windows 10 or later |
+| Python | **3.10** (version-sensitive; higher versions untested) |
+| Disk space | ~6 GB (including ~2.3 GB for local embedding models) |
+| RAM | 8 GB+ recommended |
+
+### Installation
+
+Run `install.bat` for one-click setup:
 
 ```
 install.bat
 ```
 
-下载本地嵌入模型：
+Download local embedding models:
 
 ```
 py -3.10 _setup_rag_models.py
 ```
 
-### 启动
+### Launch
 
 ```
 start.bat
 ```
 
-### 首次对话配置
+### First-run Configuration
 
-首次启动若未配置密钥，会自动弹出配置页面；也可随时点击窗口左上角的三个彩色圆点进入设置：
+If no API key is configured on first launch, a settings page opens automatically. You can also open settings anytime by clicking the three colored dots in the top-left corner:
 
-- **选择供应商**：Anthropic 或 DeepSeek
-- **API Key**：所选供应商的密钥
+- **Provider**: Anthropic or DeepSeek
+- **API Key**: your provider's key
 
-同步支持非官方中转，填写相应 URL 与 API Key 即可。
-
----
-
-## 🛡️ 安全说明
-
-OS 自动化是风险最高的能力，Nano 为此设计了多层防护：
-
-- **路径黑名单**：明确拒绝读取凭据、私钥、浏览器密码等敏感内容
-- **独立的权限开关**：六个权限开关随时可在设置中单独关闭，Nano 无法自行开启相应权限。
-- **自动模式兜底**：开启 AUTO 模式后，不符合用户意图的破坏性命令仍会被分类器拦下
-
-使用本软件，即表示你已阅读并同意[用户协议](docs/zh/user-agreement.md)。
+Unofficial relays/proxies are also supported — just fill in the URL and API key.
 
 ---
 
-## 🔐 隐私与信任
+## 🛡️ Security
 
-**本地优先**
+OS automation is the highest-risk capability, and Nano has layered protections for it:
 
-OCR、向量检索、记忆存储等全部在本地运行；唯一上行的数据是自行配置的模型 API 请求。
+- **Path blacklist**: explicitly refuses to read credentials, private keys, browser passwords, and other sensitive content
+- **Independent permission switches**: six permission switches can be turned off individually in settings at any time; Nano cannot enable them on its own
+- **Auto-mode safety net**: with AUTO mode enabled, destructive commands that don't match your intent are still blocked by the classifier
 
-**最小采集**
-- **环境轨迹**只存储「应用 + 在做什么」的一行摘要（如「Chrome 正在浏览网页」），不存原始事件和内容明文，记录 18 小时后自动过期清除
-- **行为账本**只用封闭类别标签（如「文件操作」「网络访问」），禁止任何语义化敏感信息入库
-
-**无遥测**
-Nano 自身绝不会收集、统计任何用户行为数据。
+By using this software, you acknowledge that you have read and agree to the [User Agreement](docs/en/user-agreement.md).
 
 ---
 
-## ⚠️ 已知边界与路线图
+## 🔐 Privacy & Trust
 
-Nano 仍处于 **Beta 开发期**，欢迎任何人参与对 Nano 的贡献。
+**Local-first**
+OCR, vector retrieval, memory storage — all run locally. The only outgoing data is the model API requests you configured.
 
-### 当前已知边界
+**Minimal collection**
+- **Environment traces** store only a one-line summary of "app + what it's doing" (e.g., "Chrome browsing the web"). Raw events and content plaintext are not stored, and records expire after 18 hours
+- **Behavior ledger** uses only closed category tags (e.g., "file operation", "network access"). No semantic sensitive information is allowed in the database
 
-- 仅支持 Windows 10 及以上，无跨平台版本
-- 主动行为引擎处于 shadow 观测期，暂不提供主动交互能力，**用户不可手动开启**；界面的「主动程度」档位为预留，**目前没有任何实际影响**。待测试期充分验证 Shadow 日志、确认行为可靠性后开放
-- 考拉动画为与状态机绑定的精灵图动画，非真骨骼，目前稍显过时
-- Nano 开发期测试全部使用 Claude API，DeepSeek 工具调用稳定性 / Token 缓存命中**未深度测试**
-- I18N 未完成：当前语言切换仅影响各功能下模型生成语言时的偏好，**不影响 UI 语言，当前 UI 只支持简体中文**
-- NiceGUI 无法实现内置浏览器
-
-### Beta 路线图
-
-- **兼容 OpenAI 协议**：放开对其他厂商 API 的兼容（智谱 / Kimi / OpenRouter 等）
-- **I18N 落地**：UI 完整多语言支持
-- **启用主动智能**：主动行为引擎从 shadow 观测期正式开放
-- **正式版发布**：发布第一个正式版
+**Zero telemetry**
+Nano itself never collects or tracks any user behavior data.
 
 ---
 
-## 🏗️ 架构概览
+## ⚠️ Known Limitations & Roadmap
 
-![Nano 架构](assets/architecture.zh.svg)
+Nano is still in **Beta development**. Contributions are welcome.
 
-*完整架构图见 [docs/zh/02-architecture.md](docs/zh/02-architecture.md)*
+### Current Known Limitations
 
-### 目录结构
+- Windows 10 or later only; no cross-platform version
+- The proactive behavior engine is in shadow observation mode, with no active interaction capability. **Users cannot manually enable it.** The "proactivity" slider in the UI is a placeholder and **has no effect yet**. It will be opened once shadow logs are sufficiently validated and reliability is confirmed
+- The koala animation is a sprite animation tied to a state machine, not true rigging; it looks a bit dated right now
+- Development testing was done entirely with the Claude API. DeepSeek tool-calling stability and token cache hit rate are **not deeply tested**
+- I18N is incomplete: language switching currently only affects model output language preferences, **not the UI language. The UI currently only supports Simplified Chinese**
+- NiceGUI cannot implement a built-in browser
+
+### Beta Roadmap
+
+- **OpenAI-compatible API**: support other providers (Zhipu / Kimi / OpenRouter, etc.)
+- **I18N**: full UI multi-language support
+- **Enable proactive intelligence**: officially release the proactive behavior engine from shadow observation
+- **Stable release**: ship the first stable version
+
+---
+
+## 🏗️ Architecture Overview
+
+![Nano Architecture](assets/architecture.en.svg)
+
+*Full architecture diagram see [docs/en/02-architecture.md](docs/en/02-architecture.md)*
+
+### Directory Layout
 
 ```
 Nano-Lumen/
-├── app.py                    # 界面层
-├── nano_koala.py             # 精灵图动画
-├── core/                     # 核心逻辑
-│   ├── orchestrator.py       # 编排层 / ReAct 主循环
-│   ├── provider.py           # 模型 API 接入
-│   ├── models.py             # 厂商 / 模型表
-│   ├── rag.py                # 知识库检索
-│   ├── mcp_client.py         # MCP 客户端
-│   ├── os_layer/             # 自动化
-│   ├── context/              # 上下文计量与衰减
-│   ├── proactive/           # 主动智能
-│   ├── runtime/              # 任务调度 / 会话持久化
-│   └── …                     # 其余模块详见 docs/zh/02-architecture.md
-├── memory/                   # 对话历史存取
-├── skills/                   # 技能（插件）
-├── config/                   # 行为规则 / 人格 / 系统指令
-├── data/                     # 运行期数据
-├── docs/                     # 开发者文档
-├── tests/                    # 测试套件
-├── assets/                   # 图标 / 字体 / 素材
-├── static/                   # 前端静态资源
-├── requirements_cpu.txt      # Python 依赖
-├── install.bat / install.ps1 # 一键安装
-└── start.bat                 # 启动入口
+├── app.py                    # UI layer
+├── nano_koala.py             # Koala sprite animation
+├── core/                     # Core logic
+│   ├── orchestrator.py       # Orchestration layer / ReAct main loop
+│   ├── provider.py           # Model API provider
+│   ├── models.py             # Provider / model registry
+│   ├── rag.py                # Knowledge base retrieval
+│   ├── mcp_client.py         # MCP client
+│   ├── os_layer/             # OS automation
+│   ├── context/              # Context metering and decay
+│   ├── proactive/           # Proactive intelligence
+│   ├── runtime/              # Task scheduling / session persistence
+│   └── …                     # See docs/en/02-architecture.md for more
+├── memory/                   # Conversation history storage
+├── skills/                   # Skills (plugins)
+├── config/                   # Behavior rules / personality / system prompts
+├── data/                     # Runtime data
+├── docs/                     # Developer documentation
+├── tests/                    # Test suite
+├── assets/                   # Icons / fonts / assets
+├── static/                   # Frontend static resources
+├── requirements_cpu.txt      # Python dependencies
+├── install.bat / install.ps1 # One-click install
+└── start.bat                 # Launch entry point
 ```
 
 ---
 
-## 🧪 开发与测试
+## 🧪 Development & Testing
 
-测试套件位于 `tests/`，随仓库分发，通过 `run_tests.sh` 入口执行全量回归。
+The test suite lives in `tests/`, shipped with the repo. Run full regression via `run_tests.sh`:
 
-单条用例：
+Single test:
 
 ```
 py -3.10 tests\t_d12_tool_failure_info.py
 ```
 
-一键全量：
+Full suite:
 
 ```
 bash run_tests.sh
 ```
 
-- 完整开发者文档目录见 [docs/zh/README.md](docs/zh/README.md)
-- 运行测试、构建、贡献规范见 [docs/zh/11-testing.md](docs/zh/11-testing.md) 与 [docs/zh/12-contributing.md](docs/zh/12-contributing.md)
+- Full developer documentation index: [docs/en/README.md](docs/en/README.md)
+- Testing, building, and contribution guidelines: [docs/en/11-testing.md](docs/en/11-testing.md) and [docs/en/12-contributing.md](docs/en/12-contributing.md)
 
 ---
 
-## 🐛 反馈问题
+## 🐛 Reporting Issues
 
-提交 Issue 前，请先确认：
+Before submitting an issue, please check:
 
-- 已阅读 [「常见问题」](docs/zh/01-getting-started.md#常见问题)
-- 已看 [「⚠️ 已知边界」](#️-已知边界) 一节 —— 其中列出的当前限制不在反馈范围内
+- You've read the [FAQ](docs/en/01-getting-started.md#faq)
+- You've checked the [⚠️ Known Limitations](#️-known-limitations) section — listed current limitations are not eligible for bug reports
 
-报告 Bug 时请附：
+When reporting a bug, please include:
 
-- Nano 版本号
-- 操作系统与 Python 版本
-- 复现步骤、期望行为、实际行为
-- 相关日志（`data/` 目录下或控制台输出）
+- Nano version number
+- OS and Python version
+- Reproduction steps, expected behavior, actual behavior
+- Relevant logs (`data/` directory or console output)
 
-完整的 **Bug 报告模板**与 **功能建议模板**见 [「报告问题」](docs/zh/12-contributing.md#报告问题) 一节，可直接照模板填写。
-
----
-
-## 📄 开源许可
-
-本项目采用 [Apache-2.0](LICENSE) 开源许可证。
+Full **Bug Report** and **Feature Request** templates are in the ["Reporting Issues"](docs/en/12-contributing.md#reporting-issues) section — fill them in directly.
 
 ---
 
-## 💛 致谢
+## 📄 License
 
-*Nano 的诞生离不开以下开源项目、服务与贡献者的启发与支撑：*
-
-- **Anthropic**：Nano 大量参考了 Claude Code 的设计范式，详见 [Anthropic 工程文档](https://www.anthropic.com/engineering)
-- **BAAI**：bge-m3 嵌入模型与 bge-reranker-v2-m3 重排模型
-- **SQLite、ChromaDB、Tesseract**：存储、检索与 OCR 底座
-- **Model Context Protocol（MCP）**：让工具生态得以标准化扩展
-- **《Designing Data-Intensive Applications》（Martin Kleppmann 著）**：「把 Agent 当作有持久状态的系统来设计」的理论来源
-- **GNU nano**：Nano 的命名由来
-
-**作者与贡献者**
-
-- [Koala](https://github.com/Fhaxikii) — 项目作者与主要开发者
-- [lebangjames](https://github.com/lebangjames) — 数据收集、测试及早期原型设计思路
-
-**AI 协作贡献者**
-
-- Claude（[Anthropic](https://www.anthropic.com)）— 在部分代码实现与调试中提供了大量协助
-- GLM（[智谱](https://www.zhipuai.cn)）— 文档规范化与国际化
+This project is licensed under the [Apache-2.0](LICENSE) License.
 
 ---
 
-## 🔗 相关链接
+## 💛 Acknowledgments
 
-- **常见问题**：[docs/zh/01-getting-started.md#常见问题](docs/zh/01-getting-started.md#常见问题)
-- **开发者文档**：[docs/zh/README.md](docs/zh/README.md)
-- **版本历史**：[Changelog.txt](Changelog.txt)
-- **用户协议**：[docs/zh/user-agreement.md](docs/zh/user-agreement.md)
-- **安全政策**：[SECURITY.md](SECURITY.md)
+*Nano wouldn't exist without the following open-source projects, services, and contributors who inspired and supported it:*
+
+- **Anthropic**: Nano draws heavily on Claude Code's design paradigm, see [Anthropic Engineering](https://www.anthropic.com/engineering)
+- **BAAI**: bge-m3 embedding model and bge-reranker-v2-m3 reranker
+- **SQLite, ChromaDB, Tesseract**: storage, retrieval, and OCR foundations
+- **Model Context Protocol (MCP)**: enabling standardized tool ecosystem extension
+- **Designing Data-Intensive Applications** (Martin Kleppmann): theoretical foundation for "designing agents as persistent state systems"
+- **GNU nano**: where Nano gets its name
+
+**Authors & Contributors**
+
+- [Koala](https://github.com/Fhaxikii) — project author and primary developer
+- [lebangjames](https://github.com/lebangjames) — data collection, testing, and early prototype design
+
+**AI Collaboration Contributors**
+
+- Claude ([Anthropic](https://www.anthropic.com)) — extensive assistance with code implementation and debugging
+- GLM ([Zhipu](https://www.zhipuai.cn)) — documentation standardization and i18n
+
+---
+
+## 🔗 Links
+
+- **FAQ**: [docs/en/01-getting-started.md#faq](docs/en/01-getting-started.md#faq)
+- **Developer docs**: [docs/en/README.md](docs/en/README.md)
+- **Changelog**: [Changelog.txt](Changelog.txt)
+- **User Agreement**: [docs/en/user-agreement.md](docs/en/user-agreement.md)
+- **Security Policy**: [SECURITY.md](SECURITY.md)

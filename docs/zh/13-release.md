@@ -20,7 +20,7 @@
 | `Changelog.txt` 末尾追加 `## vX.YZ` 段 | 格式见下文 |
 | `app.py` UI 欢迎语 `// nano-lumen vX.YZ` | 搜索 `nano-lumen v` 定位 |
 | `data/knowledge/_system/nano_manual.md` 头部「手册对应Nano程序版本号」 | |
-| `README.md` / `README.en.md` 标题下 `**Nano-Lumen vX.YZ**` | |
+| `README.md` / `README.zh.md` 标题下 `**Nano-Lumen vX.YZ**` | |
 | `nano_manual.md`「截止 X 版本，主动开口……」 | 条件项：shadow 状态变化时必须改，未变也建议随手跟 |
 
 - docs 08/11 与测试注释里出现的版本号是**示例或历史记录**，永不更新。
@@ -51,7 +51,7 @@ gh release create vX.YZ --target main --title "Nano-Lumen vX.YZ" --notes-file <n
    - 末尾固定两条：
 
 ```
-- 安装方式见 [README](https://github.com/Fhaxikii/Nano-Lumen#安装) · Install: see the [English README](https://github.com/Fhaxikii/Nano-Lumen/blob/main/README.en.md#installation--quick-start)
+- 安装方式见 [README](https://github.com/Fhaxikii/Nano-Lumen#安装) · Install: see the [English README](https://github.com/Fhaxikii/Nano-Lumen/blob/main/README.zh.md#installation--quick-start)
 - 完整变更历史见 [Changelog.txt](Changelog.txt) · Full changelog: [Changelog.txt](Changelog.txt)
 ```
 
