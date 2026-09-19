@@ -71,7 +71,7 @@ Nano has no concept of sessions. **State ownership, chat history, context manage
 | Context management | **Context governance**: progressive compression by freshness |
 | Cross-session memory | **Memory**: semantic long-term memory |
 
-In the traditional model, sessions are "schizophrenic" — they don't know each other. Every new session feels like meeting a stranger.
+In the traditional model, sessions are amnesiac — they don't know each other. Every new session feels like meeting a stranger.
 
 > **Nano is always the same one — the one that has always known you, that never left.**
 
