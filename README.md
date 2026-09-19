@@ -4,7 +4,9 @@
 
 ![Nano-Lumen](assets/nano-banner.png)
 
-**Nano-Lumen v1.97 (Beta)** · A persistent AI agent that lives on your Windows desktop · [简体中文](README.zh.md)
+**Nano-Lumen v1.97 (Beta)** · A persistent AI agent that lives on your Windows desktop
+
+🌐 **English** · [简体中文](README.zh.md)
 
 `Resident AI Agent` · `Task-level persistent state` · `Local-first privacy` · `Windows Desktop`
 
