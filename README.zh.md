@@ -305,7 +305,7 @@ Nano-Lumen/
 │   ├── proactive/           # 主动智能
 │   ├── runtime/              # 任务调度 / 会话持久化
 │   └── …                     # 其余模块详见 docs/zh/02-architecture.md
-├── memory/                   # 对话历史存取
+├── memory/                   # 当前对话的内存消息投影
 ├── skills/                   # 技能（插件）
 ├── config/                   # 行为规则 / 人格 / 系统指令
 ├── data/                     # 运行期数据

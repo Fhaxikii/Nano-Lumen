@@ -304,7 +304,7 @@ Nano-Lumen/
 │   ├── proactive/           # Proactive intelligence
 │   ├── runtime/              # Task scheduling / session persistence
 │   └── …                     # See docs/en/02-architecture.md for more
-├── memory/                   # In-memory message projection of the current conversation (durably stored by core/runtime → data/nano_runtime.db)
+├── memory/                   # In-memory message projection of the current conversation
 ├── skills/                   # Skills (plugins)
 ├── config/                   # Behavior rules / personality / system prompts
 ├── data/                     # Runtime data
