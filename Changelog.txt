@@ -1,1603 +1,115 @@
 # Changelog
-
 ---
 
-## v1.97 (Beta)
-
-### Fixed
-- Fixed `WEIGHTS_FORMAT_REJECTED` on fresh environments: transformers 5.x refuses .bin weights (CVE-2025-32434), and mirrors may resolve to a .bin-only snapshot, breaking RAG retrieval with no self-heal on restart. Embedding and reranker models now explicitly fetch safetensors-only snapshots and load from local paths.
-
-### 修复
-- 修复新环境首次初始化知识库时报 WEIGHTS_FORMAT_REJECTED 的问题：transformers 5.x 出于安全策略（CVE-2025-32434）拒绝加载 .bin 权重，而镜像源解析出的快照可能只有 .bin 格式，导致 RAG 检索不可用且重启无法自愈。现在嵌入与重排模型改为显式获取 safetensors 快照后从本地加载，不再依赖上游的格式回退顺序
-
----
-
-## v1.96 (Beta)
-
-### Changed
-- Adjusted Nano's base persona and system prompt wording
-- Expanded the built-in manual content
-
-### 优化
-- 调整了 Nano 的基础人设和系统指令的措辞
-- 增加了 Nano 手册的内容
-
----
-
-## v1.95 (Beta)
-
-### Fixed
-- Fixed chat area scrollbar flickering during fast streaming output
-- Fixed web links opening inside the Nano window with no way back
-
-### Changed
-- Auto-scroll now sticks to bottom: scrolling up through history won't yank you back down
-- Web links in chat now open in the system default browser
-
-### 修复
-- 修复快速流式输出时聊天区滚动条上下抽动的问题
-- 修复点击聊天中的网页链接会在 Nano 窗口内打开、无法返回的问题
-
-### 优化
-- 自动滚动改为「保持贴底」：向上翻阅历史时不再被强制拉回底部
-- 聊天中的网页链接改为在系统默认浏览器中打开
-
----
-
-## v1.94 (Beta)
-
-### Fixed
-- Fixed Nano not using the built-in manual (`nano_manual.md`)
-
-### 修复
-- 修复 Nano 不调用 nano_manual.md 的问题
-
----
-
-## v1.93 (Beta)
-
-### Fixed
-- Fixed `'WebUI' object has no attribute '_enhanced_mode'` on fresh installs
-- Fixed default values for "Enhanced Mode" and "OCR page limit" being set after config read/write, causing crashes with no config file
-
-### 修复
-- 修复全新安装后首次启动时报 `'WebUI' object has no attribute '_enhanced_mode'` 的问题
-- 修复「增强模式」与「OCR 页数上限」的默认值赋值晚于配置读写，导致无配置文件时崩溃
-
----
-
-## v1.92 (Beta)
-
-### Added
-- Vision slot: when the main model lacks vision, uploaded images are automatically routed to a vision model for recognition
-- Degraded-path text blocks include image handles so original images can be reviewed in later turns
-- Rewrote `_system/nano_manual.md` as a complete 18-section manual
-
-### Changed
-- `_system/` directory is now visible to the model
-- `list_knowledge_files` has an `include_system` toggle
-- Token counter display follows user settings, unified from two entry points
-- Image handle parsing supports five input shapes
-
-### Fixed
-- Fixed uploaded images showing as `[Unsupported Image]` when the main model has no vision
-- Fixed degraded path skipping image persistence, breaking review functionality
-- Fixed pasted image handle format mismatch on review
-- Fixed token counter not respecting user settings
+## v1.01 (beta)
 
 ### 新增
-- 视觉槽接入：用户贴图时主模型无视觉则自动走视觉模型识别
-- 降级路径生成的文字块包含图片把手，后续轮可回看原图
-- `_system/nano_manual.md` 重写为 18 节完整手册
+- 引入轻量意图判断：闲聊不加载工具、需要操作时进入工具流程、意图不明时轻量询问
 
 ### 优化
-- `_system/` 目录对模型可见
-- `list_knowledge_files` 增加 `include_system` 开关
-- Token 计数器显示跟随设置，两个写入口统一
-- 图片把手解析支持五种输入形状
-
-### 修复
-- 修复用户贴图在主模型无视觉时变成 `[Unsupported Image]` 的问题
-- 修复降级路径跳过图片落盘导致回看功能失效的问题
-- 修复粘贴的图回看时 handle 格式不匹配的问题
-- 修复监控卡 Token 显示不认用户设置的问题
+- 去掉依赖中文关键词的硬编码判断，避免无关词误触发工具模式
+- 意图不明时不再强行猜测，改为自然澄清
+- 澄清时保持 Nano 原有语气，不使用机械式提问
 
 ---
 
-## v1.91 (Beta)
-
-### Added
-- Multi-provider support: DeepSeek added alongside Claude
-- Three internal role slots configurable independently: compression distillation, command checking, vision input
-- Advanced settings page: three dropdowns to assign models per role
-- Usage ledger tracked separately per provider when switching
-- Token counter now shows cache hit rate
-
-### Changed
-- Systematic typography: 462 hardcoded font sizes consolidated into 12 tiered variables
-- Paste upload: Ctrl+V for images/files goes through the upload channel
-- Upgraded to Claude 5 series models
-- Model selector filtered by provider
-
-### Fixed
-- Fixed DeepSeek not being configurable due to base_url logic error
-- Fixed switching providers causing favorite models to overwrite the main model and break the monitor card
-- Fixed `_thinking_arg` using deprecated `budget_tokens` on Claude 5
+## v1.02 (beta)
 
 ### 新增
-- 多厂商支持：除 Claude 外接入 Deepseek
-- 三个内部角色槽独立配置：压缩提炼、命令检查、视觉输入
-- 进阶配置设置页：三个下拉分别指定各角色使用的模型
-- 厂商切换时用量账本按厂商分别累计
-- Token 计数器增加缓存命中率显示
+- 工具加载机制重构：常驻仅保留加载工具，其余按需加载；由意图判断给出最多 3 个候选工具
 
 ### 优化
-- 字阶系统化：462 处硬编码字号收口为 12 档变量
-- 粘贴上传：Ctrl+V 贴图/文件走上传通道
-- 升级到 Claude 5 系模型
-- 模型选择器按厂商过滤
-
-### 修复
-- 修复深度求索因 base_url 判断逻辑错误导致无法配置的问题
-- 修复换厂商后收藏模型覆盖主模型导致监控卡显示错误的问题
-- 修复 `_thinking_arg` 在 Claude 5 上使用已废弃的 `budget_tokens` 的问题
+- 移除 5 个固定常驻工具，全部改为动态加载
+- 候选工具仅作建议，不匹配时模型可自行调用加载工具获取更多能力
 
 ---
 
-## v1.90 (Beta)
-
-### Added
-- Light theme "Aurora" graduated from placeholder to a usable second theme
-- Theme switching persisted
-- Inter font bundled into assets, no longer dependent on Google Fonts
-
-### Changed
-- 849 hardcoded colors consolidated into CSS variables
-- Semantic hues stay consistent across themes; lightness follows theme
-- Default theme changed from terminal-style to light
-
-### Fixed
-- Fixed multiple components showing native Quasar styles under light theme
-- Fixed theme switching automatically reverting to dark
-- Fixed missing font size ladder
+## v1.03 (beta)
 
 ### 新增
-- 浅色主题"极光"从占位符变为可用的第二套主题
-- 主题切换持久化
-- Inter 字体打包进 assets，不再依赖 Google Fonts
-
-### 优化
-- 849 处硬编码颜色收口为 CSS 变量
-- 语义色色相不跟主题走，明度跟主题走
-- 默认主题从终端风改为浅色
+- 工具使用纪律：不确定工具或参数时先加载工具列表，禁止猜测工具名
+- 调用失败后应重新加载工具，不要换名重试
 
 ### 修复
-- 修复浅色主题下多个组件显示 Quasar 原生样式的问题
-- 修复主题切换后自动跳回深色的问题
-- 修复字号阶梯缺失的问题
+- 区分独立工具与操作指令，避免将窗口操作误认为系统命令的子动作
 
 ---
 
-## v1.89 (Beta)
+## v1.04 (beta)
 
-### Removed
-- Removed five Plan orchestrator legacy fields from SkillSpec (required_context_level, atomic_action, source_hint, planning_allowed, fail_if)
-- Removed paddle/PP-Structure related code and dependencies
+### 新增
+- 历史图片压缩：只保留文字描述和占位，不再反复带入完整图片数据
+- 系统提示、工具结果、外部服务返回等模型可见内容统一使用英文，用户界面和日志保持中文
+- 语义记忆的注入和抽取使用英文指令
 
-### Changed
-- Protocol version unified and upgraded to v3.2
-- Updated 11 references after menu removal
+### 优化
+- 精简上下文构造，减少固定开销
+- 外部工具结果包装统一英文，未知工具或服务不可用时有清晰提示
+- 主动推送和记忆相关的模型输入链路改用英文
 
-### Fixed
-- Fixed `InputDef.source_hint` being accidentally deleted when removing fields by name, causing TypeError when building Skills
-- Fixed protocol version still showing old number in error messages
+### 修复
+- 修复图片数据长期留在对话历史导致字符数暴涨的问题
+- 修复技能协议中字段定义不完整的问题
+- 修复 Python 3.10 下因 f-string 反斜杠导致启动失败的问题
+- 修复操作系统层部分错误信息被中文包装后进入模型上下文的问题
+
+---
+
+## v1.05 (beta)
+
+### 新增
+- 首批内置基础技能：获取时间、日期计算、计算器、单位换算、JSON 校验、正则测试、哈希生成、Base64 编解码
+
+### 优化
+- 更新内置手册，聚焦于 Nano 自身界面操作说明
+- 优化左侧工具列表显示，避免技能过多时看不到后续内容
+
+### 修复
+- 修正官方技能模板协议版本号
+- 修复左侧列表在 8 个技能时只显示 7 个且无"查看全部"入口的问题
+- 修复旧版手册内容过时导致回答界面问题时引用错误信息的问题
+
+---
+
+## v1.06 (beta)
+
+### 优化
+- 闲聊与工具模式使用完全相同的系统人格，仅在有工具调用时加载工具，避免人格割裂
+- 消息元行（头像、耗时、token）仅显示在最后一条回复，新回复自动移除上一条的元行
+
+### 修复
+- 修复消息前缀箭头对齐问题
+- 修复头像 SVG 尺寸固定导致与计时器数字重叠的问题
+- 修复 token 统计显示整个会话累加值而非单条用量的问题
 
 ### 移除
-- 删除 SkillSpec 中五个 Plan 编排器遗留字段（required_context_level、atomic_action、source_hint、planning_allowed、fail_if）
-- 删除 paddle/PP-Structure 相关代码和依赖
+- 移除临时技能机制，所有新建技能统一部署到技能目录
+
+---
+
+## v1.1 (beta)
 
 ### 优化
-- 协议版本统一升级到 v3.2
-- 菜单拆除后的指路文案 11 处更新
+- 大幅压缩 token 消耗：系统提示和核心工具作为缓存前缀，动态段仅包含每轮变化的数据
+- 内置技能精简为四个：获取时间、哈希生成、正则测试、Base64 编解码
 
 ### 修复
-- 修复按名字删字段时误删 `InputDef.source_hint` 导致构造 Skill 时 TypeError 的问题
-- 修复协议版本号在报错信息中仍显示旧版本的问题
+- 修复写入记忆但不弹提示、右侧抽屉不显示的问题
+- 修复在编辑记忆中删除记忆导致界面闪退的问题
+- 修复闪烁光标在工具调用前不消失的问题
+- 修复 token 统计显示口径问题，现显示本轮真实用量
+- 修复个人信息弹窗下拉菜单在深色主题下背景色错误的问题
 
 ---
 
-## v1.88 (Beta)
-
-### Fixed
-- Fixed BM25 index and corpus non-atomic updates causing incorrect retrieval results
-- Fixed Gemini shell format being accepted at audit but rejected at load, an inconsistency
-- Fixed double escaping polluting MCP tool names with quotes in output
-- Deleted 257 lines of zero-caller code
-
-### 修复
-- 修复 BM25 索引和语料非原子更新导致检索返回错误结果的问题
-- 修复 Gemini 包壳格式在审计端放行但加载端拒绝的不一致问题
-- 修复双重转义导致带引号的 MCP 工具名输出污染的问题
-- 删除 257 行零调用方代码
-
----
-
-## v1.87 (Beta)
-
-### Added
-- MCP Registry discovery chain: search the official MCP registry
-- Suppressor: check existing docs/libraries before connecting new MCPs
-- Post-authorization verification: compare actual tool capabilities against what was declared at connect time
-
-### Changed
-- Registry search emphasizes substring matching to avoid false empty results from full-sentence queries
-- Candidate evaluation fields derived from real Registry responses
-- Environment variables show key names only, never values
-
-### Fixed
-- Fixed suppressor being written as a mandatory flow instead of a judgment
-- Fixed parsing failure due to Registry API structure changes
+## v1.11 (beta)
 
 ### 新增
-- MCP Registry 发现链：搜索官方 MCP 注册表
-- 抑制器：接入前先检查现有文档/库能否满足需求
-- 授权后回核：比对实际工具能力与接入时宣称的是否一致
+- 常驻系统托盘：点击关闭按钮不再退出，而是隐藏到托盘
 
-### 优化
-- Registry 搜索强调子串匹配，避免模型传完整句子得到假空结果
-- 候选评估字段从 Registry 真实响应派生
-- 环境变量只报 key 名不报值
-
-### 修复
-- 修复抑制器被写成强制流程的问题（改为判断）
-- 修复注册表 API 结构变化导致的解析失败问题
-
----
-
-## v1.86 (Beta)
-
-### Changed
-- Settings panel refactored: all five pages moved in, dropdown menu removed
-- Personal info / OS permissions / usage limits take effect immediately (no save button)
-- Usage limits use step inputs, invalid states cannot occur
-- Fixed double-scroll issue on MCP management page
-
-### Fixed
-- Fixed scattered private language policies at six locations with no awareness of each other, unified into `language_clause()`
-- Fixed 22 hardcoded bubble texts changed to model-generated natural language
-- Fixed test assertions locked to hardcoded text
-
-### 优化
-- 设置面板重构：五个页面全部搬入，下拉菜单拆除
-- 个人信息/OS 权限/用量限额即时生效（去掉保存按钮）
-- 用量限额改用步进器，非法状态无法产生
-- MCP 管理页双层滚动修复
-
-### 修复
-- 修复私有语言策略六处分散且互不知情的问题，统一收编到 `language_clause()`
-- 修复 22 处气泡固定文案改为模型生成的自然语言
-- 修复测试断言锁死固定文案的问题
-
----
-
-## v1.85 (Beta)
-
-### Changed
-- Visual self-test now probes current control layout first, then checks positioning capability
-- Self-test probes pulled live at runtime instead of a hardcoded list
-- Probe selection rules and locator matching rules share the same source
-
-### Fixed
-- Fixed self-test permanently returning 0% on English Windows
-- Fixed "control not open" being misreported as "positioning capability broken"
-- Fixed probe selecting non-interactive controls causing false positives
-
-### 优化
-- 任务栏自检改为先探测用户当前控件布局、再自检定位能力
-- 自检探针从写死清单改为运行时现场取用
-- 探针选取规则与定位器匹配规则共用同一份
-
-### 修复
-- 修复自检在英文 Windows 上永久返回 0% 的问题
-- 修复"控件没开"被误报为"定位能力坏了"的问题
-- 修复探针选取了不可交互控件导致假阳性的问题
-
----
-
-## v1.84 (Beta)
-
-### Added
-- MCP component ownership markers: internal components (like playwright-headless) don't show in the management page
-- Real reason shown when a component is rejected, not just "does not exist"
-
-### Changed
-- Capabilities and implementation components managed separately: users manage capabilities, not components
-
-### 新增
-- MCP 零件归属标记：内部组件（如 playwright-headless）不显示在管理页
-- 零件拒绝时给出真实理由而非"不存在"
-
-### 优化
-- 能力与实现零件分开管理：用户管理的是能力，不是零件
-
----
-
-## v1.83 (Beta)
-
-### Changed
-- MCP management tool uses JSON Schema enum to constrain operation types
-- Hardcoded text changed to model-generated natural language (deferred to main loop)
-- Operation synonym fallback (retry/restart → reconnect)
-
-### Fixed
-- Fixed MCP management tool always failing due to inconsistent operation names
-- Fixed tool showing "success" but actually doing nothing
-- Fixed hardcoded text preventing the model from self-correcting in failure loops
-
-### 优化
-- MCP 管理工具使用 JSON Schema enum 约束操作类型
-- 固定文案改为模型生成的自然语言（defer 到主循环）
-- 操作同义词兜底（retry/restart → reconnect）
-
-### 修复
-- 修复 MCP 管理工具因操作名不一致导致永远失败的问题
-- 修复工具"成功"但实际什么都没做的问题
-- 修复固定文案导致模型在失败循环中无法自纠的问题
-
----
-
-## v1.82 (Beta)
-
-### Added
-- Environment info injection: [Environment] block includes program directory, platform, OS version
-- Explicitly tells the model which configs are Nano's own vs other AI tools'
-
-### Fixed
-- Fixed model trying to read Claude Code/Cursor config files
-- Fixed OS Version API returning old version number
-
-### 新增
-- 环境信息注入：[Environment] 块包含程序目录、平台、OS 版本
-- 明确告知模型哪些配置是 Nano 自己的、哪些是其他 AI 工具的
-
-### 修复
-- 修复模型去读取 Claude Code/Cursor 的配置文件的问题
-- 修复 OS Version API 取到旧版本号的问题
-
----
-
-## v1.81 (Beta)
-
-### Added
-- MCP management: connect, enable, disable, delete, reconnect
-- Connection authorization dialog ignores Auto mode (MCP connection requires informed consent, not authorization)
-- Only parse config before authorization, don't execute code
-- Each row in management page expandable for details
-- MCP inventory injected into model context
-
-### Fixed
-- Fixed model claiming a capability "never existed" when MCP fails
-- Fixed disabled MCP tools showing as "does not exist"
-- Fixed MCP management tools completely unusable due to not being registered
-- Fixed model digging through disk to find MCP services it didn't know about
-
-### 新增
-- MCP 管理能力：接入、启用、停用、删除、重连
-- 接入授权弹窗无视 Auto 模式（MCP 接入需要知情，不是授权）
-- 授权前只解析配置不执行代码
-- 管理页每行可展开查看详情
-- MCP 清单注入模型上下文
-
-### 修复
-- 修复 MCP 故障时模型以为能力"从来不存在"的问题
-- 修复被禁用的 MCP 工具显示为"不存在"的问题
-- 修复 MCP 管理工具因未登记而完全不可用的问题
-- 修复模型不知道有哪些 MCP 服务而自己去翻磁盘的问题
-
----
-
-## v1.80 (Beta)
-
-### Changed
-- Skill copy separated by audience: model side (tool schema/awareness) always English, user side (purpose/description) follows user language
-- Skill detail page only shows "purpose description", not "function"
-
-### Fixed
-- Fixed model-side and user-side fields being mixed up in Skill generation protocol
-
-### 优化
-- Skill 文案按受众分离：模型侧（tool schema/awareness）永远英文，用户侧（purpose/描述）跟随用户语言
-- Skill 详情页只显示"用途说明"，不再显示"作用"
-
-### 修复
-- 修复 Skill 生成协议中模型侧与用户侧字段混用的问题
-
----
-
-## v1.79 (Beta)
-
-### Added
-- Dangerous command detection in Auto mode: judge whether a command aligns with the current task based on user intent
-- Four-state judgment: non-command / safe / dangerous / undecidable
-- Two-stage structure for the danger classifier (Stage 1 quick filter + Stage 2 review)
-- Vendor config supports independently specifying the detection model
-
-### Fixed
-- Fixed Auto mode skipping all confirmation dialogs
-- Fixed script-type commands being all allowed because they can't be statically analyzed
-
-### 新增
-- Auto 模式下危险命令判定：根据用户意图判断命令是否与当前任务对齐
-- 四态判定：非命令/安全/危险/判不了
-- 危险判定器的两段式结构（Stage 1 快速筛选 + Stage 2 复核）
-- 厂商配置支持独立指定判定模型
-
-### 修复
-- 修复 Auto 模式下一律跳过所有确认弹窗的问题
-- 修复脚本类命令因无法静态分析而全部放行的问题
-
----
-
-## v1.78 (Beta)
-
-### Fixed
-- Fixed side-effect scanner missing 5 common patterns (pathlib.write_text, unlink, import aliases, requests.Session, os.rename/replace)
-- Fixed alias imports bypassing detection
-- Fixed feature method name matching too broad causing false positives
-
-### 修复
-- 修复副作用扫描漏检 5 种常见写法（pathlib.write_text、unlink、import 别名、requests.Session、os.rename/replace）
-- 修复别名导入绕过检测的问题
-- 修复特征方法名匹配过于宽泛导致误报的问题
-
----
-
-## v1.77 (Beta)
-
-### Removed
-- Removed plan mode todo items
-
-### 移除
-- 移除 plan 模式的待办项
-
----
-
-## v1.76 (Beta)
-
-### Added
-- Ambient referent resolution: when the user says "that file I just edited", Nano locates the exact path through window trajectory
-- `resolve_ambient_referent` tool now permanent
-- File path references for editor/Office/file manager windows
-- Referenced entries marked with `▸` in injection, indicating full info is available
-
-### Changed
-- Window trajectory collection extended to Office/notepad apps, extracting filenames from window titles
-- Path resolution supports split command-line arguments (like Windows spaced paths)
-
-### Fixed
-- Fixed `edit_file` showing only "closest line" on match failure, making diffs impossible to locate; now shows diff codepoints
-
-### 新增
-- 环境引用解析：用户说"刚才编辑的那个文件"时，Nano 能通过窗口轨迹定位具体路径
-- `resolve_ambient_referent` 工具常驻
-- 对编辑器/Office/文件管理器窗口提供文件路径引用
-- 引用条目在注入中带 `▸` 标记，表明有完整信息可取
-
-### 优化
-- 窗口轨迹采集扩展至 Office/记事本类应用，从窗口标题抠文件名
-- 路径解析支持命令行参数被拆分的场景（如 Windows 空格路径）
-
-### 修复
-- 修复 `edit_file` 匹配失败时仅显示"最接近的一行"导致无法定位差异的问题，现标出差异码点
-
----
-
-## v1.75 (Beta)
-
-### Added
-- Iterative reading: `load_full_file` changed from one-shot load to iterable reading (trial read → slice deep read → note handoff)
-- `peek_file` independent tool
-- `search_files` content hits count as already trial-read
-- Reading tool cards show slice coordinates and handoff notes
-
-### Changed
-- Removed `LOAD_FULL_MAX_CHARS` hard truncation limit
-- Context compression applies to file read results
-- Tool description points to the correct file reading entry
-
-### 新增
-- 迭代阅读：`load_full_file` 从一次性加载改为可迭代阅读（试读定位→精读切片→笔记接力）
-- `peek_file` 独立工具
-- `search_files` 的内容命中视同已试读
-- 阅读工具卡显示切片坐标和承接笔记
-
-### 优化
-- 移除 `LOAD_FULL_MAX_CHARS` 硬截断限制
-- 上下文压缩对文件读取结果生效
-- 工具描述明确指向正确的文件阅读入口
-
----
-
-## v1.74 (Beta)
-
-### Added
-- Temporary execution channel: run one-shot throwaway Python code
-- Reuses existing side-effect scanning, confirmation dialog, and long-task mechanisms
-- CodeMirror now loaded locally
-
-### Changed
-- Side-effect scanning shares code with Skill auditing
-- Command risk judged by content, not just type
-- User hold time adjusted from 20s to 12s
-
-### Fixed
-- Fixed asyncio Event cross-loop issue for inbox confirmations
-- Fixed temporary execution tool cards not showing output
-- Fixed CodeMirror slow/offline due to foreign CDN dependency
-
-### 新增
-- 临时执行通道：可运行一段用完即扔的 Python 代码
-- 复用现有副作用扫描、确认弹窗和长任务机制
-- CodeMirror 改为本地加载
-
-### 优化
-- 副作用扫描与 Skill 审计共用同一份代码
-- 命令风险判定按内容而非仅按类型
-- 用户保持等待时间从 20 秒调至 12 秒
-
-### 修复
-- 修复收件箱等待确认的 asyncio Event 跨循环问题
-- 修复临时执行工具卡不显示输出的问题
-- 修复 CodeMirror 依赖境外 CDN 导致加载慢/离线不可用的问题
-
----
-
-## v1.73 (Beta)
-
-### Changed
-- Screenshot recycling now uses volume threshold (200MB) instead of count
-- Command output fully persisted to disk (no truncation); only memory buffer keeps tail for progress viewing
-- Small outputs don't keep files
-
-### Fixed
-- Fixed screenshot cleanup never triggering
-- Fixed abnormal screenshots being deleted when under budget
-- Fixed command output silently truncated with no warning
-
-### 优化
-- 截图回收改用体积阈值（200MB）而非张数
-- 命令输出完整落盘（不截断）；仅内存缓冲保留尾部用于进度查看
-- 小输出不保留文件
-
-### 修复
-- 修复截图清理从未触发的问题
-- 修复异常截图在未超预算时被误删的问题
-- 修复命令输出静默截断且无提示的问题
-
----
-
-## v1.72 (Beta)
-
-### Added
-- Web search capability: built-in search skill, existing fetch tool, headless browser fallback
-- Monitor card "Web Search" shows ONLINE/LIMITED/OFFLINE based on actual availability
-
-### Changed
-- Search tool renamed to avoid collision
-- Search engine selected after testing, with appropriate rate limiting
-
-### Fixed
-- Fixed monitor card guessing capability state from keywords
-
-### 新增
-- 网络搜索能力：内置搜索技能、现有 fetch 工具、兜底无头浏览器
-- 监控卡"互联网检索"按实际可用性显示 ONLINE/LIMITED/OFFLINE
-
-### 优化
-- 搜索工具改名，避免撞名
-- 搜索引擎经实测选定并做适当限流
-
-### 修复
-- 修复监控卡靠关键词猜测能力状态的问题
-
----
-
-## v1.71 (Beta)
-
-### Added
-- Two official built-in MCP services: Microsoft Learn and Context7
-
-### 新增
-- 内置两个官方 MCP 服务：Microsoft Learn 和 Context7
-
----
-
-## v1.70 (Beta)
-
-### Added
-- Memory system refactored: content the user wants to remember is now truly persisted and injected as summaries each turn
-- Memory entries include: content, applicable conditions, reason, model summary, user summary
-- New "forget" tool: the model can delete outdated memories on its own
-- Memory capacity warnings
-
-### Changed
-- Memory field design shifted from "correction" to general memory
-- Model summaries forced to English, user summaries follow UI language, values kept original
-- Deletion is soft delete
-
-### 新增
-- 记忆系统重构：用户希望记住的内容现在真正持久化并每轮注入摘要
-- 记忆条目包含：内容、适用条件、原因、模型摘要、用户摘要
-- 新增"遗忘"工具，模型可自行删除过时记忆
-- 记忆水位提醒
-
-### 优化
-- 记忆字段设计从"纠错"转向通用记忆
-- 模型摘要强制英文，用户摘要跟随界面语言，具体值保留原文
-- 删除为软删除
-
----
-
-## v1.69 (Beta)
-
-### Changed
-- Visual positioning chain: removed OCR matching, removed center cropping, switched to proportional scaling
-- Screenshots scaled before sending per official formula
-- Coordinate format back to pixel coordinates
-- Screenshot discipline changed to "survey + cleanup" two-state
-- Window shape state injected into model, with hard gate "don't shrink if already mini"
-- Resume review prompt now explicitly states task needs to continue
-
-### Fixed
-- Fixed losing fullscreen info when zooming screenshots
-
-### 优化
-- 视觉定位链：移除 OCR 匹配，移除居中裁剪，改用等比缩放
-- 截图发送前按官方公式缩放
-- 坐标格式改回像素坐标
-- 截图纪律改为"勘察+收尾"两态
-- 窗口形态状态注入模型，增加"已是 mini 则不再缩"的硬闸
-- 唤醒后回看提示明确任务需继续
-
-### 修复
-- 修复放大截图时丢掉全屏信息的问题
-
----
-
-## v1.68 (Beta)
-
-### Added
-- OS operation command enum automatically derived from execution routing table
-- Queued messages after restart appear as history, not auto-executed
-
-### Changed
-- Memory system design finalized
-
-### 新增
-- 系统操作指令枚举从执行路由表自动派生
-- 重启后排队消息呈现为历史记录，但不自动执行
-
-### 优化
-- 记忆系统设计定稿
-
----
-
-## v1.67 (Beta)
-
-### Added
-- In-chat image viewer: thumbnail + click to zoom
-- Visual blocks add "copy code" and "export" menu
-
-### Changed
-- Drawing specs clarified
-- Screenshot directory auto-capped (200MB volume)
-
-### Fixed
-- Fixed SVG showing too small in chat
-- Fixed exported SVG not opening
-- Fixed mini window not being resizable
-
-### 新增
-- 聊天内图片查看器：缩略图+点击放大
-- 可视化块增加"复制代码"和"导出"菜单
-
-### 优化
-- 绘图规格明确化
-- 截图目录自动封顶（按体积 200MB）
-
-### 修复
-- 修复 SVG 在聊天区显示过小的问题
-- 修复导出 SVG 无法打开的问题
-- 修复 mini 窗口无法缩小的问题
-
----
-
-## v1.66 (Beta)
-
-### Added
-- OS tools split into "System Command" and "Computer Use" two independent tools
-- Permanent tools expanded: system command, file path query, full file read now permanent
-- Cache miss diagnostic logs
-
-### 新增
-- 操作系统工具拆分为"系统命令"和"计算机使用"两个独立工具
-- 常驻工具扩容：系统命令、文件路径查询、完整文件读取默认常驻
-- 缓存失效诊断日志
-
----
-
-## v1.65 (Beta)
-
-### Fixed
-- Fixed system error cards only displaying, not persisting, disappearing after restart
-- System errors now persist as UI records, replayed as-is
-
-### 修复
-- 修复系统错误卡片仅显示不落盘，重启后消失的问题
-- 系统错误现在作为 UI 记录持久化，重放时原样显示
-
----
-
-## v1.64 (Beta)
-
-### Added
-- Task pause/resume mechanism completed: OS lease waits also included in review scheduling
-- Response period state upgraded from bare dict to structured object
-
-### 新增
-- 任务暂停/恢复机制补全：等待操作系统租约也纳入回看调度
-- 回应期状态从裸字典升级为有结构对象
-
----
-
-## v1.63 (Beta)
-
-### Changed
-- User interruption automatically moves the current long task to background
-- Bubble merge judgment on resume/wake changed to "is something on the workbench"
-- Basket tasks auto-resume review when workbench is idle
-
-### Fixed
-- Fixed "move to background" tool only living for one turn
-- Fixed inbox claim records not properly consumed, causing subsequent deliveries to fail
-- Fixed quote functionality too broad in scope
-- Fixed quote-type messages degrading after restart
-
-### 优化
-- 用户插话时当前长任务自动转入后台
-- 回看/唤醒时的气泡合并判断改为"工作台上是否有事"
-- 篮子中的任务在工作台空闲时自动恢复回看
-
-### 修复
-- 修复"放后台"工具因状态仅活一轮导致无法使用的问题
-- 修复收件箱认领记录未正确消费导致后续投递失效的问题
-- 修复引用功能覆盖范围过广的问题
-- 修复重启后引用类消息退化的问题
-
----
-
-## v1.62 (Beta)
-
-### Added
-- Long calls unified modeling: workbench (current attention) and basket (background auto-run), grace period unified at 5s
-- New "stop background task" tool
-- Command execution added "don't wait for result" parameter
-
-### Changed
-- Removed 30-minute hard kill limit
-- Three safety nets: review protection, periodic heartbeat, fallback reclamation
-
-### Fixed
-- Fixed model unable to proactively stop any background task
-
-### 新增
-- 长调用统一建模：工作台（当前注意力）和篮子（后台自动运行），宽限期统一为 5 秒
-- 新增"停止后台任务"工具
-- 命令执行新增"不等结果"参数
-
-### 优化
-- 移除 30 分钟硬杀上限
-- 安全网三层：回看保护、定期心跳、兜底回收
-
-### 修复
-- 修复模型无法主动停止任何后台任务的问题
-
----
-
-## v1.61 (Beta)
-
-### Changed
-- Copy button now uses icon instead of text
-- File links changed to inline style
-- Quote state now has a visible exit
-
-### Fixed
-- Fixed file links jumping to "My Documents" when clicked
-- Fixed input box unable to right-click paste
-- Fixed quote state having entry but no exit
-
-### 优化
-- 复制按钮改用图标而非文字
-- 文件链接改为行内样式
-- 引用状态增加可视出口
-
-### 修复
-- 修复文件链接点击后跳转到"我的文档"的问题
-- 修复输入框无法右键粘贴的问题
-- 修复引用状态只有入口没有出口的问题
-
----
-
-## v1.60 (Beta)
-
-### Added
-- Right-click "Reply" on selected text
-- Drag files onto window to upload
-- Local file links in chat (left-click open, right-click "show in folder")
-- Copy button on code block top-right
-
-### Changed
-- Prompt adds file link usage boundaries
-
-### 新增
-- 选中文字右键"回复"功能
-- 拖拽文件到窗口上传
-- 聊天区本地文件链接（左键打开，右键"在文件夹中显示"）
-- 代码块右上角复制按钮
-
-### 优化
-- 提示词增加文件链接使用边界
-
----
-
-## v1.59 (Beta)
-
-### Fixed
-- Fixed Nano being able to execute fixes but saying it "can't help"
-- Fixed native window text selection failing shortly after
-- Fixed chat area staying at top instead of latest message after restart
-
-### 修复
-- 修复 Nano 能执行修复却说自己"帮不了忙"的问题
-- 修复 native 窗口文字选中后不久失效的问题
-- 修复重启后聊天区停在顶部而非最新消息的问题
-
----
-
-## v1.58 (Beta)
-
-### Changed
-- Error cards now have a "fix suggestion" subtitle
-- Fix suggestions also injected into the model
-- Error text split into user-facing and model-facing fields
-
-### Fixed
-- Fixed MCP config changes requiring restart to take effect
-
-### 优化
-- 故障卡增加"修复建议"小标题
-- 修复建议同时注入模型
-- 故障文案拆分为用户语言和模型语言两个字段
-
-### 修复
-- 修复 MCP 配置修改后需重启才生效的问题
-
----
-
-## v1.57 (Beta)
-
-### Added
-- MCP service failures integrated into health registry: specific cause reported on connection failure
-- Each MCP service has its own independent probe
-- Capability probe gap check: new capabilities without probes or justification trigger test warnings
-
-### Fixed
-- Fixed model claiming it never had the capability when MCP fails
-- Fixed failure state not self-recovering
-
-### 新增
-- MCP 服务故障接入健康登记：连接失败时上报具体原因
-- 每个 MCP 服务配备独立探针
-- 能力探针缺口检查：新能力若未配探针且未说明理由，测试会告警
-
-### 修复
-- 修复 MCP 故障时模型声称从未拥有该能力的问题
-- 修复故障状态无法自动恢复的问题
-
----
-
-## v1.56 (Beta)
-
-### Fixed
-- Fixed main agent not knowing the reason when user manually terminates a task
-- Fixed "can't wait" tool being skipped by the model
-- Fixed background task notification click area too large, authorization source marker too prominent
-
-### 修复
-- 修复用户手动终止任务时本体不知道原因的问题
-- 修复"不等了"工具被模型跳过的问题
-- 修复后台任务提示点击区域过大、授权来源标记过于醒目的问题
-
----
-
-## v1.55 (Beta)
-
-### Fixed
-- Fixed subagent system prompt still declaring read-only, causing it to give up write operations
-- Fixed subagent confirmation dialog never showing due to event queue lifecycle issues
-- Fixed drawer background task status permanently showing "queued"
-- Fixed subagent tool cards wrapping
-- Unified subagent runtime status text with main agent
-
-### 修复
-- 修复 Subagent 系统提示仍声明只读导致放弃写操作的问题
-- 修复 Subagent 确认弹窗因事件队列生命周期问题永远不显示的问题
-- 修复抽屉中后台任务状态永久显示"排队中"的问题
-- 修复 Subagent 工具卡折行显示的问题
-- 统一 Subagent 运行状态文案与本体一致
-
----
-
-## v1.54 (Beta)
-
-### Added
-- OS capability toggles now truly take effect: disabling a capability rejects related operations with clear message
-- Authorization source perceptible by the model
-- Auto mode state injected into model context
-
-### Fixed
-- Fixed capability toggles only changing UI but not actually working
-
-### 新增
-- 操作系统能力开关真正生效：关闭某项能力后，相关操作会被拒绝并给出明确提示
-- 授权来源可被模型感知
-- 自动模式状态注入模型上下文
-
-### 修复
-- 修复能力开关仅界面变化但实际无效的问题
-
----
-
-## v1.53 (Beta)
-
-### Added
-- Subagents get write permissions (file editing)
-- Authorization dialogs initiated by subagents have source markers
-- Subagent confirmation dialogs not cancelled by new user messages
-
-### Fixed
-- Fixed subagents crashing frequently due to format errors
-- Fixed long tasks not yielding promptly after user interruption
-- Fixed subagents reporting read-only permission errors
-
-### 新增
-- Subagent 获得写权限（文件编辑）
-- Subagent 发起的授权弹窗带有来源标识
-- Subagent 确认弹窗不被新用户消息取消
-
-### 修复
-- 修复 Subagent 因格式错误频繁崩溃的问题
-- 修复插话后长任务未及时交还的问题
-- 修复 Subagent 报告只读权限错误的问题
-
 ---
-
-## v1.52 (Beta)
-
-### Added
-- "Can't wait" tool: model can turn the current long wait task into background
-- Subagents automatically go to background after timeout
-- Background task terminate button now works for real carriers
-
-### Fixed
-- Fixed queued status display anomaly after interruption
-- Fixed background task terminate button not working for subagents
-
-### 新增
-- "不等了"工具：模型可将当前等待的长任务转为后台运行
-- Subagent Agent 超时后自动转为后台运行
-- 后台任务终止按钮现在对真实载体生效
-
-### 修复
-- 修复插话后排队状态显示异常的问题
-- 修复后台任务终止按钮对 Subagent 无效的问题
-
----
-
-## v1.51 (Beta)
-
-### Added
-- Task boundary tools support "pause" and "resume" operations
-- Current task derived by explicit marking, not time sorting
-
-### 新增
-- 任务边界工具支持"暂停"和"恢复"操作
-- 当前任务通过显式标记而非时间排序推导
-
----
-
-## v1.50 (Beta)
-
-### Added
-- Read-only permission grading: system operation commands classified by read/write, subagents can now use read-only OS capabilities
-
-### 新增
-- 只读权限分级：系统操作指令按是否只读分类，Subagent Agent 现在可使用只读的系统操作能力
-
----
-
-## v1.49 (Beta)
-
-### Added
-- Hard window guard formally enabled: checks context before send, attempts emergency recovery, rejects if still insufficient
-
-### 新增
-- 硬窗口守卫正式启用拦截：发送前检测上下文超限，尝试紧急回收，仍不够则拒绝
-
----
-
-## v1.48 (Beta)
-
-### Changed
-- Authorization cards now show specific actions instead of entire file contents
-- Final safe truncation now uses token threshold instead of message count
-
-### Fixed
-- Fixed confirmation dialog color not matching theme
-- Fixed dialog not closing when user changes their mind
-- Fixed dialog width too narrow, code not fully visible
-
-### 优化
-- 授权卡现在显示具体行为而非整份文件内容
-- 最后安全截断改用 token 阈值而非消息条数
-
-### 修复
-- 修复确认弹窗颜色与主题不一致的问题
-- 修复弹窗在用户改口后未关闭的问题
-- 修复弹窗宽度过窄导致代码显示不全的问题
-
----
-
-## v1.47 (Beta)
-
-### Added
-- File search tool (supports wildcards and content search)
-- File read tool supports pagination (offset and line limit)
-- Path blacklist protection
-
-### Fixed
-- Fixed subagent monitor drawer tool call order display error
-
-### 新增
-- 文件搜索工具（支持通配符和内容搜索）
-- 文件读取工具支持分页（偏移量和行数限制）
-- 路径黑名单保护
-
-### 修复
-- 修复 Subagent 监控抽屉中工具调用顺序显示错误的问题
-
----
-
-## v1.46 (Beta)
-
-### Added
-- Parallel subagent execution (up to 3)
-- Subagent execution steps expandable for detailed view
-
-### Fixed
-- Fixed drawer expand state being reset on refresh
-
-### 新增
-- 多 Subagent 并行执行（上限 3 个）
-- Subagent 执行过程可展开查看详细步骤
-
-### 修复
-- 修复抽屉展开状态在刷新时被重置的问题
-
----
-
-## v1.45 (Beta)
-
-### Added
-- Subagents: dispatch independent subagents for read-only tasks, context isolated, results narrated by main agent
-- Subagents appear in background task drawer
-
-### Fixed
-- Fixed subagent attribution statistics error
-- Fixed usage statistics without concurrency protection
-
-### 新增
-- Subagent：可派发独立的子代理执行只读任务，上下文隔离，结果由本体转述
-- Subagent 进入后台任务抽屉
-
-### 修复
-- 修复 Subagent 归属统计错误
-- 修复用量统计无并发保护的问题
-
----
-
-## v1.44 (Beta)
-
-### Added
-- Background task drawer: shows running and completed background tasks, view details, manually terminate
-- Chat area shows "N background tasks" indicator
-
-### 新增
-- 后台任务抽屉：显示正在运行和已完成的后台任务，可查看详情、手动终止
-- 聊天区显示"x 个后台任务"提示
-
----
-
-## v1.43 (Beta)
-
-### Added
-- Tool card details expandable: click tool card to see specific parameters and results
-
-### 新增
-- 工具卡详情展开：点击工具卡可查看具体参数和结果
-
----
-
-## v1.42 (Beta)
-
-### Added
-- Context ladder enabled by default
-- Language settings: UI language switch entry added
-- L2 summary state split into "type" and "status" two independent dimensions
-
-### Fixed
-- Fixed chat area horizontal scrollbar issue
-
-### 新增
-- 开启上下文阶梯（默认启用）
-- 语言设置：新增界面语言切换入口
-- L2 摘要状态拆分为"类型"和"状态"两个独立维度
-
-### 修复
-- 修复聊天区横向滚动条问题
-
----
-
-## v1.41 (Beta)
-
-### Changed
-- Projection loop closed: decay table changes immediately sync to in-memory projection
-- L2 measurement now uses real projection artifacts
-- Fixed bridge module import error breaking L2→L3 path
-- Added conversation recall tool so the model can proactively retrieve content moved out of context
-
-### 优化
-- 完善投影闭环：衰减表变更后立即同步到内存投影
-- L2 计量改用真实投影产物计算
-- 修复桥接模块因导入错误导致 L2→L3 路径失败的问题
-- 新增对话召回工具，使模型能主动找回已移出上下文的内容
-
----
-
-## v1.40 (Beta)
-
-### Fixed
-- Fixed decay levels not being replayed after restart: projection rebuild now restores context from stored levels
-
-### 修复
-- 修复重启后衰减层级未被重放的问题：重建投影时按存储的层级还原上下文
-
----
-
-## v1.39 (Beta)
-
-### Added
-- Memory starting card: shows how many clues are still remembered
-- Old-style hard truncation demoted to last-resort fallback
-- Window guard integrated into request flow, currently warns but doesn't block
-
-### 新增
-- 记忆起点卡片：显示当前仍被记住的线索数
-- 旧式硬截断退位为最后的兜底手段
-- 窗口守卫接入请求流程，目前仅告警不拦截
-
----
-
-## v1.38 (Beta)
-
-### Added
-- Layer 3 to layer 4 expiry: index entries move out of system prompt, but semantic memory content retained
-- Hard window guard: checks context limit before send, attempts emergency reclamation if exceeded
-
-### 新增
-- 第三层到第四层的过期：索引条目移出系统提示，但语义记忆内容保留
-- 硬窗口守卫：发送前检查上下文是否超限，超限时尝试紧急回收
-
----
-
-## v1.37 (Beta)
-
-### Added
-- Layer 2 to layer 3 conversion: generates searchable index entries, injected into system prompt
-- Index entries unconditionally injected into system prompt, not dependent on vector retrieval
-
-### 新增
-- 第二层到第三层的转换：生成可检索的索引条目，并注入系统提示
-- 索引条目无条件注入系统提示，不依赖向量检索
-
----
-
-## v1.36 (Beta)
-
-### Added
-- Layer 1 to layer 2 actual conversion: calls distillation model to generate summaries, each exchange independently succeeds or fails
-
-### 新增
-- 第一层到第二层的实际转换：调用提炼模型生成摘要，每个交换独立成败
-
----
-
-## v1.35 (Beta)
-
-### Added
-- Layer 2 summary format: defines four fields for conclusion line (status, result, referenced object, open items)
-
-### 新增
-- 第二层摘要格式：定义结论行的四个字段（状态、结果、引用对象、未决事项）
-
----
-
-## v1.34 (Beta)
-
-### Added
-- Layer 1 decay (tool results replaced with placeholders), only applies to closed exchanges, current turn unaffected; disabled by default
-
-### 新增
-- 第一层衰减（工具结果替换为占位符），仅对已关闭的交换生效，当前轮不受影响；默认关闭
-
----
-
-## v1.33 (Beta)
-
-### Added
-- Exchange decay storage table, records current level per exchange; content hash computed directly from database
-
-### 新增
-- 交换衰减存储表，记录每次交换的当前层级；内容哈希直接从数据库计算
-
----
-
-## v1.32 (Beta)
-
-### Added
-- Context ladder design finalized: layer ratios, data table structure, summary format, original quote retention rules
-
-### 新增
-- 上下文阶梯方案定稿：各层级占比、数据表结构、摘要格式、用户原话保留规则
-
----
-
-## v1.31 (Beta)
-
-### Fixed
-- Fixed system annotations being misjudged as user messages causing exchange split errors
-- Fixed inconsistent user message identification within exchanges
-
-### 修复
-- 修复系统注记被误判为用户发言导致交换切分错误的问题
-- 修复交换内用户消息识别不一致的问题
-
----
-
-## v1.30 (Beta)
-
-### Added
-- "Exchange" concept: all content between one user message and the next user message defined as one exchange unit
-
-### Changed
-- Truncation logic uses exchange units for cut points
-
-### 新增
-- "一次交换"概念：将用户一句消息到下一句用户消息之间的所有内容定义为一个交换单位
-
-### 优化
-- 截断逻辑改用交换单位计算切点
-
----
-
-## v1.29 (Beta)
-
-### Changed
-- Reduced spacing between bottom input area and message list
-
-### Fixed
-- Memory starting card changed to click "N more older" popup independent scroll window
-
-### 优化
-- 缩小底部输入区与消息列表之间的间距
-
-### 修复
-- 记忆起点卡改为点击"还有 N 条更早的"弹出独立滚动窗口
-
----
-
-## v1.28 (Beta)
-
-### Fixed
-- Fixed top blank space shifting to bottom
-- Fixed export button not opening folder picker
-- Fixed user messages having no name in search results
-
-### 修复
-- 修复顶部空白转移到底部的问题
-- 修复导出按钮无法弹出文件夹选择的问题
-- 修复搜索结果中用户消息无名称的问题
-
----
-
-## v1.27 (Beta)
-
-### Changed
-- Search functionality moved to browser-side execution
-
-### Fixed
-- Fixed black blank at top of chat area
-- Fixed search button causing chat area to disappear
-- Fixed folder picker throwing coroutine errors
-
-### 优化
-- 搜索功能移至浏览器端执行
-
-### 修复
-- 修复聊天区顶部黑色空白
-- 修复搜索按钮导致聊天区消失的问题
-- 修复文件夹选择对话框报协程错误的问题
-
----
-
-## v1.26 (Beta)
-
-### Added
-- Chat search: search button top-right, directly scans rendered DOM
-- Settings panel: new secondary settings interface
-- Data export: export current and historical sessions as Markdown, JSON, and image copies
-
-### Changed
-- Reset dialog text changed to "completely abandon all previous sessions"
-
-### 新增
-- 聊天区搜索：右上角搜索按钮，直接扫描已渲染的 DOM
-- 设置面板：新增二级设置界面
-- 导出数据：导出当前及历史会话为 Markdown、JSON 和图片副本
-
-### 优化
-- 重置对话文案改为"完全放弃之前的全部会话"
-
----
-
-## v1.25 (Beta)
-
-### Changed
-- Context card keeps last known value on startup, no longer resets to "--"
-- After reset, shows baseline noise (system prompt and tools fixed overhead), not 0
-- Estimated values only for UI display, not given to the model
-
-### 优化
-- 上下文卡启动时保留上次已知值，不再重置为"--"
-- 重置对话后显示底噪（系统提示和工具的固定开销），而不是 0
-- 估算值仅用于界面展示，不给模型使用
-
----
-
-## v1.24 (Beta)
-
-### Added
-- Relay passthrough missing field detection: alarms and returns empty if any key field is missing
-- Quota calibration data collection: records context samples to local file per request
-
-### 新增
-- 中转透传统计字段缺失检测：缺少任一关键字段则报警并返回空
-- 配额标定数据收集：每次请求记录上下文样本到本地文件
-
----
-
-## v1.23 (Beta)
-
-### Added
-- Model config table: independently manage distiller, pricing, context window, quota per vendor
-- Budget and pressure injection: four water levels (50%/70%/85%), pressure prompt injected to model above high water
-- Monitor card "Context": shows current context usage ratio
-
-### Changed
-- Price settings separated from usage config
-- Context measurement state reset to unknown after switching models
-
-### 新增
-- 模型配置表：独立管理各厂商的提炼器、价格、上下文窗口、配额
-- 预算与压力注入：四档水位（50%/70%/85%），超过高水位向模型注入压力提示
-- 监控卡"上下文"：显示当前上下文占用比例
-
-### 优化
-- 价格设置从用量配置中分离
-- 切换模型后上下文计量状态重置为未知
-
----
-
-## v1.22 (Beta)
-
-### Added
-- Image summaries and on-demand review: when there are images in current turn, auto-generate summary and store in tool params; historical images can be reviewed on demand via review tool
-
-### 新增
-- 图片摘要与按需回看：本轮有图时自动生成摘要并存入工具参数，历史图片可通过回看工具按需查看原图
-
----
-
-## v1.21 (Beta)
-
-### Added
-- Multiple vendor token stats field mappings
-- User-uploaded images preserved across restarts: new content-addressed image library, image IDs persisted with messages, image annotations auto-restored after restart
-
-### Fixed
-- Fixed system annotations being written into user message body during image compression
-
-### 新增
-- 补充多家厂商的 token 统计字段映射
-- 用户发送的图片跨重启保留：新增内容寻址图库，图片标识随消息持久化，重启后自动恢复图片注记
-
-### 修复
-- 修复压缩图片时系统注记被写入用户消息正文的问题
-
----
-
-## v1.20 (Beta)
-
-### Fixed
-- Fixed flow chart not displaying after restart: visual events supplemented on replay, event classification table established to ensure all replayable events are correctly restored
-
-### 修复
-- 修复重启后流程图不显示的问题：重放时补充可视化事件，并建立事件分类表，确保所有可重放事件被正确还原
-
----
-
-## v1.19 (Beta)
-
-### Added
-- Context measurement foundation: cross-vendor token stats difference table, uses "anchor + snapshot delta" to estimate context increments, with residual watchdog detecting measurement bias
-- Measurement integrated into every model request: predicted before send, observed after
-
-### 新增
-- 上下文计量基础：跨厂商 token 统计差异表，使用"锚点+快照差"估算上下文增量，并设有残差看门狗检测计量偏差
-- 计量接入每次模型请求，发前预测，发后观察
-
----
-
-## v1.18 (Beta)
-
-### Added
-- Runtime scope and fact lifecycle: unique runtime ID generated per startup, scope info injected into model context
-- Model tool calls must be constrained by the valid tool table attached to current request; calling tools not in table gets explicit rejection
-- Restart-aware one-time injection
-
-### 新增
-- 运行作用域与事实生命周期：每次启动生成唯一运行标识，在模型上下文中注入作用域信息
-- 模型工具调用必须受当前请求附带的有效工具表约束，调用不在表中的工具会得到明确拒绝
-- 重启感知一次性注入
-
----
-
-## v1.17 (Beta)
-
-### Changed
-- When skill spec validation fails, retries once with error info attached; if retry still fails, error passes to subsequent steps, avoiding silent degradation
-
-### 优化
-- 技能规格校验失败时先携带错误信息重试一次，重试仍失败则将错误传递给后续步骤，避免静默降级
-
----
-
-## v1.16 (Beta)
-
-### Added
-- New skill creation flow: provide requirements, handoff summary, and open questions directly; if open questions exist, no code is generated, instead persistent clarification
-- Clarification continuation rerouted: after answering, returns to main model for re-decision, not re-running exploration
-
-### Removed
-- Removed "exploration sub-loop" and related code from skill creation, simplifying the flow
-
-### 新增
-- 创建技能的新流程：直接提供需求、交接摘要和未决问题；若有未决问题则不生成代码，转为持久澄清
-- 澄清续接改道：回答后交回主模型重新决策，而非重跑探索
-
-### 移除
-- 移除技能创建中的"探索子循环"及相关代码，简化流程
-
----
-
-## v1.15 (Beta)
-
-### Fixed
-- Fixed system prompt leaking into user bubbles after restart: added message visibility markers, system annotations written via dedicated entry, auto-filtered on replay
-
-### 修复
-- 修复重启后系统提示词泄露到用户气泡的问题：新增消息可见性标记，系统注记使用专用入口写入，重放时自动过滤
-
----
-
-## v1.14 (Beta)
-
-### Fixed
-- Fixed "deploy this" after referencing audit card creating a new skill instead
-- Fixed clarification todo card not appearing
-- Todo cards now only serve skill code auditing, not other scenarios
-
-### 修复
-- 修复引用审计卡后"部署这个吧"却创建新技能的问题
-- 修复澄清待办卡不出现的问题
-- 待办卡现在仅服务于技能代码审计，其他场景不再使用卡片形式
-
----
-
-## v1.13 (Beta)
-
-### Added
-- Unified tool registry officially switched to sole authority: tool definitions, awareness, scheduling, execution binding all centralized in one declaration, adding a tool requires only one registration
-- New `Preload.HIDDEN` scope: tools the model knows exist but doesn't get told about
-- Five exit stream adapters unified signatures
-
-### Removed
-- Removed all old scattered tool definitions, awareness lists, classification tables, manual keyword tables, and related code
-
-### Fixed
-- Fixed tool call intent description inconsistent with actual behavior
-- Fixed skill meta-tool awareness line degradation
-- Fixed execution binding in directory pointing to non-existent methods
-- Fixed unknown tool fallback using wrong authority for system operation command list
-- Fixed availability conditions misused as execution gate
-
-### 新增
-- 统一工具注册表正式切换为唯一权威：工具定义、感知、调度、执行绑定全部集中于一处声明，新增工具只需登记一次
-- 新增 `Preload.HIDDEN` 作用域，处理得了但不告诉模型存在的工具
-- 五个退出流适配器统一签名
-
-### 移除
-- 移除所有旧的分散工具定义、感知列表、分类表、人工关键词表等相关代码
-
-### 修复
-- 修复工具调用意图描述与实际行为不一致的问题
-- 修复技能元工具感知行退化的问题
-- 修复目录中执行绑定指向不存在方法的问题
-- 修复未知工具兜底中系统操作指令列表取错权威的问题
-- 修复可用性条件被误用作执行门禁的问题
-
----
-
-## v1.12 (Beta)
-
-### Added
-- **Conversation persistence**: restart restores full context of the same session, including thinking, tool calls, results, and order; interrupted calls keep audit records, explicitly marked on replay
-- **Long task unified handling**: commands, external services, local skills all support background running — yield control after timeout, can continue other things, wake up on completion or periodic review, see real output and progress
-- **Unified tool directory**: tool definitions consolidated from 11 scattered locations to a single declaration center, adding a tool requires only one registration, awareness copy, scheduling strategy, execution binding etc. auto-derived; conflicts only isolate conflicting items, don't affect overall startup
-- Runtime kernel and task state management: consolidate scattered runtime state, each domain has clear legal state transition rules
-- Capability health registry: register runtime state per capability, failure deduplication, recovery detection, system event injection to model
-- Crash breadcrumbs: write breadcrumbs before dangerous operations, next startup can locate cause of death
-- Cost hard limit closed to underlying client, all API calls unified through gate
-- Knowledge base vector store corruption detection and auto-heal
-- Todo card "reply to this" feature: click to specify which todo to answer, saves model guessing
-
-### Changed
-- Waking up and continuing to talk no longer starts a new `nano ❯` header
-- Long task review interval: first 60 seconds by system, then Nano self-adjusts based on actual progress
-- Tool execution dispatch chain slimmed from 1400+ lines to ~680 lines
-- Monitor card changed to availability priority over active state
-- Capability gating made dual-gate: manifest layer doesn't give broken capability tools to model, execution layer checks again
-- Provider consolidated to process-unique instance, changed to lazy loading
-- Official skill tool declarations changed to lowercase type
-- Capability probe framework: externally clocked, with exponential backoff, failed capabilities auto-recoverable
-- Knowledge base module loads its own environment variables
-- Throwing exceptions on limit exceeded instead of sentinel values
-- On-demand tool loading receipts explicitly state scope
-- Async output and background failures closed to single exit
 
-### Removed
-- Removed residual third stop method "soft emergency stop"
-- Removed ~240 lines of classifier-era dead code
+## v1.12 (beta)
 
 ### 新增
 - **对话持久化**：重启后恢复同一会话的完整上下文，包括思考过程、工具调用、结果和顺序；中断的调用保留审计记录，重放时明确标记
@@ -1624,190 +136,1047 @@
 - 按需加载工具回执明确作用域范围
 - 异步产出与后台故障收口成唯一出口
 
+### 修复
+- 修复定时等待登记失败时 Nano 错误告知用户已安排的问题
+- 修复重启后工具卡片丢失耗时、显示裸工具名的问题
+- 修复长任务中途插话导致旧内容被移动到新消息下方的问题
+- 修复长命令完成后工具明细加载动画不结束的问题
+- 修复长时间命令从未交还控制权的问题
+- 修复长任务完成时结果解析错误的问题
+- 修复普通发送时后台报未定义变量的问题
+- 修复命令还在运行时工具卡片提前显示"已完成"的问题
+- 修复后台任务运行时状态行只显示裸计时器的问题
+- 修复四处静默失效问题（窗口识别、知识库损坏提示、PDF 超时、错误处理）
+- 修复自动模式提示作用域描述不准确的问题
+- 修复知识库文件长文件名遮盖操作按钮的问题
+- 修复限额设置中软上限高于硬上限时保存无效的问题
+- 修复快速拖动滑块时数值显示错误的问题
+- 修复增强模式开关实际未生效的问题
+- 修复等待计划因参数错误无法创建的问题
+- 修复取消系统回看后原操作状态永久卡住的问题
+- 修复长任务交还后计时器停止更新的问题
+- 修复唤醒路径遗漏每轮初始化的问题
+- 修复退出工具与其他工具同轮出现时缺少事务标记的问题
+- 修复错误处理分支中守卫恒真导致修复逻辑永远执行的问题
+- 修复批次状态清理点不完整导致误报异常的问题
+- 修复被动挂起感知层过滤不彻底导致自身输入也被拦截的问题
+- 修复租约粒度过细导致两步操作之间无人持有机器的问题
+- 修复无工具请求时返回空值无法诊断的问题
+- 修复超限时使用哨兵值导致数据污染的问题
+- 修复 Provider 未做懒加载导致无 key 时启动失败的问题
+- 修复内置技能工具声明类型大写导致调用失败的问题
+- 修复能力探针未定时运行导致故障无法自愈的问题
+- 修复知识库模块未自行加载环境变量的问题
+- 修复系统交还的长命令状态永久停留在进行中的问题
+- 修复本地技能在回看轮被误标记为完成的问题
+- 修复长网页操作后台完成后通知被丢弃的问题
+- 修复引用待审卡发送后输入框仍处于引用状态的问题
+- 修复取消等待后胶囊显示错误的问题
+- 修复已结束的任务仍被报告为进行中的问题
+- 修复取消等待后倒计时继续走的问题
+- 修复操作窗口错误导致数据损坏的问题
+- 修复被动挂起因滚动自身窗口导致死锁的问题
+- 修复前台窗口切换被误判为用户接管的问题
+- 修复消息前缀与文字错行的问题
+- 修复唤醒源仅删除一半导致残留记录的问题
+- 修复终止按钮：输入框为空时停止当前轮，不清除队列
+- 修复多条消息合并为一个气泡的问题
+- 修复确认弹窗存在时用户直接说话可解除的问题
+- 修复用户消息在忙时被丢弃的问题
+- 修复定时等待登记失败时界面胶囊永久转动的问题
+- 修复非法参数被误报为数据损坏的问题
+- 修复"本次任务免确认"失效条件与界面状态耦合的问题
+- 修复被动挂起恢复后缺乏环境变化摘要的问题
+- 修复被动挂起被实现为"闸"导致永久锁死的问题
+- 修复使用已过期句柄判断权限的问题
+- 修复使用"鼠标是否握持"判断 GUI 任务状态的问题
+- 修复低级钩子类型声明缺失导致静默失败的问题
+- 修复视觉自检因忙标志泄漏长时间停摆的问题
+- 修复等待语义（移除用户唤醒源，到点不等于满足，增加"到期待复查"状态）
+- 修复定期回收任务从未执行的问题
+- 修复创建技能卡在探索阶段的问题
+- 修复用固定文案覆盖模型自身解释的问题
+- 修复新建技能装载后模型无法使用的问题
+- 修复代码生成截断时报错指向错误方向的问题
+- 修复用户取消后待办未关闭的问题
+- 修复回答澄清后待办变僵尸的问题
+- 修复探索阶段缺少"探索完成"出口的问题
+- 修复长篇探索结论被摘要覆盖的问题
+- 修复技能审计弹窗最小化后代码框空白的问题
+- 修复技能规格校验失败原因未传给模型的问题
+- 修复被审计拒绝的技能丢弃后模型无记忆的问题
+- 修复待办队列满后新请求静默失效的问题
+- 修复工具调用失败时错误说明不准确的问题
+- 修复副作用确认框在工具不存在时提前弹出的问题
+- 修复 socket 重连导致对话和状态被清空的问题
+- 修复冷启动后主动推送被丢弃的问题
+- 修复主动消息覆盖上一条用量统计的问题
+- 修复同一条告警重复进入对话历史的问题
+- 修复 RAG 懒加载并发初始化竞态的问题
+- 修复知识库初始化失败时界面无提示的问题
+- 修复监控卡状态与实际不符的问题
+- 修复空状态问候语在推送后残留的问题
+- 修复审计弹窗弹出时光标残留的问题
+- 修复 OS 预授权跨对话残留的问题
+- 修复定时/后台唤醒过早消费挂起记录的问题
+- 修复超预算后红卡永不消失的问题
+- 修复无 API Key 时无法启动的问题
+- 修复用量限额面板软上限可高于硬上限的问题
+- 修复图片压缩后模型否认看过图的问题
+- 修复代码框修改后最小化丢失的问题
+- 修复模型不认识待审草稿导致重复创建的问题
+- 修复多张同名待审卡并存的问题
+- 修复待审草稿重启后丢失的问题
+- 修复指纹守卫拒绝放行时错误关闭待审的问题
+- 修复退出类工具不显示工具卡片的问题
+
 ### 移除
 - 移除第三种停止方式"软急停"的残留
 - 移除分类器时代的死代码约 240 行
 
 ---
 
-## v1.11 (Beta)
-
-### Added
-- Permanent system tray: clicking close button no longer exits, hides to tray instead
+## v1.13 (beta)
 
 ### 新增
-- 常驻系统托盘：点击关闭按钮不再退出，而是隐藏到托盘
-
----
-
-## v1.1 (Beta)
-
-### Changed
-- Major token consumption reduction: system prompt and core tools as cache prefix, dynamic segment only contains per-turn changing data
-- Built-in skills slimmed to four: get time, hash generation, regex test, Base64 encode/decode
-
-### Fixed
-- Fixed memory not showing prompt and right drawer not displaying
-- Fixed UI crash when deleting memory in edit memory
-- Fixed blinking cursor not disappearing before tool calls
-- Fixed token stats showing session total instead of per-turn usage
-- Fixed personal info dropdown menu background color wrong in dark theme
-
-### 优化
-- 大幅压缩 token 消耗：系统提示和核心工具作为缓存前缀，动态段仅包含每轮变化的数据
-- 内置技能精简为四个：获取时间、哈希生成、正则测试、Base64 编解码
+- 统一工具注册表正式切换为唯一权威：工具定义、感知、调度、执行绑定全部集中于一处声明，新增工具只需登记一次
+- 新增 `Preload.HIDDEN` 作用域，处理得了但不告诉模型存在的工具
+- 五个退出流适配器统一签名
 
 ### 修复
-- 修复写入记忆但不弹提示、右侧抽屉不显示的问题
-- 修复在编辑记忆中删除记忆导致界面闪退的问题
-- 修复闪烁光标在工具调用前不消失的问题
-- 修复 token 统计显示口径问题，现显示本轮真实用量
-- 修复个人信息弹窗下拉菜单在深色主题下背景色错误的问题
-
----
-
-## v1.06 (Beta)
-
-### Changed
-- Casual chat and tool mode use exactly the same system persona, tools only loaded when tool calls needed, avoiding persona split
-- Message meta lines (avatar, duration, token) only shown on last reply, new reply auto-removes previous meta line
-
-### Removed
-- Removed temporary skill mechanism, all new skills deployed to skill directory
-
-### Fixed
-- Fixed message prefix arrow alignment issue
-- Fixed avatar SVG size fixed causing overlap with timer numbers
-- Fixed token stats showing session accumulated value instead of per-turn usage
-
-### 优化
-- 闲聊与工具模式使用完全相同的系统人格，仅在有工具调用时加载工具，避免人格割裂
-- 消息元行（头像、耗时、token）仅显示在最后一条回复，新回复自动移除上一条的元行
+- 修复工具调用意图描述与实际行为不一致的问题
+- 修复技能元工具感知行退化的问题
+- 修复目录中执行绑定指向不存在方法的问题
+- 修复未知工具兜底中系统操作指令列表取错权威的问题
+- 修复可用性条件被误用作执行门禁的问题
 
 ### 移除
-- 移除临时技能机制，所有新建技能统一部署到技能目录
+- 移除所有旧的分散工具定义、感知列表、分类表、人工关键词表等相关代码
+
+---
+
+## v1.14 (beta)
 
 ### 修复
-- 修复消息前缀箭头对齐问题
-- 修复头像 SVG 尺寸固定导致与计时器数字重叠的问题
-- 修复 token 统计显示整个会话累加值而非单条用量的问题
+- 修复引用审计卡后"部署这个吧"却创建新技能的问题
+- 修复澄清待办卡不出现的问题
+- 待办卡现在仅服务于技能代码审计，其他场景不再使用卡片形式
 
 ---
 
-## v1.05 (Beta)
-
-### Added
-- First batch of built-in basic skills: get time, date calculation, calculator, unit conversion, JSON validation, regex test, hash generation, Base64 encode/decode
-
-### Changed
-- Updated built-in manual, focused on Nano's own UI operation instructions
-- Optimized left tool list display, avoiding not seeing later skills when there are too many
-
-### Fixed
-- Corrected official skill template protocol version
-- Fixed left list showing only 7 of 8 skills with no "view all" entry
-- Fixed outdated manual content causing wrong answers to UI questions
-
-### 新增
-- 首批内置基础技能：获取时间、日期计算、计算器、单位换算、JSON 校验、正则测试、哈希生成、Base64 编解码
-
-### 优化
-- 更新内置手册，聚焦于 Nano 自身界面操作说明
-- 优化左侧工具列表显示，避免技能过多时看不到后续内容
+## v1.15 (beta)
 
 ### 修复
-- 修正官方技能模板协议版本号
-- 修复左侧列表在 8 个技能时只显示 7 个且无"查看全部"入口的问题
-- 修复旧版手册内容过时导致回答界面问题时引用错误信息的问题
+- 修复重启后系统提示词泄露到用户气泡的问题：新增消息可见性标记，系统注记使用专用入口写入，重放时自动过滤
 
 ---
 
-## v1.04 (Beta)
-
-### Added
-- Historical image compression: only keep text description and placeholder, no longer repeatedly bring in full image data
-- Model-visible content (system prompt, tool results, external service returns) uniformly in English, UI and logs stay Chinese
-- Semantic memory injection and extraction use English instructions
-
-### Changed
-- Slimmed context construction, reduced fixed overhead
-- External tool result wrapping uniformly English, unknown tools or services unavailable have clear prompts
-- Proactive push and memory-related model input chain switched to English
-
-### Fixed
-- Fixed image data staying in chat history causing character count explosion
-- Fixed incomplete field definitions in skill protocol
-- Fixed startup failure on Python 3.10 due to f-string backslash
-- Fixed OS layer partial error messages being wrapped in Chinese and entering model context
+## v1.16 (beta)
 
 ### 新增
-- 历史图片压缩：只保留文字描述和占位，不再反复带入完整图片数据
-- 系统提示、工具结果、外部服务返回等模型可见内容统一使用英文，用户界面和日志保持中文
-- 语义记忆的注入和抽取使用英文指令
+- 创建技能的新流程：直接提供需求、交接摘要和未决问题；若有未决问题则不生成代码，转为持久澄清
+- 澄清续接改道：回答后交回主模型重新决策，而非重跑探索
+
+### 移除
+- 移除技能创建中的"探索子循环"及相关代码，简化流程
+
+---
+
+## v1.17 (beta)
 
 ### 优化
-- 精简上下文构造，减少固定开销
-- 外部工具结果包装统一英文，未知工具或服务不可用时有清晰提示
-- 主动推送和记忆相关的模型输入链路改用英文
+- 技能规格校验失败时先携带错误信息重试一次，重试仍失败则将错误传递给后续步骤，避免静默降级
+
+---
+
+## v1.18 (beta)
+
+### 新增
+- 运行作用域与事实生命周期：每次启动生成唯一运行标识，在模型上下文中注入作用域信息
+- 模型工具调用必须受当前请求附带的有效工具表约束，调用不在表中的工具会得到明确拒绝
+- 重启感知一次性注入
+
+---
+
+## v1.19 (beta)
+
+### 新增
+- 上下文计量基础：跨厂商 token 统计差异表，使用"锚点+快照差"估算上下文增量，并设有残差看门狗检测计量偏差
+- 计量接入每次模型请求，发前预测，发后观察
+
+---
+
+## v1.20 (beta)
 
 ### 修复
-- 修复图片数据长期留在对话历史导致字符数暴涨的问题
-- 修复技能协议中字段定义不完整的问题
-- 修复 Python 3.10 下因 f-string 反斜杠导致启动失败的问题
-- 修复操作系统层部分错误信息被中文包装后进入模型上下文的问题
+- 修复重启后流程图不显示的问题：重放时补充可视化事件，并建立事件分类表，确保所有可重放事件被正确还原
 
 ---
 
-## v1.03 (Beta)
-
-### Added
-- Tool usage discipline: when unsure about tool or parameters, load tool list first, guessing tool names prohibited
-- After call failure, reload tools, don't retry with different names
-
-### Fixed
-- Distinguished independent tools from operation instructions, avoiding window operations being mistaken as sub-actions of system commands
+## v1.21 (beta)
 
 ### 新增
-- 工具使用纪律：不确定工具或参数时先加载工具列表，禁止猜测工具名
-- 调用失败后应重新加载工具，不要换名重试
+- 补充多家厂商的 token 统计字段映射
+- 用户发送的图片跨重启保留：新增内容寻址图库，图片标识随消息持久化，重启后自动恢复图片注记
 
 ### 修复
-- 区分独立工具与操作指令，避免将窗口操作误认为系统命令的子动作
+- 修复压缩图片时系统注记被写入用户消息正文的问题
 
 ---
 
-## v1.02 (Beta)
-
-### Added
-- Tool loading mechanism refactored: only loader tools stay permanent, rest loaded on demand; intent judgment gives up to 3 candidate tools
-
-### Changed
-- Removed 5 fixed permanent tools, all changed to dynamic loading
-- Candidate tools are only suggestions, model can call loader to get more capabilities when no match
+## v1.22 (beta)
 
 ### 新增
-- 工具加载机制重构：常驻仅保留加载工具，其余按需加载；由意图判断给出最多 3 个候选工具
-
-### 优化
-- 移除 5 个固定常驻工具，全部改为动态加载
-- 候选工具仅作建议，不匹配时模型可自行调用加载工具获取更多能力
+- 图片摘要与按需回看：本轮有图时自动生成摘要并存入工具参数，历史图片可通过回看工具按需查看原图
 
 ---
 
-## v1.01 (Beta)
-
-### Added
-- Lightweight intent judgment: casual chat doesn't load tools, task operations enter tool flow, unclear intent asks briefly
-
-### Changed
-- Removed Chinese keyword hardcoded judgment, avoiding unrelated words triggering tool mode
-- Unclear intent no longer forced guessing, changed to natural clarification
-- Clarification keeps Nano's original tone, no mechanical questions
+## v1.23 (beta)
 
 ### 新增
-- 引入轻量意图判断：闲聊不加载工具、需要操作时进入工具流程、意图不明时轻量询问
+- 模型配置表：独立管理各厂商的提炼器、价格、上下文窗口、配额
+- 预算与压力注入：四档水位（50%/70%/85%），超过高水位向模型注入压力提示
+- 监控卡"上下文"：显示当前上下文占用比例
 
 ### 优化
-- 去掉依赖中文关键词的硬编码判断，避免无关词误触发工具模式
-- 意图不明时不再强行猜测，改为自然澄清
-- 澄清时保持 Nano 原有语气，不使用机械式提问
+- 价格设置从用量配置中分离
+- 切换模型后上下文计量状态重置为未知
+
+---
+
+## v1.24 (beta)
+
+### 新增
+- 中转透传统计字段缺失检测：缺少任一关键字段则报警并返回空
+- 配额标定数据收集：每次请求记录上下文样本到本地文件
+
+---
+
+## v1.25 (beta)
+
+### 优化
+- 上下文卡启动时保留上次已知值，不再重置为"--"
+- 重置对话后显示底噪（系统提示和工具的固定开销），而不是 0
+- 估算值仅用于界面展示，不给模型使用
+
+---
+
+## v1.26 (beta)
+
+### 新增
+- 聊天区搜索：右上角搜索按钮，直接扫描已渲染的 DOM
+- 设置面板：新增二级设置界面
+- 导出数据：导出当前及历史会话为 Markdown、JSON 和图片副本
+
+### 优化
+- 重置对话文案改为"完全放弃之前的全部会话"
+
+---
+
+## v1.27 (beta)
+
+### 修复
+- 修复聊天区顶部黑色空白
+- 修复搜索按钮导致聊天区消失的问题
+- 修复文件夹选择对话框报协程错误的问题
+
+### 优化
+- 搜索功能移至浏览器端执行
+
+---
+
+## v1.28 (beta)
+
+### 修复
+- 修复顶部空白转移到底部的问题
+- 修复导出按钮无法弹出文件夹选择的问题
+- 修复搜索结果中用户消息无名称的问题
+
+---
+
+## v1.29 (beta)
+
+### 优化
+- 缩小底部输入区与消息列表之间的间距
+
+### 修复
+- 记忆起点卡改为点击"还有 N 条更早的"弹出独立滚动窗口
+
+---
+
+## v1.30 (beta)
+
+### 新增
+- "一次交换"概念：将用户一句消息到下一句用户消息之间的所有内容定义为一个交换单位
+
+### 优化
+- 截断逻辑改用交换单位计算切点
+
+---
+
+## v1.31 (beta)
+
+### 修复
+- 修复系统注记被误判为用户发言导致交换切分错误的问题
+- 修复交换内用户消息识别不一致的问题
+
+---
+
+## v1.32 (beta)
+
+### 新增
+- 上下文阶梯方案定稿：各层级占比、数据表结构、摘要格式、用户原话保留规则
+
+---
+
+## v1.33 (beta)
+
+### 新增
+- 交换衰减存储表，记录每次交换的当前层级；内容哈希直接从数据库计算
+
+---
+
+## v1.34 (beta)
+
+### 新增
+- 第一层衰减（工具结果替换为占位符），仅对已关闭的交换生效，当前轮不受影响；默认关闭
+
+---
+
+## v1.35 (beta)
+
+### 新增
+- 第二层摘要格式：定义结论行的四个字段（状态、结果、引用对象、未决事项）
+
+---
+
+## v1.36 (beta)
+
+### 新增
+- 第一层到第二层的实际转换：调用提炼模型生成摘要，每个交换独立成败
+
+---
+
+## v1.37 (beta)
+
+### 新增
+- 第二层到第三层的转换：生成可检索的索引条目，并注入系统提示
+- 索引条目无条件注入系统提示，不依赖向量检索
+
+---
+
+## v1.38 (beta)
+
+### 新增
+- 第三层到第四层的过期：索引条目移出系统提示，但语义记忆内容保留
+- 硬窗口守卫：发送前检查上下文是否超限，超限时尝试紧急回收
+
+---
+
+## v1.39 (beta)
+
+### 新增
+- 记忆起点卡片：显示当前仍被记住的线索数
+- 旧式硬截断退位为最后的兜底手段
+- 窗口守卫接入请求流程，目前仅告警不拦截
+
+---
+
+## v1.40 (beta)
+
+### 修复
+- 修复重启后衰减层级未被重放的问题：重建投影时按存储的层级还原上下文
+
+---
+
+## v1.41 (beta)
+
+### 优化
+- 完善投影闭环：衰减表变更后立即同步到内存投影
+- L2 计量改用真实投影产物计算
+- 修复桥接模块因导入错误导致 L2→L3 路径失败的问题
+- 新增对话召回工具，使模型能主动找回已移出上下文的内容
+
+---
+
+## v1.42 (beta)
+
+### 新增
+- 开启上下文阶梯（默认启用）
+- 语言设置：新增界面语言切换入口
+- L2 摘要状态拆分为"类型"和"状态"两个独立维度
+
+### 修复
+- 修复聊天区横向滚动条问题
+
+---
+
+## v1.43 (beta)
+
+### 新增
+- 工具卡详情展开：点击工具卡可查看具体参数和结果
+
+---
+
+## v1.44 (beta)
+
+### 新增
+- 后台任务抽屉：显示正在运行和已完成的后台任务，可查看详情、手动终止
+- 聊天区显示"x 个后台任务"提示
+
+---
+
+## v1.45 (beta)
+
+### 新增
+- Subagent：可派发独立的子代理执行只读任务，上下文隔离，结果由本体转述
+- Subagent进入后台任务抽屉
+
+### 修复
+- 修复Subagent归属统计错误
+- 修复用量统计无并发保护的问题
+
+---
+
+## v1.46 (beta)
+
+### 新增
+- 多Subagent并行执行（上限 3 个）
+- Subagent执行过程可展开查看详细步骤
+
+### 修复
+- 修复抽屉展开状态在刷新时被重置的问题
+
+---
+
+## v1.47 (beta)
+
+### 新增
+- 文件搜索工具（支持通配符和内容搜索）
+- 文件读取工具支持分页（偏移量和行数限制）
+- 路径黑名单保护
+
+### 修复
+- 修复Subagent监控抽屉中工具调用顺序显示错误的问题
+
+---
+
+## v1.48 (beta)
+
+### 修复
+- 修复确认弹窗颜色与主题不一致的问题
+- 修复弹窗在用户改口后未关闭的问题
+- 修复弹窗宽度过窄导致代码显示不全的问题
+- 授权卡现在显示具体行为而非整份文件内容
+- 最后安全截断改用 token 阈值而非消息条数
+
+---
+
+## v1.49 (beta)
+
+### 新增
+- 硬窗口守卫正式启用拦截：发送前检测上下文超限，尝试紧急回收，仍不够则拒绝
+
+---
+
+## v1.50 (beta)
+
+### 新增
+- 只读权限分级：系统操作指令按是否只读分类，Subagent Agent 现在可使用只读的系统操作能力
+
+---
+
+## v1.51 (beta)
+
+### 新增
+- 任务边界工具支持"暂停"和"恢复"操作
+- 当前任务通过显式标记而非时间排序推导
+
+---
+
+## v1.52 (beta)
+
+### 新增
+- "不等了"工具：模型可将当前等待的长任务转为后台运行
+- Subagent Agent 超时后自动转为后台运行
+- 后台任务终止按钮现在对真实载体生效
+
+### 修复
+- 修复插话后排队状态显示异常的问题
+- 修复后台任务终止按钮对Subagent无效的问题
+
+---
+
+## v1.53 (beta)
+
+### 新增
+- Subagent获得写权限（文件编辑）
+- Subagent发起的授权弹窗带有来源标识
+- Subagent确认弹窗不被新用户消息取消
+
+### 修复
+- 修复Subagent因格式错误频繁崩溃的问题
+- 修复插话后长任务未及时交还的问题
+- 修复Subagent报告只读权限错误的问题
+
+---
+
+## v1.54 (beta)
+
+### 新增
+- 操作系统能力开关真正生效：关闭某项能力后，相关操作会被拒绝并给出明确提示
+- 授权来源可被模型感知
+- 自动模式状态注入模型上下文
+
+### 修复
+- 修复能力开关仅界面变化但实际无效的问题
+
+---
+
+## v1.55 (beta)
+
+### 修复
+- 修复Subagent系统提示仍声明只读导致放弃写操作的问题
+- 修复Subagent确认弹窗因事件队列生命周期问题永远不显示的问题
+- 修复抽屉中后台任务状态永久显示"排队中"的问题
+- 修复Subagent工具卡折行显示的问题
+- 统一Subagent运行状态文案与本体一致
+
+---
+
+## v1.56 (beta)
+
+### 修复
+- 修复用户手动终止任务时本体不知道原因的问题
+- 修复"不等了"工具被模型跳过的问题
+- 修复后台任务提示点击区域过大、授权来源标记过于醒目的问题
+
+---
+
+## v1.57 (beta)
+
+### 新增
+- MCP 服务故障接入健康登记：连接失败时上报具体原因
+- 每个 MCP 服务配备独立探针
+- 能力探针缺口检查：新能力若未配探针且未说明理由，测试会告警
+
+### 修复
+- 修复 MCP 故障时模型声称从未拥有该能力的问题
+- 修复故障状态无法自动恢复的问题
+
+---
+
+## v1.58 (beta)
+
+### 优化
+- 故障卡增加"修复建议"小标题
+- 修复建议同时注入模型
+- 故障文案拆分为用户语言和模型语言两个字段
+
+### 修复
+- 修复 MCP 配置修改后需重启才生效的问题
+
+---
+
+## v1.59 (beta)
+
+### 修复
+- 修复 Nano 能执行修复却说自己"帮不了忙"的问题
+- 修复 native 窗口文字选中后不久失效的问题
+- 修复重启后聊天区停在顶部而非最新消息的问题
+
+---
+
+## v1.60 (beta)
+
+### 新增
+- 选中文字右键"回复"功能
+- 拖拽文件到窗口上传
+- 聊天区本地文件链接（左键打开，右键"在文件夹中显示"）
+- 代码块右上角复制按钮
+
+### 优化
+- 提示词增加文件链接使用边界
+
+---
+
+## v1.61 (beta)
+
+### 优化
+- 复制按钮改用图标而非文字
+- 文件链接改为行内样式
+- 引用状态增加可视出口
+
+### 修复
+- 修复文件链接点击后跳转到"我的文档"的问题
+- 修复输入框无法右键粘贴的问题
+- 修复引用状态只有入口没有出口的问题
+
+---
+
+## v1.62 (beta)
+
+### 新增
+- 长调用统一建模：工作台（当前注意力）和篮子（后台自动运行），宽限期统一为 5 秒
+- 新增"停止后台任务"工具
+- 命令执行新增"不等结果"参数
+
+### 优化
+- 移除 30 分钟硬杀上限
+- 安全网三层：回看保护、定期心跳、兜底回收
+
+### 修复
+- 修复模型无法主动停止任何后台任务的问题
+
+---
+
+## v1.63 (beta)
+
+### 优化
+- 用户插话时当前长任务自动转入后台
+- 回看/唤醒时的气泡合并判断改为"工作台上是否有事"
+- 篮子中的任务在工作台空闲时自动恢复回看
+
+### 修复
+- 修复"放后台"工具因状态仅活一轮导致无法使用的问题
+- 修复收件箱认领记录未正确消费导致后续投递失效的问题
+- 修复引用功能覆盖范围过广的问题
+- 修复重启后引用类消息退化的问题
+
+---
+
+## v1.64 (beta)
+
+### 新增
+- 任务暂停/恢复机制补全：等待操作系统租约也纳入回看调度
+- 回应期状态从裸字典升级为有结构对象
+
+---
+
+## v1.65 (beta)
+
+### 修复
+- 修复系统错误卡片仅显示不落盘，重启后消失的问题
+- 系统错误现在作为 UI 记录持久化，重放时原样显示
+
+---
+
+## v1.66 (beta)
+
+### 新增
+- 操作系统工具拆分为"系统命令"和"计算机使用"两个独立工具
+- 常驻工具扩容：系统命令、文件路径查询、完整文件读取默认常驻
+- 缓存失效诊断日志
+
+---
+
+## v1.67 (beta)
+
+### 新增
+- 聊天内图片查看器：缩略图+点击放大
+- 可视化块增加"复制代码"和"导出"菜单
+
+### 优化
+- 绘图规格明确化
+- 截图目录自动封顶（按体积 200MB）
+
+### 修复
+- 修复 SVG 在聊天区显示过小的问题
+- 修复导出 SVG 无法打开的问题
+- 修复 mini 窗口无法缩小的问题
+
+---
+
+## v1.68 (beta)
+
+### 新增
+- 系统操作指令枚举从执行路由表自动派生
+- 重启后排队消息呈现为历史记录，但不自动执行
+
+### 优化
+- 记忆系统设计定稿
+
+---
+
+## v1.69 (beta)
+
+### 优化
+- 视觉定位链：移除 OCR 匹配，移除居中裁剪，改用等比缩放
+- 截图发送前按官方公式缩放
+- 坐标格式改回像素坐标
+- 截图纪律改为"勘察+收尾"两态
+- 窗口形态状态注入模型，增加"已是 mini 则不再缩"的硬闸
+- 唤醒后回看提示明确任务需继续
+
+### 修复
+- 修复放大截图时丢掉全屏信息的问题
+
+---
+
+## v1.70 (beta)
+
+### 新增
+- 记忆系统重构：用户希望记住的内容现在真正持久化并每轮注入摘要
+- 记忆条目包含：内容、适用条件、原因、模型摘要、用户摘要
+- 新增"遗忘"工具，模型可自行删除过时记忆
+- 记忆水位提醒
+
+### 优化
+- 记忆字段设计从"纠错"转向通用记忆
+- 模型摘要强制英文，用户摘要跟随界面语言，具体值保留原文
+- 删除为软删除
+
+---
+
+## v1.71 (beta)
+
+### 新增
+- 内置两个官方 MCP 服务：Microsoft Learn 和 Context7
+
+---
+
+## v1.72 (beta)
+
+### 新增
+- 网络搜索能力：内置搜索技能、现有 fetch 工具、兜底无头浏览器
+- 监控卡"互联网检索"按实际可用性显示 ONLINE/LIMITED/OFFLINE
+
+### 优化
+- 搜索工具改名，避免撞名
+- 搜索引擎经实测选定并做适当限流
+
+### 修复
+- 修复监控卡靠关键词猜测能力状态的问题
+
+---
+
+## v1.73 (beta)
+
+### 优化
+- 截图回收改用体积阈值（200MB）而非张数
+- 命令输出完整落盘（不截断）；仅内存缓冲保留尾部用于进度查看
+- 小输出不保留文件
+
+### 修复
+- 修复截图清理从未触发的问题
+- 修复异常截图在未超预算时被误删的问题
+- 修复命令输出静默截断且无提示的问题
+
+---
+
+## v1.74 (beta)
+
+### 新增
+- 临时执行通道：可运行一段用完即扔的 Python 代码
+- 复用现有副作用扫描、确认弹窗和长任务机制
+- CodeMirror 改为本地加载
+
+### 优化
+- 副作用扫描与 Skill 审计共用同一份代码
+- 命令风险判定按内容而非仅按类型
+- 用户保持等待时间从 20 秒调至 12 秒
+
+### 修复
+- 修复收件箱等待确认的 asyncio Event 跨循环问题
+- 修复临时执行工具卡不显示输出的问题
+- 修复 CodeMirror 依赖境外 CDN 导致加载慢/离线不可用的问题
+
+---
+
+## v1.75 (beta)
+
+### 新增
+- 迭代阅读：`load_full_file` 从一次性加载改为可迭代阅读（试读定位→精读切片→笔记接力）
+- `peek_file` 独立工具
+- `search_files` 的内容命中视同已试读
+- 阅读工具卡显示切片坐标和承接笔记
+
+### 优化
+- 移除 `LOAD_FULL_MAX_CHARS` 硬截断限制
+- 上下文压缩对文件读取结果生效
+- 工具描述明确指向正确的文件阅读入口
+
+---
+
+## v1.76 (beta)
+
+### 新增
+- 环境引用解析：用户说"刚才编辑的那个文件"时，Nano 能通过窗口轨迹定位具体路径
+- `resolve_ambient_referent` 工具常驻
+- 对编辑器/Office/文件管理器窗口提供文件路径引用
+- 引用条目在注入中带 `▸` 标记，表明有完整信息可取
+
+### 优化
+- 窗口轨迹采集扩展至 Office/记事本类应用，从窗口标题抠文件名
+- 路径解析支持命令行参数被拆分的场景（如 Windows 空格路径）
+
+### 修复
+- 修复 `edit_file` 匹配失败时仅显示"最接近的一行"导致无法定位差异的问题，现标出差异码点
+
+---
+
+## v1.77 (beta)
+
+### 移除
+- 移除plan模式的待办项
+
+---
+
+## v1.78 (beta)
+
+### 修复
+- 修复副作用扫描漏检 5 种常见写法（pathlib.write_text、unlink、import 别名、requests.Session、os.rename/replace）
+- 修复别名导入绕过检测的问题
+- 修复特征方法名匹配过于宽泛导致误报的问题
+
+---
+
+## v1.79 (beta)
+
+### 新增
+- Auto 模式下危险命令判定：根据用户意图判断命令是否与当前任务对齐
+- 四态判定：非命令/安全/危险/判不了
+- 危险判定器的两段式结构（Stage 1 快速筛选 + Stage 2 复核）
+- 厂商配置支持独立指定判定模型
+
+### 修复
+- 修复 Auto 模式下一律跳过所有确认弹窗的问题
+- 修复脚本类命令因无法静态分析而全部放行的问题
+
+---
+
+## v1.80 (beta)
+
+### 优化
+- Skill 文案按受众分离：模型侧（tool schema/awareness）永远英文，用户侧（purpose/描述）跟随用户语言
+- Skill 详情页只显示"用途说明"，不再显示"作用"
+
+### 修复
+- 修复 Skill 生成协议中模型侧与用户侧字段混用的问题
+
+---
+
+## v1.81 (beta)
+
+### 新增
+- MCP 管理能力：接入、启用、停用、删除、重连
+- 接入授权弹窗无视 Auto 模式（MCP 接入需要知情，不是授权）
+- 授权前只解析配置不执行代码
+- 管理页每行可展开查看详情
+- MCP 清单注入模型上下文
+
+### 修复
+- 修复 MCP 故障时模型以为能力"从来不存在"的问题
+- 修复被禁用的 MCP 工具显示为"不存在"的问题
+- 修复 MCP 管理工具因未登记而完全不可用的问题
+- 修复模型不知道有哪些 MCP 服务而自己去翻磁盘的问题
+
+---
+
+## v1.82 (beta)
+
+### 新增
+- 环境信息注入：[Environment] 块包含程序目录、平台、OS 版本
+- 明确告知模型哪些配置是 Nano 自己的、哪些是其他 AI 工具的
+
+### 修复
+- 修复模型去读取 Claude Code/Cursor 的配置文件的问题
+- 修复 OS Version API 取到旧版本号的问题
+
+---
+
+## v1.83 (beta)
+
+### 优化
+- MCP 管理工具使用 JSON Schema enum 约束操作类型
+- 固定文案改为模型生成的自然语言（defer 到主循环）
+- 操作同义词兜底（retry/restart → reconnect）
+
+### 修复
+- 修复 MCP 管理工具因操作名不一致导致永远失败的问题
+- 修复工具"成功"但实际什么都没做的问题
+- 修复固定文案导致模型在失败循环中无法自纠的问题
+
+---
+
+## v1.84 (beta)
+
+### 新增
+- MCP 零件归属标记：内部组件（如 playwright-headless）不显示在管理页
+- 零件拒绝时给出真实理由而非"不存在"
+
+### 优化
+- 能力与实现零件分开管理：用户管理的是能力，不是零件
+
+---
+
+## v1.85 (beta)
+
+### 优化
+- 任务栏自检改为先探测用户当前控件布局、再自检定位能力
+- 自检探针从写死清单改为运行时现场取用
+- 探针选取规则与定位器匹配规则共用同一份
+
+### 修复
+- 修复自检在英文 Windows 上永久返回 0% 的问题
+- 修复"控件没开"被误报为"定位能力坏了"的问题
+- 修复探针选取了不可交互控件导致假阳性的问题
+
+---
+
+## v1.86 (beta)
+
+### 优化
+- 设置面板重构：五个页面全部搬入，下拉菜单拆除
+- 个人信息/OS 权限/用量限额即时生效（去掉保存按钮）
+- 用量限额改用步进器，非法状态无法产生
+- MCP 管理页双层滚动修复
+
+### 修复
+- 修复私有语言策略六处分散且互不知情的问题，统一收编到 `language_clause()`
+- 修复 22 处气泡固定文案改为模型生成的自然语言
+- 修复测试断言锁死固定文案的问题
+
+---
+
+## v1.87 (beta)
+
+### 新增
+- MCP Registry 发现链：搜索官方 MCP 注册表
+- 抑制器：接入前先检查现有文档/库能否满足需求
+- 授权后回核：比对实际工具能力与接入时宣称的是否一致
+
+### 优化
+- Registry 搜索强调子串匹配，避免模型传完整句子得到假空结果
+- 候选评估字段从 Registry 真实响应派生
+- 环境变量只报 key 名不报值
+
+### 修复
+- 修复抑制器被写成强制流程的问题（改为判断）
+- 修复注册表 API 结构变化导致的解析失败问题
+
+---
+
+## v1.88 (beta)
+
+### 修复
+- 修复 BM25 索引和语料非原子更新导致检索返回错误结果的问题
+- 修复 Gemini 包壳格式在审计端放行但加载端拒绝的不一致问题
+- 修复双重转义导致带引号的 MCP 工具名输出污染的问题
+- 删除 257 行零调用方代码
+
+---
+
+## v1.89 (beta)
+
+### 移除
+- 删除 SkillSpec 中五个 Plan 编排器遗留字段（required_context_level、atomic_action、source_hint、planning_allowed、fail_if）
+- 删除 paddle/PP-Structure 相关代码和依赖
+
+### 优化
+- 协议版本统一升级到 v3.2
+- 菜单拆除后的指路文案 11 处更新
+
+### 修复
+- 修复按名字删字段时误删 `InputDef.source_hint` 导致构造 Skill 时 TypeError 的问题
+- 修复协议版本号在报错信息中仍显示旧版本的问题
+
+---
+
+## v1.90 (beta)
+
+### 新增
+- 浅色主题"极光"从占位符变为可用的第二套主题
+- 主题切换持久化
+- Inter 字体打包进 assets，不再依赖 Google Fonts
+
+### 优化
+- 849 处硬编码颜色收口为 CSS 变量
+- 语义色色相不跟主题走，明度跟主题走
+- 默认主题从终端风改为浅色
+
+### 修复
+- 修复浅色主题下多个组件显示 Quasar 原生样式的问题
+- 修复主题切换后自动跳回深色的问题
+- 修复字号阶梯缺失的问题
+
+---
+
+## v1.91 (beta)
+
+### 新增
+- 多厂商支持：除 Claude 外接入Deepseek
+- 三个内部角色槽独立配置：压缩提炼、命令检查、视觉输入
+- 进阶配置设置页：三个下拉分别指定各角色使用的模型
+- 厂商切换时用量账本按厂商分别累计
+- Token 计数器增加缓存命中率显示
+
+### 优化
+- 字阶系统化：462 处硬编码字号收口为 12 档变量
+- 粘贴上传：Ctrl+V 贴图/文件走上传通道
+- 升级到 Claude 5 系模型
+- 模型选择器按厂商过滤
+
+### 修复
+- 修复深度求索因 base_url 判断逻辑错误导致无法配置的问题
+- 修复换厂商后收藏模型覆盖主模型导致监控卡显示错误的问题
+- 修复 `_thinking_arg` 在 Claude 5 上使用已废弃的 `budget_tokens` 的问题
+
+---
+
+## v1.92 (beta)
+
+### 新增
+- 视觉槽接入：用户贴图时主模型无视觉则自动走视觉模型识别
+- 降级路径生成的文字块包含图片把手，后续轮可回看原图
+- `_system/nano_manual.md` 重写为 18 节完整手册
+
+### 优化
+- `_system/` 目录对模型可见
+- `list_knowledge_files` 增加 `include_system` 开关
+- Token 计数器显示跟随设置，两个写入口统一
+- 图片把手解析支持五种输入形状
+
+### 修复
+- 修复用户贴图在主模型无视觉时变成 `[Unsupported Image]` 的问题
+- 修复降级路径跳过图片落盘导致回看功能失效的问题
+- 修复粘贴的图回看时 handle 格式不匹配的问题
+- 修复监控卡 Token 显示不认用户设置的问题
+
+---
+
+## v1.93 (beta)
+
+### 修复
+- 修复全新安装后首次启动时报 `'WebUI' object has no attribute '_enhanced_mode'` 的问题
+- 修复「增强模式」与「OCR 页数上限」的默认值赋值晚于配置读写，导致无配置文件时崩溃
+
+---
+
+## v1.94 (beta)
+### 修复
+- 修复nano不调用nano_manual.md的问题
+
+---
+
+## v1.95 (beta)
+### 修复
+- 修复快速流式输出时聊天区滚动条上下抽动的问题
+- 修复点击聊天中的网页链接会在 Nano 窗口内打开、无法返回的问题
+
+### 优化
+- 自动滚动改为「保持贴底」：向上翻阅历史时不再被强制拉回底部
+- 聊天中的网页链接改为在系统默认浏览器中打开
+
+---
+
+## v1.96 (beta)
+### 优化
+- 调整了Nano的基础人设和系统指令的措辞
+- 增加了nano手册的内容
+
+---
+
+## v1.97 (beta)
+### 修复
+- 修复新环境首次初始化知识库时报 WEIGHTS_FORMAT_REJECTED 的问题：transformers 5.x 出于安全策略（CVE-2025-32434）拒绝加载 .bin 权重，而镜像源解析出的快照可能只有 .bin 格式，导致 RAG 检索不可用且重启无法自愈。现在嵌入与重排模型改为显式获取 safetensors 快照后从本地加载，不再依赖上游的格式回退顺序
