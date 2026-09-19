@@ -4,35 +4,18 @@
 
 ![Nano-Lumen](assets/nano-banner.png)
 
-**Nano-Lumen v1.97 (Beta)** · A persistent AI agent that lives on your Windows desktop
+<p align="center"><b>Talk to Your Computer.</b></p>
 
-🌐 **English** · [简体中文](README.zh.md)
+<p align="center">Nano is a persistent AI runtime for Windows that connects models to applications, files, tools, and system capabilities. It preserves state across sessions and restarts.</p>
 
-`Resident AI Agent` · `Task-level persistent state` · `Local-first privacy` · `Windows Desktop`
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh.md">简体中文</a>
+</p>
 
----
-
-## 📑 Table of Contents
-
-- [📸 Preview](#-preview)
-- [⚙️ Core Architecture](#️-core-architecture)
-  - [🚫 Session-less Design](#-session-less-design-not-multiple-sessions-but-one-nano)
-  - [🎯 Goal-driven](#-goal-driven-how-many-ways-can-the-world-get-this-done)
-  - [🛠️ Self-operating](#️-self-operating-you-just-say-it-nano-handles-the-rest)
-  - [📡 Trajectory-aware](#-trajectory-aware-its-never-left-you-dont-need-to-explain)
-  - [♾️ Persistent State](#️-persistent-state-the-one-and-only-indestructible)
-  - [⚡ Proactive Intelligence](#-proactive-intelligence-more-than-just-ask-and-answer-beta)
-  - [✨ Other Features](#-other-features)
-- [🚀 Installation & Quick Start](#-installation--quick-start)
-- [🛡️ Security](#️-security)
-- [🔐 Privacy & Trust](#-privacy--trust)
-- [⚠️ Known Limitations](#️-known-limitations)
-- [🏗️ Architecture Overview](#️-architecture-overview)
-- [🧪 Development & Testing](#-development--testing)
-- [🐛 Reporting Issues](#-reporting-issues)
-- [📄 License](#-license)
-- [👥 Authors & Contributors](#-authors--contributors)
-- [🔗 Links](#-links)
+| [🚀 Quick Start](#-installation--quick-start) | [⚙️ Core Architecture](#️-core-architecture) | [📸 Preview](#-preview) |
+|:--|:--|:--|
+| [🛡️ Security](#️-security) | [🐛 Issues](https://github.com/Fhaxikii/Nano-Lumen/issues) | [🧪 Development & Testing](#-development--testing) |
 
 ---
 
