@@ -31,7 +31,6 @@
 - [🧪 开发与测试](#-开发与测试)
 - [🐛 反馈问题](#-反馈问题)
 - [📄 开源许可](#-开源许可)
-- [💛 致谢](#-致谢)
 - [🔗 相关链接](#-相关链接)
 
 ---
@@ -365,17 +364,6 @@ bash run_tests.sh
 
 ---
 
-## 💛 致谢
-
-*Nano 的诞生离不开以下开源项目、服务与贡献者的启发与支撑：*
-
-- **Anthropic**：Nano 大量参考了 Claude Code 的设计范式，详见 [Anthropic 工程文档](https://www.anthropic.com/engineering)
-- **BAAI**：bge-m3 嵌入模型与 bge-reranker-v2-m3 重排模型
-- **SQLite、ChromaDB、Tesseract**：存储、检索与 OCR 底座
-- **Model Context Protocol（MCP）**：让工具生态得以标准化扩展
-- **《Designing Data-Intensive Applications》（Martin Kleppmann 著）**：「把 Agent 当作有持久状态的系统来设计」的理论来源
-- **GNU nano**：Nano 的命名由来
-
 **作者与贡献者**
 
 - [Koala](https://github.com/Fhaxikii) — 项目作者与主要开发者
@@ -383,8 +371,7 @@ bash run_tests.sh
 
 **AI 协作贡献者**
 
-- Claude（[Anthropic](https://www.anthropic.com)）— 在部分代码实现与调试中提供了大量协助
-- GLM（[智谱](https://www.zhipuai.cn)）— 文档规范化与国际化
+- Claude（[Anthropic](https://www.anthropic.com)）— 在代码实现与调试中提供了大量协助，架构上也大量借鉴了 [Claude Code 的设计范式](https://www.anthropic.com/engineering)
 
 ---
 

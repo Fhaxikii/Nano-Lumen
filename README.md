@@ -31,7 +31,6 @@
 - [🧪 Development & Testing](#-development--testing)
 - [🐛 Reporting Issues](#-reporting-issues)
 - [📄 License](#-license)
-- [💛 Acknowledgments](#-acknowledgments)
 - [🔗 Links](#-links)
 
 ---
@@ -364,17 +363,6 @@ This project is licensed under the [Apache-2.0](LICENSE) License.
 
 ---
 
-## 💛 Acknowledgments
-
-*Nano wouldn't exist without the following open-source projects, services, and contributors who inspired and supported it:*
-
-- **Anthropic**: Nano draws heavily on Claude Code's design paradigm, see [Anthropic Engineering](https://www.anthropic.com/engineering)
-- **BAAI**: bge-m3 embedding model and bge-reranker-v2-m3 reranker
-- **SQLite, ChromaDB, Tesseract**: storage, retrieval, and OCR foundations
-- **Model Context Protocol (MCP)**: enabling standardized tool ecosystem extension
-- **Designing Data-Intensive Applications** (Martin Kleppmann): theoretical foundation for "designing agents as persistent state systems"
-- **GNU nano**: where Nano gets its name
-
 **Authors & Contributors**
 
 - [Koala](https://github.com/Fhaxikii) — project author and primary developer
@@ -382,8 +370,7 @@ This project is licensed under the [Apache-2.0](LICENSE) License.
 
 **AI Collaboration Contributors**
 
-- Claude ([Anthropic](https://www.anthropic.com)) — extensive assistance with code implementation and debugging
-- GLM ([Zhipu](https://www.zhipuai.cn)) — documentation standardization and i18n
+- Claude ([Anthropic](https://www.anthropic.com)) — extensive assistance with code implementation and debugging, and the architecture draws heavily on [Claude Code's design paradigm](https://www.anthropic.com/engineering)
 
 ---
 
