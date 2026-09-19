@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 ---
 
 ## v1.01 (beta)
@@ -1170,13 +1170,8 @@
 
 ---
 
-## v1.96 (beta)
-### 优化
-- 调整了Nano的基础人设和系统指令的措辞
-- 增加了nano手册的内容
+## v1.96 (Beta)`n`n### Changed`n- Adjusted Nano base persona and system prompt wording`n- Expanded built-in manual content`n`n### 优化`n- 调整了Nano的基础人设和系统指令的措辞`n- 增加了nano手册的内容
 
 ---
 
-## v1.97 (beta)
-### 修复
-- 修复新环境首次初始化知识库时报 WEIGHTS_FORMAT_REJECTED 的问题：transformers 5.x 出于安全策略（CVE-2025-32434）拒绝加载 .bin 权重，而镜像源解析出的快照可能只有 .bin 格式，导致 RAG 检索不可用且重启无法自愈。现在嵌入与重排模型改为显式获取 safetensors 快照后从本地加载，不再依赖上游的格式回退顺序
+## v1.97 (beta)`n`n### Fixed`n- Fixed `WEIGHTS_FORMAT_REJECTED` on fresh environments: transformers 5.x refuses .bin weights (CVE-2025-32434), and mirrors may resolve to a .bin-only snapshot, breaking RAG retrieval with no self-heal on restart. Embedding and reranker models now explicitly fetch safetensors-only snapshots and load from local paths.`n`n### 修复`n- 修复新环境首次初始化知识库时报 WEIGHTS_FORMAT_REJECTED 的问题：transformers 5.x 出于安全策略（CVE-2025-32434）拒绝加载 .bin 权重，而镜像源解析出的快照可能只有 .bin 格式，导致 RAG 检索不可用且重启无法自愈。现在嵌入与重排模型改为显式获取 safetensors 快照后从本地加载，不再依赖上游的格式回退顺序
