@@ -183,27 +183,19 @@ It only suggests, never acts on its own — every action requires your approval.
 | Item | Requirement |
 |------|-------------|
 | OS | Windows 10 or later |
-| Python | **3.10** (version-sensitive; higher versions untested) |
-| Disk space | ~6 GB (including ~2.3 GB for local embedding models) |
+| Disk space | ~6 GB (including ~4.5 GB RAG models downloaded on first launch) |
 | RAM | 8 GB+ recommended |
 
-### Installation
+### Recommended: Download the packaged build
 
-Run `install.bat` for one-click setup:
+Grab the latest release from the [Releases page](https://github.com/Fhaxikii/Nano-Lumen/releases), unzip, and run `Nano-Lumen.exe`. No Python, Node, or system-wide Tesseract installation needed. On first launch it downloads RAG models automatically (~4.5 GB; uses the Aliyun ModelScope mirror if huggingface.co is unreachable).
+
+### Developer: manual setup
+
+For those who want to run from source or contribute. Requires **Python 3.10** (version-sensitive). See [01 · Getting Started](docs/en/01-getting-started.md) for the full walkthrough.
 
 ```
 install.bat
-```
-
-Download local embedding models:
-
-```
-py -3.10 _setup_rag_models.py
-```
-
-### Launch
-
-```
 start.bat
 ```
 

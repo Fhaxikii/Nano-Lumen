@@ -12,16 +12,26 @@
 
 - Windows 10 or later. The project uses WebView2 as its rendering layer and
   depends on several Windows APIs; other operating systems are not supported.
-- Python 3.10. The version matters: the code relies on 3.10-specific
-  guarantees, and newer versions are unverified.
-- About 6 GB of disk space. The embedding model `BAAI/bge-m3` alone is
-  roughly 2.3 GB.
+- About 6 GB of disk space. The RAG models downloaded on first launch total
+  roughly 4.5 GB.
 - 8 GB of RAM or more recommended. Loading the embedding model commits about
   2.3 GB at once; with too little memory, knowledge-base retrieval becomes
   unavailable (see `_classify_model_load_error` in `core/rag.py` for how that
   failure is handled).
 
-## Install
+## Recommended: packaged build
+
+If you only want to use Nano, download the packaged build from the
+[Releases page](https://github.com/Fhaxikii/Nano-Lumen/releases), unzip, and
+run `Nano-Lumen.exe`. Python, Node, and Tesseract are already included.
+RAG models are downloaded automatically on first launch (with a ModelScope
+mirror fallback for restricted networks). Skip the rest of this page.
+
+## Developer: install from source
+
+The rest of this page is for developers who want to run Nano from source or
+contribute. You need **Python 3.10** (version-sensitive; newer versions are
+unverified).
 
 ```
 install.bat
@@ -37,18 +47,6 @@ do not hand-edit version numbers.
 PyTorch is installed as the CPU build; the installer already appends the
 matching extra index.
 
-## Download the embedding model
-
-Knowledge-base retrieval depends on a local embedding model that must be
-downloaded separately:
-
-```
-py -3.10 _setup_rag_models.py
-```
-
-The script supports resumable downloads. Without the model, Nano still
-converses normally — only knowledge-base retrieval is unavailable.
-
 ## Launch
 
 ```
@@ -56,6 +54,11 @@ start.bat
 ```
 
 Equivalent to running `python app.py` from the project root.
+
+RAG models (bge-m3, bge-reranker-v2-m3) are downloaded automatically on
+first launch. If huggingface.co is unreachable, the code falls back to the
+Aliyun ModelScope mirror. Without them, Nano still converses normally — only
+knowledge-base retrieval is unavailable.
 
 ## First-conversation configuration
 

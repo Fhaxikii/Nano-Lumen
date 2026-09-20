@@ -36,21 +36,6 @@ are the same data. Hand-editing works too.
 | `NANO_API_RELAY_API_KEY` | API key. RELAY in the name is legacy; the key is stored here whether or not a relay is used | yes |
 | `NANO_API_RELAY_BASE_URL` | Relay URL. Empty means the vendor's official endpoint | yes |
 | `HTTP_PROXY` / `HTTPS_PROXY` | HTTP proxy. Filling it in the UI writes both | yes |
-| `HF_HUB_OFFLINE` | Whether the local retrieval models load offline. Written by `_setup_rag_models.py` after a successful download | no |
-
-### About `HF_HUB_OFFLINE`
-
-Do not add this key by hand ahead of time. If it is `1` before the model
-cache exists, loading goes straight into offline mode and the models can
-never be downloaded. The only correct moment to write it is after a
-successful download, and `_setup_rag_models.py` does that itself.
-
-Conversely, if it is not set after the models are downloaded, there is a
-risk: loading will go online to fetch again, and an interrupted fetch rewrites
-the local cache's references and writes negative-cache entries. The result:
-the weight files are still on disk but can never be loaded again. The record
-of that incident is at the top of `core/rag.py`.
-
 `HF_ENDPOINT` (the model-download mirror) is set by `install.ps1` as a
 user-level environment variable and is not written to `.env`.
 

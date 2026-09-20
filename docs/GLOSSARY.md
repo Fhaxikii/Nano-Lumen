@@ -66,7 +66,7 @@
    GUI, risk floor, subagent as-is; do not coin new literal renderings for
    them.
 3. **Code identifiers are never translated.** File names, function names,
-   keys (`HF_HUB_OFFLINE`), paths stay as-is.
+   keys, paths stay as-is.
 4. **Each language reads natively; the two are not sentence-aligned mirrors.**
    Same meaning, same terms; word order follows each language.
 5. **Navigation lines inside a page are written in that page's language only**

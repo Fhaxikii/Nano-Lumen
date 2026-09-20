@@ -12,14 +12,22 @@
 
 - Windows 10 或更高版本。项目使用 WebView2 作为渲染层，并依赖若干 Windows API，
   目前不支持其他操作系统。
-- Python 3.10。版本敏感：代码中存在 3.10 特有的写法约束，
-  更高版本未经验证。
-- 磁盘空间约 6 GB。其中嵌入模型 `BAAI/bge-m3` 单个文件约 2.3 GB。
+- 磁盘空间约 6 GB。其中首次启动自动下载的 RAG 模型共约 4.5 GB。
 - 可用内存建议 8 GB 以上。加载嵌入模型时需要一次性提交约 2.3 GB，
   内存不足会导致知识库检索不可用（错误处理见 `core/rag.py` 的
   `_classify_model_load_error`）。
 
-## 安装
+## 推荐：下载封装版
+
+只想使用 Nano 的话，从 [Releases 页面](https://github.com/Fhaxikii/Nano-Lumen/releases)
+下载封装版，解压后运行 `Nano-Lumen.exe` 即可。Python、Node、Tesseract 均已内置。
+RAG 模型在首次启动时自动下载（huggingface.co 不可达时自动切换阿里云 ModelScope 镜像）。
+以下内容可以跳过。
+
+## 开发者：从源码安装
+
+本节面向从源码运行或参与开发的开发者。需要 **Python 3.10**（版本敏感，
+更高版本未经验证）。
 
 ```
 install.bat
@@ -32,16 +40,6 @@ install.bat
 
 PyTorch 使用 CPU 版本，安装脚本已附加对应的额外索引源。
 
-## 下载嵌入模型
-
-知识库检索依赖本地嵌入模型，需要单独下载：
-
-```
-py -3.10 _setup_rag_models.py
-```
-
-该脚本支持断点续传。没有这个模型时 Nano 仍可正常对话，只是知识库检索不可用。
-
 ## 启动
 
 ```
@@ -49,6 +47,10 @@ start.bat
 ```
 
 等价于在项目根目录执行 `python app.py`。
+
+RAG 模型（bge-m3、bge-reranker-v2-m3）在首次启动时自动下载。
+huggingface.co 不可达时代码会自动回退到阿里云 ModelScope 镜像。
+没有这些模型时 Nano 仍可正常对话，只是知识库检索不可用。
 
 ## 第一次对话需要的配置
 
