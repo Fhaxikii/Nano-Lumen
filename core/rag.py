@@ -281,11 +281,28 @@ def _load_embedder():
                 # 推理内存约 1-2GB，比 MiniLM 高一个数量级，但召回质量显著提升
                 _embedder = SentenceTransformer(_resolve_hf_snapshot("BAAI/bge-m3"))
         except Exception as e:
-            # 2026-08-03 实测：三次不同根因的失败全被上游一个 except 吞掉，UI 零提示。
-            # 这里按根因分类上报，让用户在界面上看得见、也让模型知道这个工具坏了。
+            code = _model_load_code(e)
+            # WEIGHTS_FORMAT_REJECTED: local cache only has .bin (legacy download).
+            # Delete the bad cache and re-fetch via ModelScope, which converts to safetensors.
+            if code == "WEIGHTS_FORMAT_REJECTED":
+                try:
+                    logger.warning("[RAG] .bin-only cache detected, re-downloading via ModelScope...")
+                    import shutil
+                    hub = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
+                    cdir = os.path.join(hub, "models--BAAI--bge-m3")
+                    if os.path.exists(cdir):
+                        shutil.rmtree(cdir, ignore_errors=True)
+                    _download_via_modelscope("BAAI/bge-m3")
+                    _embedder = SentenceTransformer(_resolve_hf_snapshot("BAAI/bge-m3"))
+                    logger.info("[RAG] self-heal: reloaded via ModelScope with safetensors")
+                    _init_stage_log.append("embedder_ready")
+                    report_ok(Cap.KB_VECTOR_SEARCH, note="embedder loaded (self-healed)")
+                    return _embedder
+                except Exception as e2:
+                    logger.error("[RAG] self-heal failed: %s", e2)
             _msg, _hint, _hint_en = _classify_model_load_error(e, "BAAI/bge-m3")
             report_fault(
-                Cap.KB_VECTOR_SEARCH, _model_load_code(e),
+                Cap.KB_VECTOR_SEARCH, code,
                 user_message=_msg, hint=_hint, hint_en=_hint_en,
                 detail=f"{type(e).__name__}: {e}",
             )
@@ -341,9 +358,8 @@ def _classify_model_load_error(e: Exception, repo: str) -> tuple[str, str, str]:
     return {
         "WEIGHTS_FORMAT_REJECTED": (
             f"知识库检索不可用：{repo} 的权重是 .bin 格式，当前 transformers 因安全公告拒绝加载。",
-            "跑一次 py -3.10 _setup_rag_models.py，它会把权重转成 safetensors。",
-            "Run `py -3.10 _setup_rag_models.py` in the project folder; it converts the "
-            "weights to safetensors.",
+            "重新启动 Nano，触发自动修复程序。",
+            "Restart Nano to trigger the automatic repair.",
         ),
         "MODEL_FETCH_OFFLINE": (
             f"RAG 模型下载失败：{repo}。",
@@ -360,8 +376,8 @@ def _classify_model_load_error(e: Exception, repo: str) -> tuple[str, str, str]:
         ),
         "MODEL_MISSING": (
             f"知识库检索不可用：{repo} 模型文件缺失或未下载完整。",
-            "跑一次 py -3.10 _setup_rag_models.py（支持断点续传）。",
-            "Run `py -3.10 _setup_rag_models.py`; it resumes partial downloads.",
+            "重新启动 Nano，触发自动修复程序。",
+            "Restart Nano to trigger the automatic repair.",
         ),
     }.get(code, (
         f"知识库检索不可用：{repo} 加载失败。",

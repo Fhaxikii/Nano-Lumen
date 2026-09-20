@@ -2110,3 +2110,15 @@
 - RAG 模型下载失败的红卡文案改为可执行指引，不再引用已删除的独立安装脚本。
 
 ---
+
+## v1.97 hotfix02 (beta)
+
+### Fixes
+- Fixed RAG model load failure (WEIGHTS_FORMAT_REJECTED) where a legacy .bin-only cache could not be repaired by restart.
+
+
+### 修复
+- 修复 RAG 模型 `.bin` 格式缓存错误时，无法通过重新启动触发自动修复的问题。嵌入模型加载器现在会删除不兼容缓存，通过 ModelScope 镜像重新下载并自动转换为 safetensors。
+- 更新 WEIGHTS_FORMAT_REJECTED 与 MODEL_MISSING 的提示文案为「重新启动 Nano，触发自动修复程序」。
+
+---
