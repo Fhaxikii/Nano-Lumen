@@ -251,6 +251,7 @@ Nano is still in **Beta development**. Contributions are welcome.
 
 ### Beta Roadmap
 
+- **Prompt injection defense**: isolate non-user input so embedded instructions cannot override system behavior
 - **OpenAI-compatible API**: support other providers (Zhipu / Kimi / OpenRouter, etc.)
 - **I18N**: full UI multi-language support
 - **Enable proactive intelligence**: officially release the proactive behavior engine from shadow observation
