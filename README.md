@@ -183,7 +183,7 @@ It only suggests, never acts on its own — every action requires your approval.
 | Item | Requirement |
 |------|-------------|
 | OS | Windows 10 or later |
-| Disk space | ~6 GB |
+| Disk space | ~4 GB |
 | RAM | 8 GB+ recommended |
 
 ### Packaged build (recommended)
