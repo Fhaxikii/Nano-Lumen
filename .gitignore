@@ -46,3 +46,5 @@ dist/
 packaging/tools/
 tools/node/
 *.spec.bak
+
+packaging/
