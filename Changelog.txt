@@ -2091,3 +2091,22 @@
 - 修复新环境首次初始化知识库时报 WEIGHTS_FORMAT_REJECTED 的问题：transformers 5.x 出于安全策略（CVE-2025-32434）拒绝加载 .bin 权重，而镜像源解析出的快照可能只有 .bin 格式，导致 RAG 检索不可用且重启无法自愈。现在嵌入与重排模型改为显式获取 safetensors 快照后从本地加载，不再依赖上游的格式回退顺序
 
 ---
+
+## v1.97 hotfix01 (beta)
+
+### What's New
+- RAG model download now falls back to the Aliyun ModelScope mirror automatically when huggingface.co is unreachable.
+- Portable Tesseract lookup: the packaged build detects tesseract/tesseract.exe next to the executable.
+
+### Fixes
+- Reduced diagnostic wording for RAG model download failures to actionable guidance; removed references to the standalone setup script that no longer ships.
+
+
+### 新增
+- RAG 模型下载在 huggingface.co 不可达时自动切换阿里云 ModelScope 镜像。
+- 便携版 Tesseract 探测：封装版自动识别 exe 同级 tesseract/tesseract.exe。
+
+### 修复
+- RAG 模型下载失败的红卡文案改为可执行指引，不再引用已删除的独立安装脚本。
+
+---

@@ -39,3 +39,10 @@ data/*.json
 # ── OS / editor ────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# Build artifacts
+build/
+dist/
+packaging/tools/
+tools/node/
+*.spec.bak

@@ -194,14 +194,58 @@ def _resolve_hf_snapshot(repo_id: str) -> str:
        格式选择权收回自己手里，而不是托付给上游的回退顺序。
     """
     from huggingface_hub import snapshot_download
-    return snapshot_download(
-        repo_id,
-        allow_patterns=[
-            "*.json", "*.txt", "*.model",
-            "model.safetensors",
-            "1_Pooling/*", "2_Dense/*",
-        ],
-    )
+    patterns = ["*.json", "*.txt", "*.model",
+                "model.safetensors", "1_Pooling/*", "2_Dense/*"]
+    try:
+        return snapshot_download(repo_id, allow_patterns=patterns)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            "[RAG] huggingface download failed (%s), falling back to modelscope",
+            type(e).__name__)
+        return _download_via_modelscope(repo_id)
+
+
+def _download_via_modelscope(repo_id: str) -> str:
+    """Download via modelscope (Aliyun mirror), lay out as HF cache, return snapshot dir."""
+    import os, shutil
+    os.environ.setdefault("MODELSCOPE_ENDPOINT", "https://mirrors.aliyun.com/modelscope/")
+    os.environ.setdefault("MODELSCOPE_DOWNLOAD_PARALLELS", "16")
+    ms_patterns = ["*.json", "*.txt", "*.bin", "*.safetensors",
+                   "*.model", "tokenizer*", "sentence*"]
+    from modelscope.hub.snapshot_download import snapshot_download as ms_dl
+    md = ms_dl(repo_id, allow_patterns=ms_patterns)
+    hub = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
+    cdir = os.path.join(hub, "models--" + repo_id.replace("/", "--"))
+    snap = os.path.join(cdir, "snapshots", "main")
+    refs = os.path.join(cdir, "refs")
+    if os.path.exists(cdir):
+        shutil.rmtree(cdir, ignore_errors=True)
+    os.makedirs(snap, exist_ok=True)
+    os.makedirs(refs, exist_ok=True)
+    for item in os.listdir(md):
+        src = os.path.join(md, item)
+        dst = os.path.join(snap, item)
+        (shutil.copy2 if os.path.isfile(src) else shutil.copytree)(src, dst)
+    with open(os.path.join(refs, "main"), "w") as f:
+        f.write("main")
+    st = os.path.join(snap, "model.safetensors")
+    binf = os.path.join(snap, "pytorch_model.bin")
+    if not os.path.exists(st) and os.path.exists(binf):
+        import torch
+        from safetensors.torch import save_file
+        sd = torch.load(binf, map_location="cpu", weights_only=True)
+        cleaned, seen = {}, {}
+        for k, v in sd.items():
+            if not isinstance(v, torch.Tensor):
+                continue
+            if v.data_ptr() in seen:
+                v = v.clone()
+            else:
+                seen[v.data_ptr()] = k
+            cleaned[k] = v.contiguous()
+        save_file(cleaned, st, metadata={"format": "pt"})
+    return snap
 
 
 def _load_embedder():
@@ -302,10 +346,9 @@ def _classify_model_load_error(e: Exception, repo: str) -> tuple[str, str, str]:
             "weights to safetensors.",
         ),
         "MODEL_FETCH_OFFLINE": (
-            f"知识库检索不可用：{repo} 本地没有缓存，而当前是离线模式。",
-            "把 .env 里的 HF_HUB_OFFLINE 临时改成 0，或跑 py -3.10 _setup_rag_models.py 下载。",
-            "Set `HF_HUB_OFFLINE=0` in the project's .env, or run "
-            "`py -3.10 _setup_rag_models.py` to download it.",
+            f"RAG 模型下载失败：{repo}。",
+            "检查网络或尝试启动代理后重启 Nano。",
+            f"Failed to download RAG model: {repo}. Check your network or enable a proxy and restart Nano.",
         ),
         "MODEL_LOAD_OOM": (
             f"知识库检索不可用：加载 {repo} 时系统内存不足（模型约 2.3 GB）。"
@@ -1855,6 +1898,17 @@ def _resolve_tesseract_cmd() -> Optional[str]:
     if env_path and os.path.exists(env_path):
         _tesseract_cmd_cache = env_path
         return _tesseract_cmd_cache
+
+    # PyInstaller onedir: exe 同级 tesseract/tesseract.exe
+    try:
+        import sys as _sys
+        _exe_dir = os.path.dirname(os.path.abspath(_sys.executable))
+        _bundled = os.path.join(_exe_dir, "tesseract", "tesseract.exe")
+        if os.path.exists(_bundled):
+            _tesseract_cmd_cache = _bundled
+            return _tesseract_cmd_cache
+    except Exception:
+        pass
 
     which_path = shutil.which("tesseract")
     if which_path:
