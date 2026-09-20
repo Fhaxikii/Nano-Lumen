@@ -48,10 +48,9 @@ gh release create vX.YZ --target main --title "Nano-Lumen vX.YZ" --notes-file <n
    - **Mirror only the matching Changelog section**, in Chinese and English.
    - The title is exactly `Nano-Lumen vX.YZ`; no ordinal decorations like "Nth fix release".
    - Nothing that is not in the Changelog (new docs, screenshots, and other repository changes do not go into release notes).
-   - The last two lines are always:
+   - The last line is always:
 
 ```
-- 安装方式见 [README](https://github.com/Fhaxikii/Nano-Lumen#安装) · Install: see the [English README](https://github.com/Fhaxikii/Nano-Lumen/blob/main/README.zh.md#installation--quick-start)
 - 完整变更历史见 [Changelog.txt](Changelog.txt) · Full changelog: [Changelog.txt](Changelog.txt)
 ```
 

@@ -48,10 +48,9 @@ gh release create vX.YZ --target main --title "Nano-Lumen vX.YZ" --notes-file <n
    - **只镜像 Changelog 对应版本段落**，中英对照。
    - 标题就是 `Nano-Lumen vX.YZ`，不加「第 N 个修复版本」之类的序数修饰。
    - 不写 Changelog 里没有的内容（新文档、截图等仓库改动不进 release notes）。
-   - 末尾固定两条：
+   - 末尾固定一条：
 
 ```
-- 安装方式见 [README](https://github.com/Fhaxikii/Nano-Lumen#安装) · Install: see the [English README](https://github.com/Fhaxikii/Nano-Lumen/blob/main/README.zh.md#installation--quick-start)
 - 完整变更历史见 [Changelog.txt](Changelog.txt) · Full changelog: [Changelog.txt](Changelog.txt)
 ```
 
