@@ -12,40 +12,22 @@
 
 - Windows 10 or later. The project uses WebView2 as its rendering layer and
   depends on several Windows APIs; other operating systems are not supported.
-- About 6 GB of disk space. The RAG models downloaded on first launch total
-  roughly 4.5 GB.
+- About 6 GB of disk space.
 - 8 GB of RAM or more recommended. Loading the embedding model commits about
   2.3 GB at once; with too little memory, knowledge-base retrieval becomes
-  unavailable (see `_classify_model_load_error` in `core/rag.py` for how that
-  failure is handled).
+  unavailable.
 
-## Recommended: packaged build
+## Install from source (developer)
 
-If you only want to use Nano, download the packaged build from the
-[Releases page](https://github.com/Fhaxikii/Nano-Lumen/releases), unzip, and
-run `Nano-Lumen.exe`. Python, Node, and Tesseract are already included.
-RAG models are downloaded automatically on first launch (with a ModelScope
-mirror fallback for restricted networks). Skip the rest of this page.
-
-## Developer: install from source
-
-The rest of this page is for developers who want to run Nano from source or
-contribute. You need **Python 3.10** (version-sensitive; newer versions are
-unverified).
+This page is for developers who want to run Nano from source or contribute.
+You need **Python 3.10** (version-sensitive; newer versions are unverified).
 
 ```
 install.bat
 ```
 
 The batch file delegates the real work to `install.ps1`. The dependency list
-is `requirements_cpu.txt`, exported from a working environment via
-`pip freeze`, with every version pinned.
-
-When changing dependencies, re-export the file from a working environment;
-do not hand-edit version numbers.
-
-PyTorch is installed as the CPU build; the installer already appends the
-matching extra index.
+is `requirements_cpu.txt`.
 
 ## Launch
 
@@ -53,11 +35,8 @@ matching extra index.
 start.bat
 ```
 
-Equivalent to running `python app.py` from the project root.
-
 RAG models (bge-m3, bge-reranker-v2-m3) are downloaded automatically on
-first launch. If huggingface.co is unreachable, the code falls back to the
-Aliyun ModelScope mirror. Without them, Nano still converses normally — only
+first launch. Without them, Nano still converses normally — only
 knowledge-base retrieval is unavailable.
 
 ## First-conversation configuration
@@ -86,10 +65,6 @@ message explicitly says the file is fine and does not need re-downloading.
 
 Check the console output. The rendering layer is WebView2 and requires the
 Microsoft Edge WebView2 Runtime to be installed.
-
-**Why does it download 2GB after installation?**
-
-That's the local embedding model (bge-m3), used for knowledge-base RAG retrieval — not your LLM. It runs entirely on your local machine with telemetry disabled. You can skip this step if you don't use the knowledge-base feature; the UI will show a missing-environment warning, which is expected.
 
 **Where is the settings menu?**
 

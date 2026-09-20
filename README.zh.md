@@ -183,16 +183,16 @@ Nano 把这些时机称为 "**生产力时刻**"：不是表演，只为能帮�
 | 项目     | 要求                      |
 | ------ | ----------------------- |
 | 操作系统   | Windows 10 及以上          |
-| 磁盘空间   | 约 6 GB（含首次启动自动下载的 RAG 模型约 4.5 GB） |
+| 磁盘空间   | 约 6 GB  |
 | 内存     | 建议 8 GB 以上              |
 
-### 推荐：下载封装版
+### 封装版(推荐）
 
-从 [Releases 页面](https://github.com/Fhaxikii/Nano-Lumen/releases) 下载最新版本，解压后运行 `Nano-Lumen.exe`。无需安装 Python、Node 或系统级 Tesseract。首次启动会自动下载 RAG 模型（约 4.5 GB；huggingface.co 不可达时自动切换阿里云 ModelScope 镜像）。
+从 [Releases 页面](https://github.com/Fhaxikii/Nano-Lumen/releases) 下载最新版本，解压后运行 `Nano-Lumen.exe`。
 
-### 开发者：手动安装
+### 手动安装(开发者）
 
-从源码运行或参与开发。需要 **Python 3.10**（版本敏感）。完整步骤见 [01 · 安装与启动](docs/zh/01-getting-started.md)。
+从源码运行或参与开发，详见 01 · 安装与启动。
 
 ```
 install.bat
