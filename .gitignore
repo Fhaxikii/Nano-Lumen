@@ -48,3 +48,5 @@ tools/node/
 *.spec.bak
 
 packaging/
+
+nano.spec
