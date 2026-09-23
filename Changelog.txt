@@ -2133,7 +2133,8 @@
 ### Improvements
 - Redundant model copies (unusable .bin weights and duplicate download caches, about 4 GB) are removed automatically.
 - The installer and Nano now share one implementation for downloading and preparing the knowledge-base models.
-- The console shows startup information, warnings and errors by default; per-request diagnostics are only shown in developer mode.
+- The console shows only startup readiness (skills loaded, provider configured, knowledge base ready, MCP servers connected, Nano started), warnings and errors by default. Per-request diagnostics, module start-up details, self-check results and restart-recovery details are logged at DEBUG.
+- Developer switches moved to config/dev_flags.json, shipped with every switch off and a description for each. A switch that is on is reported with a WARNING at startup. DEBUG console output is enabled with the console_debug switch. data/dev_flags.json is no longer read.
 
 
 ### 修复
@@ -2145,6 +2146,7 @@
 ### 优化
 - 自动清理多余的模型副本（无法使用的 .bin 权重与重复的下载缓存，约 4 GB）。
 - 安装器与 Nano 使用同一份知识库模型下载与准备逻辑。
-- 控制台默认只显示启动信息、警告与错误；逐次请求的诊断信息仅在开发者模式下显示。
+- 控制台默认只显示启动就绪信息（已加载技能数、Provider 已配置、知识库就绪、MCP 服务连接数、Nano 已启动）以及警告与错误。逐次请求的诊断、各模块启动细节、自检结果与重启恢复细节改为 DEBUG 级别。
+- 开发者开关移至 config/dev_flags.json，随仓库分发，所有开关默认关闭并各附说明；任何处于开启状态的开关都会在启动时以 WARNING 提示。控制台 DEBUG 输出通过 console_debug 开关开启。不再读取 data/dev_flags.json。
 
 ---
