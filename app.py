@@ -7096,7 +7096,7 @@ class WebUI:
         ("allow_workspace_write", "folder", "工作区写入", "在指定工作目录内创建/修改/删除文件", "amber"),
         ("allow_window_control", "web_asset", "窗口控制", "切换、移动、缩放、关闭窗口", "amber"),
         ("allow_mouse_keyboard", "mouse", "鼠标键盘模拟", "代为点击屏幕元素、输入文字", "amber"),
-        ("allow_system_settings", "display_settings", "系统设置", "调整音量、亮度等系统级设置", "amber"),
+        ("allow_system_settings", "display_settings", "系统控制", "启动或结束程序、写入剪贴板、调节音量，以及管理服务、环境变量、计划任务、开机启动项和网络设置", "amber"),
         ("allow_registry_write", "dns", "注册表写入", "修改 Windows 注册表键值", "red"),
         ("allow_dangerous", "warning", "高危操作总闸", "运行命令行、删除文件等不可逆操作", "red"),
     ]

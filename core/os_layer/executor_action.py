@@ -362,6 +362,15 @@ class ActionExecutor:
         if self._estop.is_stopped():
             return self._aborted()
         amount = int(params.get("amount", -3))  # 负=向下
+        # direction 给出时决定方向，amount 只取绝对值（工具说明的参数是 {direction, amount}）。
+        direction = str(params.get("direction") or "").strip().lower()
+        if direction == "down":
+            amount = -abs(amount)
+        elif direction == "up":
+            amount = abs(amount)
+        elif direction:
+            return {"ok": False, "data": {}, "summary": "",
+                    "error": f"unsupported scroll direction {direction!r}; use 'up' or 'down'"}
         try:
             import pyautogui
             pyautogui.scroll(amount * 100)

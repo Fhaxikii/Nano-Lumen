@@ -97,7 +97,7 @@ PERMISSION_LABELS: Dict[str, str] = {
     PERM_WORKSPACE_WRITE: "工作区写入",
     PERM_WINDOW_CONTROL: "窗口控制",
     PERM_MOUSE_KEYBOARD: "鼠标键盘模拟",
-    PERM_SYSTEM_SETTINGS: "系统设置",
+    PERM_SYSTEM_SETTINGS: "系统控制",
     PERM_REGISTRY_WRITE: "注册表写入",
     PERM_DANGEROUS: "高危操作总闸",
 }

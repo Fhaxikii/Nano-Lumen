@@ -2726,7 +2726,7 @@ _OS_MANIFEST = {
                     "file_write={path,content,mode}; file_read/file_delete={path}; "
                     "file_move={path,dest}; run_command={command,wait_for_result}; "
                     "list_dir={path}; clipboard_write={text}; open_url={url}; "
-                    "launch_app={name}."
+                    "launch_app={target}."
                 ),
             },
             "declared_risk": {"type": "integer",
@@ -2798,7 +2798,7 @@ _COMPUTER_USE_MANIFEST = {
                     "Parameters for the selected action. Common examples: "
                     "click/double_click/right_click={target:'semantic target description'} "
                     "with no coordinates; type_text={text}; hotkey={keys}; "
-                    "scroll={direction,amount}; drag={from_target,to_target}; "
+                    "scroll={direction,amount}; drag={from_x,from_y,to_x,to_y}; "
                     "screenshot={} ; win_switch/win_minimize/win_close={title}."
                 ),
             },
