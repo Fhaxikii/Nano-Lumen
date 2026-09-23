@@ -2125,13 +2125,13 @@
 ## v1.98 (beta)
 
 ### Fixes
-- Fixed the knowledge-base embedding model taking about a minute to load the first time it was used in each session: on every load it tried to reach HuggingFace first and, when that failed, deleted and rebuilt the local model cache. Models are now loaded from the local cache without any network request; they are downloaded only when missing.
+- Fixed the knowledge-base embedding model taking about a minute to load the first time it was used in each session.
 - Fixed the installer placing the embedding model in a format the runtime refuses to load (.bin), which made the first launch convert it again.
 - Fixed the installer's final check passing without verifying that the model weights can actually be loaded.
 - Fixed Nano requesting the model list with an empty API key on every launch before a key is configured.
-- Fixed the folder Nano associates with a File Explorer window when the window has several tabs (Windows 11): it used the first tab instead of the selected one and marked the path as confirmed. The selected tab is now used; when it cannot be determined, the path is left unconfirmed.
-- Fixed a wrong confirmed file path when an editor holds several documents in one process and two of them share a file name in different folders: the path from the process command line (the first file opened) was used for the other one. The command line is now trusted only when the process has a single document window with at most one tab, and has not been seen holding several documents earlier.
-- Editors whose window title shows the full file path (Notepad++ by default) now use that path directly; only the file name is shown in the activity summary.
+- Fixed Nano taking the first tab instead of the selected one as the confirmed folder of a File Explorer window with several tabs (Windows 11).
+- Fixed Nano treating the command-line path of an editor process (the first file opened) as the confirmed path of another open file with the same name in a different folder.
+- Fixed the full file path being shown as the file name in the activity summary for editors whose window title contains the full path (Notepad++ by default).
 
 ### Improvements
 - Redundant model copies (unusable .bin weights and duplicate download caches, about 4 GB) are removed automatically.
@@ -2141,13 +2141,13 @@
 
 
 ### 修复
-- 修复知识库嵌入模型每次会话首次使用时加载约需一分钟的问题：此前每次加载都会先尝试连接 HuggingFace，失败后删除并重建本地模型缓存。现在直接从本地缓存加载，不发起任何网络请求，仅在本地缺失时下载。
+- 修复知识库嵌入模型每次会话首次使用时加载约需一分钟的问题。
 - 修复安装器下载的嵌入模型为运行时拒绝加载的格式（.bin），导致首次启动时需要再次转换的问题。
 - 修复安装器最终校验未确认模型权重可以正常加载的问题。
 - 修复未配置 API Key 时，每次启动仍用空 Key 请求模型列表的问题。
-- 修复资源管理器窗口有多个标签页时（Windows 11），Nano 关联的文件夹取的是第一个标签而不是当前选中的标签，且标记为已确认的问题。现在使用当前选中的标签；无法确定时不标记为已确认。
-- 修复编辑器在同一进程中打开多个文档、且其中两个文件同名但位于不同文件夹时，把进程命令行中的路径（最先打开的文件）当作另一个文件的已确认路径的问题。现在仅当进程只有一个文档窗口、至多一个标签页，且此前未被观察到同时打开多个文档时，才采用命令行路径。
-- 窗口标题显示完整路径的编辑器（Notepad++ 默认如此）直接采用标题中的路径；活动摘要中只显示文件名。
+- 修复资源管理器窗口有多个标签页时（Windows 11），Nano 将第一个标签而非当前选中标签的文件夹标记为已确认的问题。
+- 修复编辑器同一进程中打开了不同文件夹下的同名文件时，Nano 把进程命令行中的路径（最先打开的文件）当作另一个文件的已确认路径的问题。
+- 修复窗口标题含完整路径的编辑器（Notepad++ 默认如此）在活动摘要中把完整路径当作文件名显示的问题。
 
 ### 优化
 - 自动清理多余的模型副本（无法使用的 .bin 权重与重复的下载缓存，约 4 GB）。
