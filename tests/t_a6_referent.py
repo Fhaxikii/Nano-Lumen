@@ -375,7 +375,10 @@ def t_argv_split() -> None:
                     str(_dir / "新建文本文档"), "(7).txt"]
 
     _real = _ps.Process
+    _real_single = R._single_document
     _ps.Process = _FakeProc
+    # 伪造的进程没有真实窗口；文档数判定由 t_referent_multi_doc.py 单独测试。
+    R._single_document = lambda *a, **k: True
     try:
         r = R.resolve(app="notepad", pid=1, title="新建文本文档 (7).txt - 记事本")
         check(bool(r) and r.get("confirmed") and r.get("path") == str(_f),
@@ -388,6 +391,7 @@ def t_argv_split() -> None:
               "那个做法的安全网：拼错的片段既对不上文件名、也不会存在")
     finally:
         _ps.Process = _real
+        R._single_document = _real_single
 
     _src = (ROOT / "core" / "proactive" / "referent.py").read_text(encoding="utf-8")
     check("用一个近似场景去验真实场景" in _src,

@@ -117,6 +117,11 @@ def parse_title(app: str, title: str):
     t = (title or "").strip()
     c = cat(app)
     if c in ("editor", "office") and " - " in t:
+        # 标题以完整路径开头（Notepad++ 的默认格式）时，名字取文件名；
+        # 路径由 title_path() 给出。整段按最后一个 " - " 切，路径里本身含 " - " 也不会断开。
+        _tp = title_path(app, t)
+        if _tp:
+            return (pathlib.PureWindowsPath(_tp).name, "", "")
         segs = [s.strip(" ●*•◦") for s in t.split(" - ")]
         f = segs[0] if segs else ""
         proj = segs[1] if len(segs) >= 3 else ""
@@ -128,6 +133,27 @@ def parse_title(app: str, title: str):
                 t = t[: -len(suf)]
         return ("", "", t.strip())
     return ("", "", "")
+
+
+def title_path(app: str, title: str) -> str:
+    """窗口标题以绝对路径开头时返回该路径（不检查是否存在），否则返回 ""。
+
+    只对 editor / office 类生效。标题反映的是当前显示的文档，
+    因此这个路径比进程命令行（启动时的快照）更可信。
+    """
+    if cat(app) not in ("editor", "office"):
+        return ""
+    t = (title or "").strip()
+    if " - " not in t:
+        return ""
+    head = t.rpartition(" - ")[0].strip(" ●*•◦")
+    try:
+        p = pathlib.PureWindowsPath(head)
+    except Exception:
+        return ""
+    if p.drive and p.is_absolute() and p.name:
+        return head
+    return ""
 
 
 # ── URL：完整读一次，域名由调用方自己截 ──────────────────────────────────
@@ -270,13 +296,97 @@ def _argv_path_candidates(args: list) -> list:
     return out
 
 
-def _resolve_file(app: str, pid: int, title: str) -> Optional[dict]:
+#: 在同一个窗口里用标签页承载多个文档的应用（进程名，小写，不含 .exe）。
+#: 这些应用的命令行只记录启动时的第一个文件，需要先确认窗口里只有一个标签。
+_DOC_TAB_APPS = {"notepad", "notepad++", "wps"}
+
+
+def _process_windows(pid: int) -> list:
+    """该进程可见、有标题、无 owner 的顶层窗口（对话框之类的附属窗口不计）。"""
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    out = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _cb(h, _):
+        if not user32.IsWindowVisible(h) or user32.GetWindow(h, 4):  # GW_OWNER
+            return True
+        if not user32.GetWindowTextLengthW(h):
+            return True
+        _p = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(h, ctypes.byref(_p))
+        if _p.value == int(pid):
+            out.append(int(h))
+        return True
+
+    user32.EnumWindows(_cb, 0)
+    return out
+
+
+def _tab_count(hwnd: int) -> Optional[int]:
+    """窗口里文档标签页的数量：没有标签栏返回 0，读取失败返回 None。
+
+    经 UIA 找到第一个 TabItem，数它所在标签栏里 TabItem 的个数。
+    """
+    try:
+        import uiautomation as auto
+        win = auto.ControlFromHandle(int(hwnd))
+        if not win:
+            return None
+
+        def _find(c, depth):
+            for ch in c.GetChildren():
+                if ch.ControlTypeName == "TabItemControl":
+                    return c
+                if depth < 10:
+                    r = _find(ch, depth + 1)
+                    if r is not None:
+                        return r
+            return None
+
+        bar = _find(win, 0)
+        if bar is None:
+            return 0
+        return sum(1 for ch in bar.GetChildren()
+                   if ch.ControlTypeName == "TabItemControl")
+    except Exception as e:
+        logger.debug(f"[Referent] 读取标签页失败 hwnd={hwnd}: {e}")
+        return None
+
+
+def _single_document(app: str, pid: int, hwnd: int) -> bool:
+    """进程里是否只开着一个文档。无法确定时返回 False。
+
+    命令行只记录启动时打开的文件。进程之后再打开的文件（另一个窗口、另一个标签）
+    与它同名时，按名字比对会把旧路径当成当前文档的路径。
+    """
+    try:
+        wins = _process_windows(pid)
+    except Exception:
+        return False
+    if len(wins) != 1:
+        return False
+    if (app or "").lower() in _DOC_TAB_APPS:
+        n = _tab_count(hwnd or wins[0])
+        return n is not None and n <= 1
+    return True
+
+
+def _resolve_file(app: str, pid: int, title: str, hwnd: int = 0) -> Optional[dict]:
     import psutil
     name, _proj, _page = parse_title(app, title)
     if not name:
         return None
     ref = {"kind": KIND_FILE, "name": name, "path": "",
            "confirmed": False, "app": app}
+    # 标题里的完整路径属于当前显示的文档，直接采用；不再回退到命令行。
+    _tp = title_path(app, title)
+    if _tp:
+        if pathlib.Path(_tp).exists():
+            ref["path"] = _tp
+            ref["confirmed"] = True
+        return ref
     try:
         cmd = psutil.Process(int(pid)).cmdline()
     except Exception:
@@ -299,6 +409,9 @@ def _resolve_file(app: str, pid: int, title: str) -> Optional[dict]:
             #      拼错的片段既对不上文件名、也不会存在。
             if not _p.exists():
                 continue
+            # 名字对上还不够：进程里开着多个文档时，同名文件可能不是这一个。
+            if not _single_document(app, pid, hwnd):
+                break
             ref["path"] = str(_p)
             ref["confirmed"] = True
             break
@@ -309,6 +422,8 @@ def _resolve_file(app: str, pid: int, title: str) -> Optional[dict]:
 
 def _resolve_dir(hwnd: int) -> Optional[dict]:
     """explorer 窗口 → 它当前所在的目录。**按 hwnd 匹配。**
+
+    同一 hwnd 下有多个标签页时只取当前选中的那个；确定不了就只给窗口标题，confirmed=False。
 
     ⚠️ COM 在非主线程里用必须先 `CoInitialize`（轮询跑在独立线程）。
     """
@@ -328,18 +443,26 @@ def _resolve_dir(hwnd: int) -> Optional[dict]:
             pass
         sh = win32com.client.Dispatch("Shell.Application")
         ws = sh.Windows()
+        items = []
         for i in range(ws.Count):
             try:
                 w = ws.Item(i)
-                if int(w.HWND) != int(hwnd):
-                    continue
-                loc = str(w.LocationURL or "")
-                nm = str(w.LocationName or "")
-                path = file_url_to_path(loc)
-                return {"kind": KIND_DIR, "name": nm, "path": path,
-                        "confirmed": bool(path), "app": "explorer"}
+                if int(w.HWND) == int(hwnd):
+                    items.append(w)
             except Exception:
                 continue
+        if not items:
+            return None
+        # Win11 资源管理器的每个标签页都是一个条目，且共用同一个顶层 HWND。
+        w = items[0] if len(items) == 1 else _active_tab_item(hwnd, items)
+        if w is None:
+            return {"kind": KIND_DIR, "name": _window_text(hwnd), "path": "",
+                    "confirmed": False, "app": "explorer"}
+        loc = str(w.LocationURL or "")
+        nm = str(w.LocationName or "")
+        path = file_url_to_path(loc)
+        return {"kind": KIND_DIR, "name": nm, "path": path,
+                "confirmed": bool(path), "app": "explorer"}
     except Exception as e:
         logger.debug(f"[Referent] explorer 解析失败: {e}")
     finally:
@@ -349,6 +472,49 @@ def _resolve_dir(hwnd: int) -> Optional[dict]:
             except Exception:
                 pass
     return None
+
+
+#: SID_STopLevelBrowser：从 Shell 窗口条目取得该标签页的 IShellBrowser。
+_SID_TOP_LEVEL_BROWSER = "{4C96BE40-915C-11CF-99D3-00AA004AE837}"
+
+
+def _active_tab_item(hwnd: int, items: list):
+    """同一资源管理器窗口的多个标签条目中，找出当前选中的那个；无法确定时返回 None。
+
+    每个标签页有自己的 ShellTabWindowClass 子窗口（经 IShellBrowser.GetWindow 取得）。
+    选中的标签页的子窗口在 z 序中排第一，即 FindWindowEx 返回的第一个。
+    窗口标题不能作为依据：它不一定随标签切换更新。
+    """
+    try:
+        import pythoncom
+        import pywintypes
+        import win32gui
+        from win32com.shell import shell
+        active = win32gui.FindWindowEx(int(hwnd), 0, "ShellTabWindowClass", None)
+        if not active:
+            return None
+        sid = pywintypes.IID(_SID_TOP_LEVEL_BROWSER)
+        hits = []
+        for w in items:
+            try:
+                sp = w._oleobj_.QueryInterface(pythoncom.IID_IServiceProvider)
+                sb = sp.QueryService(sid, shell.IID_IShellBrowser)
+                if int(sb.GetWindow()) == int(active):
+                    hits.append(w)
+            except Exception:
+                continue
+        return hits[0] if len(hits) == 1 else None
+    except Exception as e:
+        logger.debug(f"[Referent] 无法确定当前标签页 hwnd={hwnd}: {e}")
+        return None
+
+
+def _window_text(hwnd: int) -> str:
+    try:
+        import win32gui
+        return win32gui.GetWindowText(int(hwnd)) or ""
+    except Exception:
+        return ""
 
 
 def file_url_to_path(url: str) -> str:
@@ -381,7 +547,7 @@ def resolve(*, app: str, pid: int = 0, hwnd: int = 0, title: str = "",
     c = cat(a)
     try:
         if c in ("editor", "office"):
-            return _resolve_file(a, pid, title)
+            return _resolve_file(a, pid, title, hwnd)
         # 🪦 `browser` **刻意不产出句柄**（2026-08-27 定）——
         #    页面名字已经在窗口标题里、已经进了注入的叙述，那就够了。
         #    抓网址那一版见 `browser_domain` 的墓碑。
