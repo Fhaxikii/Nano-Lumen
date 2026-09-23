@@ -197,7 +197,7 @@ class CanarySelfCheck:
             #    也不该把之前累计的失败一笔勾销。
             self._state["last_run_ts"] = time.time()
             self._save_state()
-            logger.info("[Canary] 本轮跳过：任务栏上没有探测到名字稳定的控件，无法自检。")
+            logger.debug("[Canary] 本轮跳过：任务栏上没有名字稳定的控件")
             return {"rate": None, "undetectable": True, "results": [],
                     "escalate": False,
                     "consecutive_low": self._state.get("consecutive_low", 0)}
@@ -231,10 +231,11 @@ class CanarySelfCheck:
         self._state["history"] = history[-50:]  # 只留最近50次，防止状态文件无限增长
         self._save_state()
 
-        logger.info(
-            f"[Canary] 本轮成功率 {rate:.0%}（{success}/{len(results)}），"
+        _escalate = self._state["consecutive_low"] >= self._escalate_after
+        # 自检通过或尚未达到升级条件时只记 DEBUG；达到升级条件时由调用方告知用户，这里记 WARNING。
+        (logger.warning if _escalate else logger.debug)(
+            f"[Canary] 视觉定位自检成功率 {rate:.0%}（{success}/{len(results)}），"
             f"连续低于阈值 {self._state['consecutive_low']} 次"
-            + ("（≥escalate_after，应升级告知用户）" if self._state["consecutive_low"] >= self._escalate_after else "")
         )
 
         return {

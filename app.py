@@ -16715,9 +16715,9 @@ if __name__ == "__main__":
             #    它上面那条声明带类型标注，`global` 一个带标注的名字是 SyntaxError。
             _STARTUP_INTERRUPTED = list(
                 getattr(_rt_rep, "interrupted_details", []) or [])
-            # extra 中的计数全为 0 时不算有动作（reconciler 已记录「无需处理」）。
+            # 被中断的事项由 Nano 在界面上询问用户是否继续，控制台只在 DEBUG 下记录。
             if _rt_rep.did_anything or any((_rt_rep.extra or {}).values()):
-                logger.warning(f"[Runtime] 启动恢复：{_rt_rep.summary()} extra={_rt_rep.extra}")
+                logger.debug(f"[Runtime] 启动恢复：{_rt_rep.summary()} extra={_rt_rep.extra}")
 
             # ⭐ 本次运行的身份留痕。**挂在恢复报告之后**——
             #    "这次是谁在跑"和"这次恢复了什么"天然是一份东西，

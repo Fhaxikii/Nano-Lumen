@@ -299,7 +299,7 @@ def reconcile_on_startup(kernel: RuntimeKernel) -> ReconcileReport:
                 "kind": row["kind"],
                 "goal": (row["goal_summary"] or "").strip(),
             })
-            logger.warning(
+            logger.debug(
                 f"[Runtime] Task {tid}（{row['kind']}）随上个进程结束 → "
                 f"已终止为 INTERRUPTED_BY_RESTART"
                 f"{'：' + (row['goal_summary'] or '')[:40] if row['goal_summary'] else ''}")
