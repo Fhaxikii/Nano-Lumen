@@ -158,17 +158,53 @@ def t_single_document() -> None:
         ("Notepad", [11], 2, False, "进程名大小写不影响"),
         ("notepad++", [11], 3, False, "Notepad++ 三个标签 -> 否"),
     ]
-    for app, wins, tabs, want, label in cases:
+    for i, (app, wins, tabs, want, label) in enumerate(cases):
+        R._multi_doc_procs.clear()
         with _Patch(R, _process_windows=lambda pid, w=wins: list(w),
-                    _tab_count=lambda h, t=tabs: t):
+                    _tab_count=lambda h, t=tabs: t,
+                    _proc_key=lambda pid, i=i: (pid, float(i))):
             got = R._single_document(app, 1, 11)
         check(got is want, label, f"got={got}")
 
     def _boom(pid):
         raise OSError("x")
 
-    with _Patch(R, _process_windows=_boom):
+    R._multi_doc_procs.clear()
+    with _Patch(R, _process_windows=_boom, _proc_key=lambda pid: (pid, 0.0)):
         check(R._single_document("winword", 1, 11) is False, "枚举窗口出错 -> 否")
+    with _Patch(R, _process_windows=lambda pid: [11], _proc_key=lambda pid: None):
+        check(R._single_document("winword", 1, 11) is False, "进程已不存在 -> 否")
+
+    print("\n▶ 见过多个文档的进程，之后只剩一个也不再采用命令行")
+    R._multi_doc_procs.clear()
+    state = {"tabs": 2}
+    with _Patch(R, _process_windows=lambda pid: [11],
+                _tab_count=lambda h: state["tabs"],
+                _proc_key=lambda pid: (pid, 100.0)):
+        check(R._single_document("notepad", 5, 11) is False, "两个标签 -> 否")
+        state["tabs"] = 1
+        check(R._single_document("notepad", 5, 11) is False,
+              "关掉一个后只剩一个标签 -> 仍为否（命令行里可能是被关掉的那个）")
+    with _Patch(R, _process_windows=lambda pid: [11],
+                _tab_count=lambda h: 1,
+                _proc_key=lambda pid: (pid, 200.0)):
+        check(R._single_document("notepad", 5, 11) is True,
+              "同一 pid 但创建时间不同（进程号复用）-> 不受之前记录影响")
+    with _Patch(R, _process_windows=lambda pid: [11, 12],
+                _proc_key=lambda pid: (pid, 300.0)):
+        R._single_document("winword", 6, 11)
+    with _Patch(R, _process_windows=lambda pid: [11],
+                _proc_key=lambda pid: (pid, 300.0)):
+        check(R._single_document("winword", 6, 11) is False,
+              "多窗口同理：见过两个窗口后只剩一个 -> 仍为否")
+    R._multi_doc_procs.clear()
+    with _Patch(R, _process_windows=lambda pid: [11],
+                _tab_count=lambda h: None,
+                _proc_key=lambda pid: (pid, 400.0)):
+        R._single_document("notepad", 7, 11)
+    check((7, 400.0) not in R._multi_doc_procs,
+          "读不出标签数时不记为多文档（只是这一次不采用）")
+    R._multi_doc_procs.clear()
 
 
 class _C:

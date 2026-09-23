@@ -355,22 +355,46 @@ def _tab_count(hwnd: int) -> Optional[int]:
         return None
 
 
+#: 曾被观察到同时开着多个文档的进程，键为 (pid, 进程创建时间)。
+#: 这些进程之后即使只剩一个文档，命令行也不再能说明当前文档是哪一个。
+#: 记录依赖解析时恰好处于多文档状态：打开文件要经过资源管理器或打开对话框，
+#: 前台进程或窗口标题会变化，焦点轮询因此会在该状态下重新解析。
+_multi_doc_procs: set = set()
+
+
+def _proc_key(pid: int):
+    try:
+        import psutil
+        return (int(pid), psutil.Process(int(pid)).create_time())
+    except Exception:
+        return None
+
+
 def _single_document(app: str, pid: int, hwnd: int) -> bool:
-    """进程里是否只开着一个文档。无法确定时返回 False。
+    """进程里是否只开着一个文档，且从未被观察到开着多个。无法确定时返回 False。
 
     命令行只记录启动时打开的文件。进程之后再打开的文件（另一个窗口、另一个标签）
-    与它同名时，按名字比对会把旧路径当成当前文档的路径。
+    与它同名时，按名字比对会把旧路径当成当前文档的路径；关掉最初那个文件后
+    只剩一个文档时同样如此，所以一旦见过多个文档，该进程的命令行就不再采用。
     """
+    key = _proc_key(pid)
+    if key is None or key in _multi_doc_procs:
+        return False
     try:
         wins = _process_windows(pid)
     except Exception:
         return False
-    if len(wins) != 1:
+    if not wins:
         return False
-    if (app or "").lower() in _DOC_TAB_APPS:
+    single = len(wins) == 1
+    if single and (app or "").lower() in _DOC_TAB_APPS:
         n = _tab_count(hwnd or wins[0])
-        return n is not None and n <= 1
-    return True
+        if n is None:
+            return False
+        single = n <= 1
+    if not single:
+        _multi_doc_procs.add(key)
+    return single
 
 
 def _resolve_file(app: str, pid: int, title: str, hwnd: int = 0) -> Optional[dict]:
