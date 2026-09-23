@@ -2148,6 +2148,7 @@
 - The "System settings" OS permission is renamed "System control"; its description now lists everything it covers: launching and closing applications, writing to the clipboard, volume, services, environment variables, scheduled tasks, startup items and network settings.
 - All runtime data paths are resolved in one place; the NANO_DATA_DIR environment variable sets the data directory. Tests run in a temporary data directory.
 - Tests are run with `python tests/run_all.py` (run_tests.sh removed). Tests that need a real desktop or real models are skipped unless `--live` is given; the run fails if anything under data/ changed.
+- Error cards with repair suggestions are removed from the chat once every capability they report is available again (confirmed by a successful call or a health probe of the capability itself).
 
 
 ### 修复
@@ -2174,5 +2175,6 @@
 - OS 权限「系统设置」更名为「系统控制」，说明中列出它实际管理的全部操作：启动或结束程序、写入剪贴板、调节音量，以及管理服务、环境变量、计划任务、开机启动项和网络设置。
 - 所有运行期数据路径统一由一处解析；环境变量 NANO_DATA_DIR 可指定数据目录。测试在临时数据目录中运行。
 - 测试改用 `python tests/run_all.py` 运行（删除 run_tests.sh）。需要真实桌面或真实模型的测试默认跳过，加 `--live` 才运行；运行期间 data/ 下有任何改动即判为失败。
+- 带修复建议的错误卡片在其列出的能力全部恢复可用后自动从聊天区移除（以能力本身的真实调用成功或健康探针确认为准）。
 
 ---

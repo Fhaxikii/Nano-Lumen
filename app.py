@@ -1120,6 +1120,7 @@ class WebUI:
         # 本次运行发出过的故障卡。聊天区被清空重画（压缩同步、重置对话）后重新画到末尾：
         # 故障卡不进聊天记录，重放画不出它，而错误本身并没有因为重画而消失。
         self._live_fault_events: list = []
+        self._fault_card_elements: dict = {}   # id(ev) -> 当前画在聊天区里的那个块
 
         # 对话窗口图片上传状态（直接进context）
         self._pending_image_bytes: bytes | None = None
@@ -7738,9 +7739,10 @@ class WebUI:
             return          # 一个事件只渲染一次
         if _key:
             self._emitted_chat_keys.add(_key)
+        _blk = self._draw_chat_event(ev)
         if ev.get("category") == "fault":
             self._live_fault_events.append(ev)
-        self._draw_chat_event(ev)
+            self._fault_card_elements[id(ev)] = _blk
         try:
             self.scroll_area.scroll_to(percent=1.0, duration=0.2)
         except Exception:
@@ -7768,14 +7770,40 @@ class WebUI:
                                 self._render_fault_card(ev)
                             else:
                                 self._render_speech(ev, _blk)
+        return _blk
 
     def _redraw_live_faults(self):
         """聊天区清空重画之后，把本次运行的故障卡重新画到末尾。"""
         for ev in list(self._live_fault_events):
             try:
-                self._draw_chat_event(ev)
+                self._fault_card_elements[id(ev)] = self._draw_chat_event(ev)
             except Exception as e:
                 logger.debug(f"[UI] 重画故障卡失败: {e}")
+
+    def _retire_fault_cards(self, recovered: set):
+        """能力恢复后撤掉对应的故障卡。
+
+        「恢复」来自健康登记表的 RECOVERED：真实调用路径成功，或探针确认能力可用
+        （探针检查的是能力本身，不是依赖装没装；需要重启才生效的修复，探针会继续失败，
+        卡片留到重启后重新探测）。一张卡合并了多项能力时，全部恢复才撤。
+        没有能力清单的卡（如上次崩溃记录）不会被撤。
+        """
+        for ev in list(self._live_fault_events):
+            caps = ev.get("capabilities") or []
+            if not caps:
+                continue
+            left = [c for c in caps if c not in recovered]
+            ev["capabilities"] = left
+            if left:
+                continue
+            self._live_fault_events.remove(ev)
+            _el = self._fault_card_elements.pop(id(ev), None)
+            if _el is not None:
+                try:
+                    with self._ui_scope():
+                        _el.delete()
+                except Exception as e:
+                    logger.debug(f"[UI] 撤故障卡失败: {e}")
 
     def _render_fault_card(self, ev: dict):
         """醒目错误卡。宗旨：尽可能让致命报错摆脱 cmd —— Nano 是原生桌面
@@ -7843,7 +7871,7 @@ class WebUI:
     def emit_chat(self, *, category: str = "speech", body: str = "",
                   title: str = "", lines: list | None = None,
                   hints: list | None = None, intervention_id: str = None,
-                  dedupe_key: str = ""):
+                  dedupe_key: str = "", capabilities: list | None = None):
         """统一出口。UI 未就绪时入队而不是丢弃（绝不再出现 `if not container: return`
         这种永久丢事件的路径）。
 
@@ -7854,6 +7882,8 @@ class WebUI:
             "category": category, "body": body, "title": title,
             "lines": lines or [], "hints": hints or [],
             "intervention_id": intervention_id, "dedupe_key": dedupe_key,
+            # 故障卡涉及的能力。全部恢复（健康登记表发出 RECOVERED）后撤掉这张卡。
+            "capabilities": list(capabilities or []),
         }
         if not getattr(self, "_ui_ready", False):
             self._pending_chat_events.append(ev)
@@ -7902,11 +7932,13 @@ class WebUI:
 
         _sys = get_system_events()
         _to_card = []
+        _recovered = set()
         for _t in _events:
             _st = _t.state
             _spec_label = _st.snapshot().get("label", _st.capability)
             # 事件流（给模型看）：所有转移都记，含 degraded 与 recovered
             if _t.kind == Transition.RECOVERED:
+                _recovered.add(_st.capability)
                 _sys.add(f"{_spec_label} recovered and is available again.")
             elif _st.status == Status.DEGRADED:
                 _sys.add(f"{_spec_label} degraded: {_st.user_message}")
@@ -7922,6 +7954,9 @@ class WebUI:
                 if _h.mark_presented(_st.capability, _st.generation):
                     _to_card.append(_st)
 
+        if _recovered:
+            self._retire_fault_cards(_recovered)
+
         # 多个组件同时失败时归并成一张卡，不连发三到十张故障卡片
         if _to_card:
             _to_card.sort(key=lambda s: Severity.rank(s.severity), reverse=True)
@@ -7933,6 +7968,7 @@ class WebUI:
                     lines=[_s.user_message],
                     hints=[_s.recovery_hint],
                     dedupe_key=_s.fingerprint,
+                    capabilities=[_s.capability],
                 )
             else:
                 self.emit_chat(
@@ -7942,6 +7978,7 @@ class WebUI:
                            for s in _to_card],
                     hints=[s.recovery_hint for s in _to_card],
                     dedupe_key="|".join(s.fingerprint for s in _to_card),
+                    capabilities=[s.capability for s in _to_card],
                 )
 
         try:
