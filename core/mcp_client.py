@@ -370,7 +370,7 @@ class MCPServer:
                 self.last_fault = ()
                 self._ready.set()
                 self._health_ok()
-                logger.info(f"[MCP] '{self.name}' 已连接 · {self.tool_count} 个工具 · {self.transport}")
+                logger.debug(f"[MCP] '{self.name}' 已连接 · {self.tool_count} 个工具 · {self.transport}")
                 # 进入服务循环；正常情况下一直守在这里直到 stop 或连接断开
                 await self._serve(session)
             except asyncio.CancelledError:
@@ -894,7 +894,7 @@ class MCPManager:
                 pass
         self.servers = new_servers
         self._loaded = True
-        logger.info(f"[MCP] 配置已加载：{len(self.servers)} 个 server（{', '.join(self.servers) or '空'}）")
+        logger.debug(f"[MCP] 配置已加载：{len(self.servers)} 个 server（{', '.join(self.servers) or '空'}）")
 
     def refresh_config_from_disk(self) -> bool:
         """重新读配置文件，**就地更新已有 server 的 `cfg`**；新增的 server 也建出来。
@@ -969,6 +969,25 @@ class MCPManager:
             # 📌 「开机不拉」和「永远不拉」是两件事，挡的位置决定了是哪一件。
             if s.enabled and not s.lazy:
                 await s.start()
+        asyncio.create_task(self._log_startup_summary())
+
+    async def _log_startup_summary(self, timeout: float = 60.0) -> None:
+        """等开机自动连接的 server 各自出第一次结果（或超时），打一行汇总。
+
+        连接失败的原因由各 server 自己的 WARNING 给出，这里只报数量。
+        """
+        started = [s for s in self.servers.values() if s.enabled and not s.lazy]
+        if not started:
+            return
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while loop.time() < deadline:
+            if all(s.status in (ST_CONNECTED, ST_FAILED, ST_NEEDS_AUTH) for s in started):
+                break
+            await asyncio.sleep(0.5)
+        ok = sum(1 for s in started if s.status == ST_CONNECTED)
+        (logger.info if ok == len(started) else logger.warning)(
+            f"[MCP] 已连接 {ok}/{len(started)} 个服务")
 
     # ── 恢复探针 ─────────────────────────────────────────────────────────
     def _register_probes(self) -> None:

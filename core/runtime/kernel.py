@@ -440,7 +440,7 @@ def get_kernel() -> RuntimeKernel:
             #    在 `task.install()` 里顶层 import 它就是循环依赖（同 oslease 的做法）。
             _task.install_reconcile(k)
             _kernel = k
-            logger.info(
+            logger.debug(
                 f"[Runtime] Kernel 就绪 · {len(k.registered_commands())} 个命令 "
                 f"· db={k.store.path.name}"
             )

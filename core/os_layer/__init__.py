@@ -30,7 +30,7 @@ def _ensure_dpi_awareness() -> None:
     try:
         # PROCESS_PER_MONITOR_DPI_AWARE = 2，多显示器不同缩放比例下也准确
         _ctypes.windll.shcore.SetProcessDpiAwareness(2)
-        _logger.info("[OS-Coord] 已声明 Per-Monitor DPI 感知")
+        _logger.debug("[OS-Coord] 已声明 Per-Monitor DPI 感知")
     except Exception:
         try:
             _ctypes.windll.user32.SetProcessDPIAware()

@@ -34,7 +34,7 @@ class OSAuditLogger:
         self._screenshot_dir.mkdir(parents=True, exist_ok=True)
         self._write_lock = threading.Lock()
         self._prune_tick = 0
-        logger.info(f"[OS-Audit] 审计日志已就绪: {self._log_path}")
+        logger.debug(f"[OS-Audit] 审计日志已就绪: {self._log_path}")
 
     @property
     def screenshot_dir(self) -> pathlib.Path:

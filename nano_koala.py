@@ -4,6 +4,7 @@
 
 import json, re, pathlib
 from nicegui import ui, app as _napp
+from loguru import logger
 
 _BASE         = pathlib.Path(__file__).parent
 _ASSETS_DIR   = _BASE / 'assets' / 'nano_koala_assets'
@@ -17,9 +18,9 @@ def _extract_layers():
     try:
         from PIL import Image
     except ImportError:
-        print('[nano_koala] pip install Pillow'); return False
+        logger.warning('[nano_koala] 缺少 Pillow：pip install Pillow'); return False
     if not _ATLAS_PNG.exists() or not _ATLAS_JSON.exists():
-        print('[nano_koala] 找不到 atlas'); return False
+        logger.warning('[nano_koala] 找不到 atlas'); return False
     _ASSETS_DIR.mkdir(exist_ok=True)
     atlas = Image.open(_ATLAS_PNG).convert('RGBA')
     with open(_ATLAS_JSON, encoding='utf-8') as f:
@@ -33,7 +34,7 @@ def _extract_layers():
         atlas.crop((r['x'], r['y'], r['x']+r['w'], r['y']+r['h'])).save(
             _ASSETS_DIR / f'{key}.png', 'PNG')
         n += 1
-    print(f'[nano_koala] 切割 {n} 层 → {_ASSETS_DIR.name}/')
+    logger.debug(f'[nano_koala] 切割 {n} 层 → {_ASSETS_DIR.name}/')
     return True
 
 # ── CSS（注入到 <head>）──────────────────────────────────────────────────
@@ -745,12 +746,12 @@ def _auto_setup():
         if _ATLAS_PNG.exists():
             _extract_layers()
         else:
-            print(f'[nano_koala] 未找到 atlas，请手动放图层到 {_ASSETS_DIR}')
+            logger.warning(f'[nano_koala] 未找到 atlas，请手动放图层到 {_ASSETS_DIR}')
     try:
         _napp.add_static_files(_STATIC_MOUNT, str(_ASSETS_DIR))
-        print(f'[nano_koala] 静态文件 → {_STATIC_MOUNT}')
+        logger.debug(f'[nano_koala] 静态文件 → {_STATIC_MOUNT}')
     except Exception as e:
-        print(f'[nano_koala] 静态文件挂载: {e}')
+        logger.warning(f'[nano_koala] 静态文件挂载失败: {e}')
 
 _auto_setup()
 

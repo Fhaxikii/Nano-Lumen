@@ -73,7 +73,7 @@ def current_runtime_id() -> str:
             if _current is None:
                 _current = _new_runtime_id()
                 _started_at = time.time()
-                logger.info(f"[Runtime] 本次运行身份 runtime_id={_current}")
+                logger.debug(f"[Runtime] 本次运行身份 runtime_id={_current}")
     return _current
 
 
@@ -132,7 +132,7 @@ def arm_restart_notice(kernel) -> None:
     global _notice_pending
     prev = previous_run(kernel)
     if not prev:
-        logger.info("[Runtime] 没有上一次运行记录（首次运行），不挂重启提示")
+        logger.debug("[Runtime] 没有上一次运行记录，不挂重启提示")
         return
     _gap = max(0.0, started_at() - prev["started_at"])
     _rec = prev.get("recovery_summary") or ""
@@ -151,7 +151,7 @@ def arm_restart_notice(kernel) -> None:
         "So do not assume any of those still hold. If you need one, establish it again "
         "in this runtime before relying on it.\n"
     )
-    logger.info(f"[Runtime] 已挂上重启提示（上次运行 {prev['runtime_id']}）")
+    logger.debug(f"[Runtime] 已挂上重启提示（上次运行 {prev['runtime_id']}）")
 
 
 def _fmt_gap(sec: float) -> str:
@@ -186,7 +186,7 @@ def consume_restart_notice() -> None:
     global _notice_pending
     if _notice_pending:
         _notice_pending = ""
-        logger.info("[Runtime] 重启提示已被模型收到 → 消费")
+        logger.debug("[Runtime] 重启提示已被模型收到")
 
 
 def previous_run(kernel) -> dict | None:

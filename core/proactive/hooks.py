@@ -46,7 +46,7 @@ def _start_keyboard_hook():
             # 其余功能键忽略
 
         kb.on_press(_on_key)
-        logger.info("[Proactive-Hooks] 键盘钩子已启动")
+        logger.debug("[Proactive-Hooks] 键盘钩子已启动")
     except Exception as e:
         logger.warning(f"[Proactive-Hooks] 键盘钩子启动失败（不影响主流程）: {e}")
 
@@ -188,7 +188,7 @@ def _window_poll_loop():
 def _start_window_poll():
     t = threading.Thread(target=_window_poll_loop, daemon=True, name="proactive-win-poll")
     t.start()
-    logger.info("[Proactive-Hooks] 窗口轮询线程已启动")
+    logger.debug("[Proactive-Hooks] 窗口轮询线程已启动")
 
 
 # ── 公开入口 ──────────────────────────────────────────────────────────────────
@@ -207,4 +207,4 @@ def start_hooks():
         start_takeover_hooks()
     except Exception as e:
         logger.warning(f"[Proactive-Hooks] 被动挂起传感器启动失败（不影响主流程）: {e}")
-    logger.info("[Proactive-Hooks] 全部钩子已就绪")
+    logger.debug("[Proactive-Hooks] 全部钩子已就绪")

@@ -321,7 +321,7 @@ def reconcile_on_startup(kernel: RuntimeKernel) -> ReconcileReport:
     # 只报告不拦截。真发现违反说明有代码 bug 或有人手工改过库，要响亮。
     report.broken_invariants = kernel.check_invariants_now()
 
-    logger.info(f"[Runtime] 启动恢复完成：{report.summary()}")
+    logger.debug(f"[Runtime] 启动恢复完成：{report.summary()}")
     return report
 
 

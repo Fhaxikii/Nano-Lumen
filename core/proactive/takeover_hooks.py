@@ -323,7 +323,7 @@ def _hook_thread() -> None:
         #    正是 `_os_task_busy` 那类"一声不响"的翻版。
         logger.warning(f"[Takeover-Hooks] 这些钩子没装上，被动挂起会漏信号: {'、'.join(bad)}")
     if ok:
-        logger.info(f"[Takeover-Hooks] 已就绪: {'、'.join(ok)}")
+        logger.debug(f"[Takeover-Hooks] 已就绪: {'、'.join(ok)}")
 
     msg = wt.MSG()
     while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:

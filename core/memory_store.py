@@ -52,7 +52,7 @@ class WorkingMemoryStore:
         self._db_path = db_path
         self._write_lock = threading.Lock()
         self._init_db()
-        logger.info(f"[WorkingMemory] 已初始化: {db_path}")
+        logger.debug(f"[WorkingMemory] 已初始化: {db_path}")
 
     # ── 初始化 ────────────────────────────────────────────────────────────
 

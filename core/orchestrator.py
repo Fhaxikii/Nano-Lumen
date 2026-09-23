@@ -4307,7 +4307,9 @@ class Orchestrator:
                     logger.debug(f"[RAG] 启动清理跳过: {e}")
 
                 stats = rag_engine.index_documents("data/knowledge")
-                logger.info(f"[RAG] 后台初始化完成 → 新增: {stats['indexed']}，跳过: {stats['skipped']}，错误: {len(stats.get('errors', []))}")
+                _n_err = len(stats.get('errors', []))
+                (logger.warning if _n_err else logger.info)(
+                    f"[RAG] 知识库就绪 · 新增 {stats['indexed']} · 未变化 {stats['skipped']} · 失败 {_n_err}")
                 rag_engine._init_stage_log.append(
                     f"done:{stats['indexed']}:{stats['skipped']}:{len(stats.get('errors', []))}"
                 )

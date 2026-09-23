@@ -1,0 +1,7 @@
+{
+  "_comment": "Developer switches. Every switch in the committed file must be \"enabled\": false; tests/t_dev_flags.py fails otherwise. Turn a switch on locally only, restart Nano for it to take effect, and turn it off again before committing. Any switch that is on is reported with a WARNING at startup. / 开发者开关。仓库中的版本所有开关必须为 \"enabled\": false，否则 tests/t_dev_flags.py 会失败。只在本地打开，修改后重启 Nano 生效，提交前关回去。任何处于开启状态的开关都会在启动时以 WARNING 提示。",
+  "console_debug": {
+    "enabled": false,
+    "description": "Console log level DEBUG instead of INFO: per-request diagnostics (token usage, prompt-cache attribution, context metering), takeover traces, module start-up details. / 控制台日志级别由 INFO 改为 DEBUG：逐次请求的诊断（token 用量、提示词缓存归因、上下文计量）、接管轨迹、各模块启动细节。"
+  }
+}

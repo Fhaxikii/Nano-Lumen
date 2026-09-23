@@ -124,7 +124,7 @@ class SkillRegistry:
                     }
 
                 self._append_manifest_dedup(next_manifests, manifest)
-                logger.info(f"✔ 技能装载: {instance.name} ({file_path.name})")
+                logger.debug(f"[Skills] 装载: {instance.name} ({file_path.name})")
                 found = True
 
             if not found:
@@ -166,8 +166,9 @@ class SkillRegistry:
             self.skills = next_skills
             self.tools_manifest = next_manifests
             self._official_skill_names = next_official_names
-            logger.info(
-                f"🔄 技能库热重载完成，当前已注册: {list(self.skills.keys())}"
+            logger.info(f"[Skills] 已加载 {len(self.skills)} 个技能")
+            logger.debug(
+                f"[Skills] 已注册: {list(self.skills.keys())}"
                 + (f" [官方: {sorted(next_official_names)}]" if next_official_names else "")
             )
 

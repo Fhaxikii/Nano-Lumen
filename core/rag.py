@@ -181,6 +181,12 @@ def _build_model(repo_id: str, factory):
     其他错误直接抛出。
     """
     try:
+        # transformers 加载权重时的进度条，关闭。
+        from transformers.utils import logging as _hf_logging
+        _hf_logging.disable_progress_bar()
+    except Exception:
+        pass
+    try:
         return factory(_rag_models.ensure_model(repo_id))
     except Exception as e:
         code = _model_load_code(e)
@@ -229,7 +235,7 @@ def _load_embedder():
                 detail=f"{type(e).__name__}: {e}",
             )
             raise
-        logger.info("✔ [RAG] 嵌入模型加载完成 (BAAI/bge-m3)")
+        logger.debug("[RAG] 嵌入模型加载完成 (BAAI/bge-m3)")
         _init_stage_log.append("embedder_ready")
         report_ok(Cap.KB_VECTOR_SEARCH, note="embedder loaded")
     return _embedder
@@ -322,9 +328,12 @@ def _check_bm25_available() -> bool:
         return _bm25_available
     try:
         import rank_bm25  # noqa
-        import jieba  # noqa
+        import jieba
+        import logging as _logging
+        # jieba 首次分词时向 stderr 打印词典加载信息，对用户没有意义。
+        jieba.setLogLevel(_logging.WARNING)
         _bm25_available = True
-        logger.info("✔ [RAG] BM25 + jieba 可用，启用 hybrid search")
+        logger.debug("[RAG] BM25 + jieba 可用，启用 hybrid search")
         _init_stage_log.append("bm25_ready")
     except ImportError as e:
         _bm25_available = False
@@ -435,7 +444,7 @@ def _build_bm25_index():
     #    📌 **两个必须一起变的东西，如果分两句写，那两句之间就是一个可观察的错误状态。**
     _new_index = BM25Okapi(tokenized)   # 先构造（慢），此时全局还是旧的一对
     _set_bm25(corpus, _new_index)       # 再原子换（快）
-    logger.info(f"✔ [RAG] BM25 索引构建完成({len(corpus)} chunks，含临时 {temp_total})")
+    logger.debug(f"[RAG] BM25 索引构建完成（{len(corpus)} chunks，含临时 {temp_total}）")
     if "bm25_index_built" not in _init_stage_log:
         _init_stage_log.append("bm25_index_built")
 
@@ -561,7 +570,7 @@ def _check_reranker_available() -> bool:
     try:
         from sentence_transformers import CrossEncoder  # noqa
         _reranker_available = True
-        logger.info("✔ [RAG] CrossEncoder 可用，启用语义重排")
+        logger.debug("[RAG] CrossEncoder 可用，启用语义重排")
     except ImportError as e:
         _reranker_available = False
         logger.warning(f"⚠️ [RAG] CrossEncoder 依赖缺失({e})，降级为 hybrid 检索")
@@ -616,7 +625,7 @@ def _load_reranker():
             )
             logger.warning(f"⚠️ [RAG] Reranker 加载失败，降级为 hybrid 检索: {e}")
             return None
-        logger.info("✔ [RAG] Reranker 模型加载完成 (bge-reranker-v2-m3, via CrossEncoder)")
+        logger.debug("[RAG] 重排模型加载完成 (bge-reranker-v2-m3)")
         report_ok(Cap.KB_RERANKER, note="reranker loaded")
     return _reranker
 
@@ -1085,7 +1094,7 @@ def _get_collection():
                 )
                 raise
 
-        logger.info(f"✔ [RAG] 向量集合就绪，当前块数: {_collection.count()}")
+        logger.debug(f"[RAG] 向量集合就绪，当前块数: {_collection.count()}")
         report_ok(Cap.KB_STORE, note="chroma opened")
 
         # 每次重建都会留一个孤儿 segment 目录，开库成功后顺手清一次（每进程一次）
@@ -2855,7 +2864,7 @@ def index_documents(folder: str = "data/knowledge", index_config: dict | None = 
             files_to_index.append(file_path)
 
     if not files_to_index:
-        logger.info(f"[RAG] 知识库无变化，跳过嵌入模型预加载（已跳过 {stats['skipped']} 个文件）")
+        logger.debug(f"[RAG] 知识库无变化，跳过嵌入模型预加载（{stats['skipped']} 个文件）")
         _save_parse_reports(parse_reports)
         try:
             _build_bm25_index()
@@ -3580,7 +3589,7 @@ def cleanup_stale_temp_files():
         import shutil
         temp_dir = _temp_uploads_dir()
         if not temp_dir.exists():
-            logger.info("[RAG] cleanup_stale_temp_files: 临时目录不存在，无需清理")
+            logger.debug("[RAG] 临时目录不存在，无需清理")
             return 0
         files = list(temp_dir.iterdir())
         count = sum(1 for f in files if f.is_file())

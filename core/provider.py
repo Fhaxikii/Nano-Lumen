@@ -366,7 +366,7 @@ def fetch_endpoint_models(base_url: str, api_key: str, timeout: float = 8.0) -> 
             rows = d.get("data") or d.get("models") or []
             ids = [str(m.get("id")) for m in rows if isinstance(m, dict) and m.get("id")]
             if ids:
-                logger.info(f"[Models] {base}{path} → {len(ids)} 个模型")
+                logger.debug(f"[Models] {base}{path} → {len(ids)} 个模型")
                 return ids
         except Exception as e:
             logger.debug(f"[Models] {base}{path} 失败: {type(e).__name__}")
@@ -606,10 +606,7 @@ class ClaudeProvider:
         self.is_relay = False
         self.relay_label = ""
         if not self.reconfigure():
-            logger.warning(
-                "[Provider] 未配置任何 API key —— 以未配置态启动，界面可正常打开。"
-                "点右上角三个点打开设置，在「通用 → 环境配置」里填写 Key，保存后即时生效，无需重启。"
-            )
+            logger.warning("[Provider] 未配置 API Key：设置 → 通用 → 环境配置")
 
     @property
     def is_configured(self) -> bool:
@@ -654,8 +651,7 @@ class ClaudeProvider:
                                 if relay_base else "")
             self.target_model = default_model_for(vendor, relay=bool(relay_base))
             logger.info(
-                f"{'🔀 [Relay]' if relay_base else '🌐 [Direct]'} "
-                f"{vendor} · {base or 'SDK 默认地址'} · 模型 {self.target_model}")
+                f"[Provider] 已配置：{vendor} · {self.relay_label or '官方地址'} · {self.target_model}")
             return True
         except Exception as e:
             logger.warning(f"[Provider] reconfigure 失败: {e}")
@@ -1024,8 +1020,7 @@ class ClaudeProvider:
                 _gp, _need_block = {"ok": True}, False
 
             if _f5_pred is None:
-                logger.info("[Guard] 这一次没有预测值（重启首轮/刚切模型/锚作废）"
-                            "→ 不拦截。下一次真实计量后恢复。")
+                logger.debug("[Guard] 本次请求没有预测值，不拦截")
 
             if _need_block:
                 # ── ④ 拒发。⚠️ 两种超限说的话不一样 ──

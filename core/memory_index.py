@@ -47,7 +47,7 @@ def _get_collection():
             name=_COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
         )
-        logger.info(f"✔ [MemoryIndex] 独立语义记忆向量集合就绪，当前块数: {_collection.count()}")
+        logger.debug(f"[MemoryIndex] 语义记忆向量集合就绪，当前块数: {_collection.count()}")
         return _collection
 
 

@@ -304,7 +304,7 @@ def install_hooks() -> None:
     except Exception:
         pass
 
-    logger.info("[CrashJournal] 异常钩子已安装（breadcrumb 为主，钩子为辅）")
+    logger.debug("[CrashJournal] 异常钩子已安装")
 
 
 def install_asyncio_handler(loop) -> None:

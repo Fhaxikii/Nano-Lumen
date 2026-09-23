@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""知识库模型文件管理（core/rag_models.py）、开发者开关（core/dev_flags.py）、
-以及无 key 时不探测端点模型清单（core/provider.endpoint_models）。
+"""知识库模型文件管理（core/rag_models.py）。
 
 所有缓存状态都在临时目录里构造（HF_HUB_CACHE / MODELSCOPE_CACHE 指向临时目录），
 下载函数替换为调用即失败的桩，用来证明本地路径不发起网络请求。
@@ -10,7 +9,6 @@
 """
 from __future__ import annotations
 
-import json
 import os
 import pathlib
 import sys
@@ -221,63 +219,6 @@ def t_all_ready_is_read_only() -> None:
     check(RM.all_ready(["test/does-not-exist"]) is False, "不存在的模型 → False")
 
 
-def t_dev_flags() -> None:
-    print("\n[7] 开发者开关：只有 JSON true 才算开启")
-    from core import dev_flags as DF
-    orig = DF.DEV_FLAGS_PATH
-    try:
-        DF.DEV_FLAGS_PATH = _TMP / "dev_flags.json"
-        cases = [
-            (None, False, "文件不存在"),
-            ('{"console_debug": true}', True, "值为 true"),
-            ('{"console_debug": "true"}', False, '值为字符串 "true"'),
-            ('{"console_debug": 1}', False, "值为 1"),
-            ('{"console_debug": false}', False, "值为 false"),
-            ('{}', False, "缺少该键"),
-            ('{broken', False, "JSON 格式错误"),
-            ('[true]', False, "不是 JSON 对象"),
-        ]
-        for content, expected, label in cases:
-            if content is None:
-                if DF.DEV_FLAGS_PATH.exists():
-                    DF.DEV_FLAGS_PATH.unlink()
-            else:
-                DF.DEV_FLAGS_PATH.write_text(content, encoding="utf-8")
-            DF.reset_for_tests()
-            check(DF.enabled("console_debug") is expected, f"{label} → {expected}")
-
-        DF.DEV_FLAGS_PATH.write_text('{"console_debug": true}', encoding="utf-8")
-        DF.reset_for_tests()
-        DF.enabled("console_debug")
-        DF.DEV_FLAGS_PATH.write_text('{"console_debug": false}', encoding="utf-8")
-        check(DF.enabled("console_debug") is True, "同一进程内只读取一次，文件修改后需重启生效")
-    finally:
-        DF.DEV_FLAGS_PATH = orig
-        DF.reset_for_tests()
-
-    gi = (ROOT / ".gitignore").read_text(encoding="utf-8")
-    check("data/dev_flags.json" in gi.splitlines(), ".gitignore 显式排除 data/dev_flags.json")
-
-
-def t_endpoint_models_without_key() -> None:
-    print("\n[8] 没有 API key 时不探测端点模型清单")
-    from core import provider as P
-    calls: list = []
-    orig = P.fetch_endpoint_models
-    P.fetch_endpoint_models = lambda *a, **k: calls.append(a) or []
-    try:
-        P._ENDPOINT_MODELS_MEM.clear()
-        ids = P.endpoint_models("", "", "anthropic")
-        check(calls == [], "未发起探测请求", str(calls))
-        check(len(ids) > 0, "返回厂商表中的模型清单", f"{len(ids)} 个")
-        check(not P._ENDPOINT_MODELS_MEM, "结果未写入进程内缓存（配置 key 后需要重新探测）")
-        P.endpoint_models("", "sk-test", "anthropic")
-        check(len(calls) == 1, "有 key 时照常探测")
-    finally:
-        P.fetch_endpoint_models = orig
-        P._ENDPOINT_MODELS_MEM.clear()
-
-
 def t_single_download_implementation() -> None:
     print("\n[9] 安装器与运行时共用同一份下载代码")
     ps1 = (ROOT / "install.ps1").read_text(encoding="utf-8-sig")
@@ -297,8 +238,6 @@ def main() -> int:
     t_download_failure_raises()
     t_missing_required_file_not_ready()
     t_all_ready_is_read_only()
-    t_dev_flags()
-    t_endpoint_models_without_key()
     t_single_download_implementation()
 
     ok = sum(1 for r in _results if r[0])

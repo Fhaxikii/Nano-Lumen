@@ -7042,7 +7042,7 @@ class WebUI:
                 if default_model and default_model in _valid:
                     self.provider.target_model = default_model
                 else:
-                    logger.info(f"[Model] 无收藏模型，沿用默认: {self.provider.target_model}")
+                    logger.debug(f"[Model] 无收藏模型，沿用默认: {self.provider.target_model}")
 
                 # 入库设置
                 if "_enhanced_mode" in saved:
@@ -7063,7 +7063,7 @@ class WebUI:
         else:
             # 首次启动：设置默认模型
             self.provider.target_model = (os.getenv("NANO_MODEL") or CLAUDE_MODELS[0]["id"]).strip()
-            logger.info(f"[Model] 首次启动，初始模型: {self.provider.target_model}")
+            logger.debug(f"[Model] 首次启动，初始模型: {self.provider.target_model}")
 
     def _persist_relay_mode(self):
         """启动后持久化配置（保留方法名兼容调用点）。"""
@@ -7716,7 +7716,7 @@ class WebUI:
         except Exception as e:
             logger.warning(f"[UI] 提前捕获 auto-index client 失败: {e}")
         self._ui_ready = True
-        logger.info("[UI] ui_ready=True（chat_container 与 client 均已就绪）")
+        logger.debug("[UI] ui_ready=True")
         # 冲掉 render 之前攒下的事件
         _pending, self._pending_chat_events = list(self._pending_chat_events), []
         for _ev in _pending:
@@ -8413,10 +8413,10 @@ class WebUI:
         if getattr(self, "_takeover_bar_shown", None) != _shown_now:
             self._takeover_bar_shown = _shown_now
             if _shown_now:
-                logger.info(f"[TakeoverBar] 接管状态条**出现** —— 持有者={holder.holder} "
+                logger.debug(f"[TakeoverBar] 接管状态条出现 —— 持有者={holder.holder} "
                             f"reason={holder.reason!r} 剩余={holder.held_until - __import__('time').time():.1f}s")
             else:
-                logger.info("[TakeoverBar] 接管状态条**消失** —— 没有用户持有")
+                logger.debug("[TakeoverBar] 接管状态条消失")
 
         if holder is None:
             bar.style('display:none;')
@@ -16671,7 +16671,7 @@ if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
 
-    # 控制台日志：默认 INFO；data/dev_flags.json 中 console_debug 为 true 时输出 DEBUG。
+    # 控制台日志：默认 INFO；config/dev_flags.json 中 console_debug 开启时输出 DEBUG。
     # 必须在其他模块产生日志之前配置。
     try:
         import sys as _sys
@@ -16773,6 +16773,7 @@ if __name__ == "__main__":
             except Exception:
                 pass
         _nicegui_app.on_shutdown(_mcp_shutdown)
+        _nicegui_app.on_startup(lambda: logger.info("Nano 已启动"))
 
         gui.render()
 
@@ -16821,7 +16822,7 @@ if __name__ == "__main__":
                         });
                     }, 900);
                 """)
-            logger.info("[App] 客户端已连接（重贴主题；对话状态保持不变）。")
+            logger.debug("[App] 客户端已连接")
 
         # ── 原生窗口（pywebview + WebView2）─────────────────────────────
         # 浏览器模式下 Nano 没有独立窗口句柄，自缩窗 / 截图排除自身都做不到。
@@ -16840,6 +16841,7 @@ if __name__ == "__main__":
         _run_kwargs = dict(
             title='Nano OS', port=8080, reload=False, dark=False,
             storage_secret='nano-office-secret-2025',
+            show_welcome_message=False,
         )
         if _native_ok:
             # window_size 给一个像样的初始尺寸（NiceGUI native 默认 800x600 偏小）。
@@ -16849,7 +16851,7 @@ if __name__ == "__main__":
             # spawn 子进程才读得到，见 _apply_native_window_icon）。Windows 下标题栏
             # 与任务栏共用同一份图标+标题，两处一致显示 Nano 头像 + "Nano"。
             _run_kwargs['title'] = 'Nano'
-            logger.info("[App] 启动 native 原生窗口（WebView2）。")
+            logger.debug("[App] 使用原生窗口（WebView2）")
             # 常驻系统托盘：✕ 隐藏到右下角托盘而非退出（等窗口就绪后在 daemon 线程建图标）
             _start_system_tray()
         else:

@@ -450,14 +450,14 @@ class ContextMeter:
                     self._last_predicted = None
                     return
                 self._degraded_reason = ""
-                # ⭐ 正常路径也留一行 —— 它是「上下文厚度」监控卡的数据源，
-                #    也是标定 per-model 配额时唯一能看的东西。
-                logger.info(
+                # 每次请求一行，仅用于排查。监控卡与配额标定读取的是 _sample() 写入的
+                # data/context_samples.jsonl，不依赖这行日志。
+                logger.debug(
                     f"[ContextMeter] predicted={pred} actual={actual} "
                     f"residual={rel_err:.1%} model={model}"
                 )
             else:
-                logger.info(f"[ContextMeter] 建锚 actual={actual} model={model}（此前无锚）")
+                logger.debug(f"[ContextMeter] 建锚 actual={actual} model={model}（此前无锚）")
 
             try:
                 from core.runtime.identity import current_runtime_id
