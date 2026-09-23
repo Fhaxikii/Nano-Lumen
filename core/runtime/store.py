@@ -478,7 +478,8 @@ class RuntimeStore:
 
     def __init__(self, db_path: pathlib.Path | str | None = None):
         if db_path is None:
-            db_path = pathlib.Path(__file__).parent.parent.parent / "data" / "nano_runtime.db"
+            from core.paths import data_path
+            db_path = data_path("nano_runtime.db")
         self._db_path = pathlib.Path(db_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()

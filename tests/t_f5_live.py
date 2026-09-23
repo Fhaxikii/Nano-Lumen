@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# nano-test: live — loads the real embedding / reranker models (about 2.3 GB)
 """**真的把它跑一遍** ——那五个的回归。
 
 ═══ 这个套件为什么必须存在 ═══
@@ -453,7 +454,7 @@ def main() -> int:
             traceback.print_exc()
             check(False, f"{fn.__name__} 抛异常", str(e))
     bad = [r for r in _results if not r[0]]
-    # ⚠️ 汇总必须是 `run_tests.sh` 认得的两种格式之一（`X/Y 通过`），
+    # ⚠️ 汇总必须是 `tests/run_all.py` 认得的两种格式之一（`X/Y 通过`），
     #    否则它会报「无汇总」并整体判失败 —— 📌 一个跑绿了但汇报格式不对的套件，
     #    在全量里和红的没有区别。
     print(f"\n{'=' * 60}\n结果：{len(_results) - len(bad)}/{len(_results)} 通过")

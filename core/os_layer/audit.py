@@ -26,8 +26,8 @@ class OSAuditLogger:
 
     def __init__(self, log_dir: Optional[pathlib.Path] = None):
         if log_dir is None:
-            root = pathlib.Path(__file__).parent.parent.parent
-            log_dir = root / "data" / "os_audit"
+            from core.paths import data_path
+            log_dir = data_path("os_audit")
         log_dir.mkdir(parents=True, exist_ok=True)
         self._log_path = log_dir / "os_actions.log"
         self._screenshot_dir = log_dir / "screenshots"

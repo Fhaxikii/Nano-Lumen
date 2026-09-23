@@ -56,7 +56,8 @@ _EXT_MIME = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp",
 
 
 def images_dir() -> pathlib.Path:
-    d = pathlib.Path(__file__).parent.parent.parent / "data" / "chat_images"
+    from core.paths import data_path
+    d = data_path("chat_images")
     d.mkdir(parents=True, exist_ok=True)
     return d
 

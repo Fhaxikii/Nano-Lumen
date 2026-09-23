@@ -176,7 +176,8 @@ _sample_lock = threading.Lock()
 
 def samples_path():
     import pathlib
-    p = pathlib.Path(__file__).parent.parent.parent / "data" / "context_samples.jsonl"
+    from core.paths import data_path
+    p = data_path("context_samples.jsonl")
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -227,7 +228,8 @@ _LAST_KNOWN_LOCK = threading.Lock()
 
 def _last_known_path():
     import pathlib
-    p = pathlib.Path(__file__).parent.parent.parent / "data" / "context_last_known.json"
+    from core.paths import data_path
+    p = data_path("context_last_known.json")
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 

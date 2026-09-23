@@ -2,9 +2,10 @@ import contextvars
 import threading
 import json
 import pathlib
+from core.paths import data_dir, data_path
 import datetime
 
-_DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
+_DATA_DIR = data_dir()
 _USAGE_FILE = _DATA_DIR / "usage.json"
 _CONFIG_FILE = _DATA_DIR / "usage_config.json"
 

@@ -4306,7 +4306,7 @@ class Orchestrator:
                 except Exception as e:
                     logger.debug(f"[RAG] 启动清理跳过: {e}")
 
-                stats = rag_engine.index_documents("data/knowledge")
+                stats = rag_engine.index_documents()
                 _n_err = len(stats.get('errors', []))
                 (logger.warning if _n_err else logger.info)(
                     f"[RAG] 知识库就绪 · 新增 {stats['indexed']} · 未变化 {stats['skipped']} · 失败 {_n_err}")
@@ -5703,7 +5703,8 @@ class Orchestrator:
 
     def _mem_water_path(self):
         import pathlib as _pl
-        return _pl.Path(__file__).parent.parent / "data" / "memory_water.json"
+        from core.paths import data_path
+        return data_path("memory_water.json")
 
     def _mem_water_read(self) -> float:
         """上次提醒时的水位。读不到当 0（= 未提过）。
@@ -14604,7 +14605,8 @@ class Orchestrator:
         # User profile injection
         try:
             import json as _json, pathlib as _pl
-            _prof = _pl.Path("data/user_profile.json")
+            from core.paths import data_path as _data_path
+            _prof = _data_path("user_profile.json")
             if _prof.exists():
                 _p = _json.loads(_prof.read_text(encoding="utf-8"))
 

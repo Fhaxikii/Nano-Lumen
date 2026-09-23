@@ -11,6 +11,7 @@ os.environ["PADDLE_PDX_MODEL_SOURCE"] = "huggingface"
 import asyncio
 import inspect
 import pathlib
+from core.paths import data_dir, data_path
 import re
 import time
 from contextlib import nullcontext
@@ -333,7 +334,7 @@ def _start_system_tray():
 # 子进程会 import 本模块，所以这里不能放有副作用的全局初始化（例如
 # registry.scan_skills()、ClaudeProvider()、mkdir 等），否则会出现 provider/技能库
 # 重复初始化，甚至触发 WinError 5。真正初始化放到 __main__ 启动入口里。
-KNOWLEDGE_DIR = pathlib.Path(__file__).parent / "data" / "knowledge"
+KNOWLEDGE_DIR = data_path("knowledge")
 # ── native 窗口标题栏图标（透明 = 无图标，极简风）─────────────────────
 # 必须在模块【顶层】设置，不能放进 __main__ 块：NiceGUI native 的窗口跑在
 # spawn 出来的独立子进程里，子进程会 import 本模块（执行顶层代码）但【不会】
@@ -6870,7 +6871,7 @@ class WebUI:
         """读取 throttle_config.json 里的 _default_model 字段。"""
         import json as _json
         import pathlib as _pl
-        cfg_path = _pl.Path(__file__).parent / "data" / "throttle_config.json"
+        cfg_path = data_path("throttle_config.json")
         try:
             if cfg_path.exists():
                 with open(cfg_path, "r", encoding="utf-8") as f:
@@ -6969,7 +6970,7 @@ class WebUI:
         """把应用配置写到 data/throttle_config.json。"""
         import json as _json
         import pathlib as _pl
-        cfg_path = _pl.Path(__file__).parent / "data" / "throttle_config.json"
+        cfg_path = data_path("throttle_config.json")
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             data: dict = {}
@@ -7003,7 +7004,7 @@ class WebUI:
         """从 data/throttle_config.json 加载默认模型、入库设置。"""
         import json as _json
         import pathlib as _pl
-        cfg_path = _pl.Path(__file__).parent / "data" / "throttle_config.json"
+        cfg_path = data_path("throttle_config.json")
 
         if cfg_path.exists():
             try:
@@ -8535,8 +8536,8 @@ class WebUI:
         import json as _json
         from pathlib import Path as _Path
 
-        _REGION_PATH = _Path("data/china_regions_city.json")
-        _PROFILE_PATH = _Path("data/user_profile.json")
+        _REGION_PATH = data_path("china_regions_city.json")
+        _PROFILE_PATH = data_path("user_profile.json")
 
         try:
             _regions = _json.loads(_REGION_PATH.read_text(encoding="utf-8"))
@@ -8797,8 +8798,8 @@ class WebUI:
         import json as _json
         from pathlib import Path as _Path
 
-        _REGION_PATH = _Path("data/china_regions_city.json")
-        _PROFILE_PATH = _Path("data/user_profile.json")
+        _REGION_PATH = data_path("china_regions_city.json")
+        _PROFILE_PATH = data_path("user_profile.json")
 
         try:
             _regions = _json.loads(_REGION_PATH.read_text(encoding="utf-8"))
@@ -10169,7 +10170,7 @@ class WebUI:
         import json as _json
         import pathlib as _pl
         try:
-            p = _pl.Path(__file__).parent / "data" / "throttle_config.json"
+            p = data_path("throttle_config.json")
             if p.exists():
                 v = str(_json.loads(p.read_text(encoding="utf-8")).get("_token_counter") or "")
                 if v in ("off", "tokens", "full"):
@@ -10183,7 +10184,7 @@ class WebUI:
         import json as _json
         import pathlib as _pl
         try:
-            p = _pl.Path(__file__).parent / "data" / "throttle_config.json"
+            p = data_path("throttle_config.json")
             d = _json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
             d["_token_counter"] = mode
             p.write_text(_json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -10285,7 +10286,7 @@ class WebUI:
         import json as _json
         import pathlib as _pl
         try:
-            cfg = _pl.Path(__file__).parent / "data" / "throttle_config.json"
+            cfg = data_path("throttle_config.json")
             data = _json.loads(cfg.read_text(encoding="utf-8")) if cfg.exists() else {}
             data.setdefault("_role_models", {})[role] = model_id or ""
             cfg.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -10656,7 +10657,7 @@ class WebUI:
         """头栏身份：nano@昵称；没填昵称就只显示 nano。"""
         try:
             import json as _j, pathlib as _pl
-            p = _pl.Path("data/user_profile.json")
+            p = data_path("user_profile.json")
             if p.exists():
                 nick = (_j.loads(p.read_text(encoding="utf-8")).get("nickname") or "").strip()
                 if nick:
@@ -10669,7 +10670,7 @@ class WebUI:
         """聊天里用户提示符：填了昵称就用昵称，没填就 you。"""
         try:
             import json as _j, pathlib as _pl
-            p = _pl.Path("data/user_profile.json")
+            p = data_path("user_profile.json")
             if p.exists():
                 nick = (_j.loads(p.read_text(encoding="utf-8")).get("nickname") or "").strip()
                 if nick:

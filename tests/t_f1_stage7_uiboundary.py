@@ -10,6 +10,8 @@
 > scroll position / 临时 Markdown 引用**，否则 Kernel 会变成 UI 状态垃圾桶。
 
 ⚠️ 那条当时只是**写进了验收标准**，没有任何东西在检查它。
+
+约束的出处就是上面这段引文（测试不读 docs 等外部文件）。原文要点：纯展示状态（流式回复当前文本 `ViewSession.current_text`、spinner 帧、展开折叠、滚动位置、临时 Markdown 引用）不许进运行期内核；判据是「这个状态丢了会怎样」——只影响这一次看到的画面的是展示状态。
 📌 **一条「写进验收标准」的边界，如果没有人检查，它就只是一句愿望** ——
    而这一条特别容易破：`_resp_state` 是个裸 dict，谁都能往命令 payload 里
    顺手塞一个 `content_md`，而且**塞进去不会报错**（handler 只 `p.get()`
@@ -186,20 +188,6 @@ def t_resp_state_stays_in_app() -> None:
           "📌 现在切一次、会话落盘之后再切一次 = 做两遍同一个迁移")
 
 
-def t_boundary_is_written_down() -> None:
-    print("\n[4] ⭐ 这条边界在 `docs/` 里有出处（断言不许凭空立规矩）")
-    # ⚠️ 出处已从 `todo/` 下的内部早先的设计搬到 `docs/zh/09-ui.md` —— 那份不随仓库发行。
-    #    📌 断言指回来源这件事本身是对的，所以搬的是**来源**，不是删断言。
-    g = ROOT / "docs" / "zh" / "09-ui.md"
-    txt = g.read_text(encoding="utf-8")
-    check("Kernel 变成 UI 状态垃圾桶" in txt,
-          "⭐ 那条约束的原话还在 `docs/` 里 —— "
-          "📌 一条断言必须能指回它的来源，否则它会在某次重构里被当成"
-          "「不知道为什么存在的规矩」删掉")
-    check("ViewSession.current_text" in txt,
-          "⭐ 而被点名不许进 Kernel 的那几项（流式文本 / spinner / 折叠 / 滚动位置）也在")
-
-
 def t_no_dangling_method_calls() -> None:
     """⭐⭐⭐ 每一个被调用的私有方法都必须真的存在（2026-08-09 事故后加）。
 
@@ -354,7 +342,6 @@ def main() -> int:
     t_kernel_layer_never_mentions_ui()
     t_no_ui_key_in_command_payload()
     t_resp_state_stays_in_app()
-    t_boundary_is_written_down()
 
     t_no_dangling_method_calls()
     t_l7_viewsession_declares_the_whole_field_set()

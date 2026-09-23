@@ -33,6 +33,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+from core.paths import data_dir, data_path
 import sys
 import threading
 import time
@@ -43,7 +44,7 @@ from typing import Any, Iterator, Optional
 
 from loguru import logger
 
-_DATA_DIR = pathlib.Path(__file__).parent.parent / "data"
+_DATA_DIR = data_dir()
 _BREADCRUMB_FILE = _DATA_DIR / "breadcrumbs.json"
 _JOURNAL_FILE = _DATA_DIR / "fault_journal.jsonl"
 

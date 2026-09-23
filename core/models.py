@@ -50,7 +50,8 @@ _FALLBACK_QUOTA = {"L0": 0.15, "L1": 0.20, "L2": 0.15}
 
 
 def _path() -> pathlib.Path:
-    return pathlib.Path(__file__).parent.parent / "data" / "model_config.json"
+    from core.paths import data_path
+    return data_path("model_config.json")
 
 
 def load(force: bool = False) -> dict[str, Any]:
@@ -251,7 +252,8 @@ def _user_role_choice(role: str) -> str:
     ⚠️ 读不到一律当"没选过"，**绝不因为配置缺失而崩**（同 `load()` 那条）。
     """
     try:
-        p = pathlib.Path(__file__).parent.parent / "data" / "throttle_config.json"
+        from core.paths import data_path
+        p = data_path("throttle_config.json")
         if not p.exists():
             return ""
         data = json.loads(p.read_text(encoding="utf-8"))

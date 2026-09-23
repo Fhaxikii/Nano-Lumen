@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 import time
 import pathlib
+from core.paths import data_dir, data_path
 import threading
 from loguru import logger
 
-_PATH = pathlib.Path(__file__).resolve().parents[2] / "data" / "ambient_trail.jsonl"
+_PATH = data_path("ambient_trail.jsonl")
 _LOCK = threading.Lock()
 _DEDUP_GAP = 150       # 同一条摘要 150s 内不重复写
 _KEEP_HOURS = 18       # 只留最近 18 小时

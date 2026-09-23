@@ -406,7 +406,8 @@ def endpoint_models(base_url: str, api_key: str, vendor: str = "") -> list[str]:
     #    📌 "探不到"这件事本身不该变成持续的网络压力。
     if key_id in _ENDPOINT_MODELS_MEM:
         return list(_ENDPOINT_MODELS_MEM[key_id])
-    cache_p = _pl.Path(__file__).parent.parent / "data" / _MODELS_CACHE_FILE
+    from core.paths import data_path
+    cache_p = data_path(_MODELS_CACHE_FILE)
     try:
         if cache_p.exists():
             cached = _json.loads(cache_p.read_text(encoding="utf-8"))

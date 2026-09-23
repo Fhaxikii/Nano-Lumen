@@ -75,13 +75,17 @@ def t_blob_store() -> None:
     check(blobs.put_image(b"", "image/png") == "", "空字节返回空串，不建垃圾文件")
 
     # ⚠️ 用户的图是**永久历史**，不许放系统临时目录（会被磁盘清理工具扫掉）。
+    #    测试运行在临时数据目录（tests/_sandbox.py）里，所以检查的是：图库位于数据目录之下，
+    #    且产品默认的数据目录（仓库 data/）不在系统临时目录里。
     import tempfile
-    _d = str(blobs.images_dir()).lower()
-    check(str(pathlib.Path(tempfile.gettempdir())).lower() not in _d,
+    from core import paths as _paths
+    _d = blobs.images_dir()
+    check(_d.parent == _paths.data_dir()
+          and str(pathlib.Path(tempfile.gettempdir())).lower() not in str(_paths.REPO_DATA_DIR).lower(),
           "⭐⭐ 图库【不在】系统临时目录里 —— "
           "📌 照抄先例（附件走 %TEMP%/nano_temp_uploads）之前先问它当初为什么放那儿："
           "附件是当轮素材，用户的图是永久历史",
-          _d)
+          f"{_d} | default={_paths.REPO_DATA_DIR}")
 
 
 def t_payload_roundtrip() -> None:

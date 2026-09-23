@@ -18,6 +18,7 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+import tests._console  # noqa: F401,E402
 
 _passed = 0
 _failed: list[str] = []

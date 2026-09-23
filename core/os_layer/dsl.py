@@ -434,7 +434,8 @@ def os_state_path() -> pathlib.Path:
     ⚠️ 文件不存在是**正常状态**（新装的机器就没有），不是故障 ——
        读取方一律用 `_DEFAULT_PERMISSIONS`（全关）兜底，fail-closed。
     """
-    return pathlib.Path(__file__).parent.parent.parent / "data" / "os_state.json"
+    from core.paths import data_path
+    return data_path("os_state.json")
 
 
 def auto_authorization_on(config_path: Optional[pathlib.Path] = None) -> bool:

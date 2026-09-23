@@ -7,12 +7,13 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+from core.paths import data_dir, data_path
 import time
 from datetime import date
 from typing import Any
 
-_STATE_PATH = pathlib.Path("data/c2_state.json")
-_USER_PROFILE_PATH = pathlib.Path("data/user_profile.json")
+_STATE_PATH = data_path("c2_state.json")
+_USER_PROFILE_PATH = data_path("user_profile.json")
 
 
 def _read_json(path: pathlib.Path) -> dict:

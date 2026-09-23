@@ -42,6 +42,7 @@ Nano RAG 核心模块
 
 import os
 import pathlib
+from core.paths import data_dir, data_path
 import hashlib
 import json
 import datetime
@@ -125,9 +126,9 @@ def _set_bm25(corpus, index) -> None:
     _bm25_corpus, _bm25_index = corpus, index
 _bm25_available: Optional[bool] = None  # 缓存依赖是否可用的判断
 
-CHROMA_DIR      = str(pathlib.Path(__file__).parent.parent / "data" / "chroma_db")
-HASH_STORE      = str(pathlib.Path(__file__).parent.parent / "data" / "indexed_hashes.json")
-PARSE_REPORTS   = str(pathlib.Path(__file__).parent.parent / "data" / "parse_reports.json")
+CHROMA_DIR      = str(data_path("chroma_db"))
+HASH_STORE      = str(data_path("indexed_hashes.json"))
+PARSE_REPORTS   = str(data_path("parse_reports.json"))
 COLLECTION_NAME = "nano_knowledge"
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv",
                         ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
@@ -890,7 +891,7 @@ def _schedule_reindex_after_heal(backup_path: str) -> None:
     def _run():
         try:
             logger.info("[RAG] 自愈后重建索引开始（后台）")
-            stats = index_documents("data/knowledge")
+            stats = index_documents()
             logger.info(
                 f"[RAG] 自愈后重建索引完成 → 新增 {stats.get('indexed', 0)}，"
                 f"错误 {len(stats.get('errors', []))}"
@@ -2802,13 +2803,12 @@ def _index_one_file(file_path: pathlib.Path, collection, embedder, hash_store: D
     return "indexed", report
 
 
-def index_documents(folder: str = "data/knowledge", index_config: dict | None = None) -> Dict[str, Any]:
+def index_documents(folder: str | None = None, index_config: dict | None = None) -> Dict[str, Any]:
     """扫描目录，增量索引所有支持的文档。
 
     返回汇总统计 + 每个文件的 parse_report(保存到 PARSE_REPORTS 文件)。
     """
-    root          = pathlib.Path(__file__).parent.parent
-    knowledge_dir = root / folder
+    knowledge_dir = pathlib.Path(folder) if folder else data_path("knowledge")
     os.makedirs(knowledge_dir, exist_ok=True)
 
     collection    = _get_collection()
@@ -3943,7 +3943,7 @@ def delete_file(filename: str) -> bool:
 # ══════════════════════════════════════════════
 
 # 持久库文件目录(供 _resolve_file_path 用)
-_PERSIST_KNOWLEDGE_DIR = pathlib.Path(__file__).parent.parent / "data" / "knowledge"
+_PERSIST_KNOWLEDGE_DIR = data_path("knowledge")
 
 # 临时附件目录(跟 app.py 里 _handle_chat_upload 写入的位置保持一致)
 # 临时文件路径在 _temp_collection.metadatas[*].source 里也能拿到，这里给 fallback 用

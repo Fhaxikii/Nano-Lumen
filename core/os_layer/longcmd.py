@@ -44,6 +44,7 @@ import time
 import uuid
 from collections import deque
 from pathlib import Path
+from core.paths import data_dir, data_path
 from typing import Any, Deque, Dict, Optional
 
 from loguru import logger
@@ -64,7 +65,7 @@ _MAX_LINES = 300
 # ⭐ 50MB 的推导：超阈值才落盘的输出实际量级是 10KB~1MB（跑一次全量回归
 #    的完整输出约 200KB）⇒ 装得下几百次，远超任何一段对话会回头查的量。
 _SPILL_BUDGET_BYTES = 50 * 1024 * 1024
-_SPILL_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cmd_output"
+_SPILL_DIR = data_path("cmd_output")
 
 # 给模型的内联上限。⭐ **仍然取末尾** —— 命令的答案通常在尾巴上（成没成、
 # 报什么错），这是 `out[-2000:]` 唯一正确的那一半。

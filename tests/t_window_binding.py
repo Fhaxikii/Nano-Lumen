@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# nano-test: live — opens real Notepad windows and needs an idle desktop
 """窗口绑定 —— 「Nano 知道自己在操作哪个窗口」这个缺失原语。
 
 ⚠️ **本套件会真的开两个记事本**（Windows only）。它必须这么做：

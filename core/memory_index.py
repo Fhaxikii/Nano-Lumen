@@ -19,11 +19,12 @@ chromadb collection（`nano_knowledge`）——这里用独立的 collection
 """
 from __future__ import annotations
 import pathlib
+from core.paths import data_dir, data_path
 import threading
 from typing import Any, Optional
 from loguru import logger
 
-_MEMORY_CHROMA_DIR = str(pathlib.Path(__file__).parent.parent / "data" / "chroma_memory_db")
+_MEMORY_CHROMA_DIR = str(data_path("chroma_memory_db"))
 _COLLECTION_NAME = "nano_semantic_memory"
 
 _client = None

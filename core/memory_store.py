@@ -46,8 +46,8 @@ class WorkingMemoryStore:
 
     def __init__(self, db_path: pathlib.Path | None = None):
         if db_path is None:
-            root = pathlib.Path(__file__).parent.parent
-            db_path = root / "data" / self._DB_FILENAME
+            from core.paths import data_path
+            db_path = data_path(self._DB_FILENAME)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._db_path = db_path
         self._write_lock = threading.Lock()

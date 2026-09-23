@@ -2136,6 +2136,7 @@
 - Fixed launching an application through Nano failing with "missing target parameter".
 - Fixed scrolling up when Nano was asked to scroll down.
 - Fixed drag actions always failing.
+- Fixed the test suite reading and writing the user's real data (memory, runtime state, knowledge base index, settings, audit log).
 
 ### Improvements
 - Redundant model copies (unusable .bin weights and duplicate download caches, about 4 GB) are removed automatically.
@@ -2143,6 +2144,8 @@
 - The console shows only startup readiness (skills loaded, provider configured, knowledge base ready, MCP servers connected, Nano started), warnings and errors by default. Per-request diagnostics, module start-up details, self-check results and restart-recovery details are logged at DEBUG.
 - Developer switches moved to config/dev_flags.json, shipped with every switch off and a description for each. A switch that is on is reported with a WARNING at startup. DEBUG console output is enabled with the console_debug switch. data/dev_flags.json is no longer read.
 - The "System settings" OS permission is renamed "System control"; its description now lists everything it covers: launching and closing applications, writing to the clipboard, volume, services, environment variables, scheduled tasks, startup items and network settings.
+- All runtime data paths are resolved in one place; the NANO_DATA_DIR environment variable sets the data directory. Tests run in a temporary data directory.
+- Tests are run with `python tests/run_all.py` (run_tests.sh removed). Tests that need a real desktop or real models are skipped unless `--live` is given; the run fails if anything under data/ changed.
 
 
 ### 修复
@@ -2157,6 +2160,7 @@
 - 修复 Nano 启动应用程序时报错「missing target parameter」的问题。
 - 修复 Nano 被要求向下滚动时实际向上滚动的问题。
 - 修复拖拽操作总是失败的问题。
+- 修复测试套件读写用户真实数据（记忆、运行时状态、知识库索引、设置、审计日志）的问题。
 
 ### 优化
 - 自动清理多余的模型副本（无法使用的 .bin 权重与重复的下载缓存，约 4 GB）。
@@ -2164,5 +2168,7 @@
 - 控制台默认只显示启动就绪信息（已加载技能数、Provider 已配置、知识库就绪、MCP 服务连接数、Nano 已启动）以及警告与错误。逐次请求的诊断、各模块启动细节、自检结果与重启恢复细节改为 DEBUG 级别。
 - 开发者开关移至 config/dev_flags.json，随仓库分发，所有开关默认关闭并各附说明；任何处于开启状态的开关都会在启动时以 WARNING 提示。控制台 DEBUG 输出通过 console_debug 开关开启。不再读取 data/dev_flags.json。
 - OS 权限「系统设置」更名为「系统控制」，说明中列出它实际管理的全部操作：启动或结束程序、写入剪贴板、调节音量，以及管理服务、环境变量、计划任务、开机启动项和网络设置。
+- 所有运行期数据路径统一由一处解析；环境变量 NANO_DATA_DIR 可指定数据目录。测试在临时数据目录中运行。
+- 测试改用 `python tests/run_all.py` 运行（删除 run_tests.sh）。需要真实桌面或真实模型的测试默认跳过，加 `--live` 才运行；运行期间 data/ 下有任何改动即判为失败。
 
 ---

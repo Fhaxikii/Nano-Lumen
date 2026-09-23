@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import sys
 
+import tests._sandbox  # noqa: F401  测试数据目录隔离，必须先于任何 core 模块导入
+
 
 def install() -> None:
     """幂等。重复调用无副作用。"""

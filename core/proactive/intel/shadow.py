@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import pathlib
+from core.paths import data_dir, data_path
 import time
 from typing import Optional
 
@@ -14,7 +15,7 @@ from loguru import logger
 
 from core.proactive.intel.types import ShadowLogEntry
 
-_LOG_PATH = pathlib.Path("data/proactive_shadow.jsonl")
+_LOG_PATH = data_path("proactive_shadow.jsonl")
 _MAX_LINES = 5000  # [原型期标定] 滚动上限，超了截断保留最近
 
 

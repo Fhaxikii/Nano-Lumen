@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import pathlib
+from core.paths import data_dir, data_path
 import threading
 from typing import Optional
 
@@ -17,7 +18,7 @@ from loguru import logger
 from core.proactive import state as _st
 from core.proactive.intel.types import AffectState
 
-_PATH = pathlib.Path("data/proactive_affect.json")
+_PATH = data_path("proactive_affect.json")
 
 # 各类反应对情感的冲击幅度 [原型期标定]
 SHOCK_DONT_BOTHER = -0.45      # "别烦我" 对 recent_shock 的瞬时压低

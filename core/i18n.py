@@ -37,12 +37,13 @@ from __future__ import annotations
 
 import json
 import pathlib
+from core.paths import data_dir, data_path
 
 from loguru import logger
 
 # ⚠️ 与「个人信息」同一个文件 —— 它已经是**用户可见设置**的家（`data/user_profile.json`）。
 #    📌 不为一个新设置开第二个文件：两份用户设置迟早会各自演化出对方没有的键。
-_PROFILE = pathlib.Path("data/user_profile.json")
+_PROFILE = data_path("user_profile.json")
 _KEY = "language"
 
 DEFAULT_LANG = "zh"

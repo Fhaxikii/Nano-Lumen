@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+from core.paths import data_dir, data_path
 import threading
 import time
 from typing import Optional
@@ -19,7 +20,7 @@ from core.proactive.intel.types import (
     _FREQ_FLOOR_BY_CHANNEL,
 )
 
-_PATH = pathlib.Path("data/proactive_ledger.json")
+_PATH = data_path("proactive_ledger.json")
 
 # ── 产品默认先验 [原型期标定] ──────────────────────────────────
 # 生产力类 welcome 默认中高；风险提示更高；不存在情绪类种子（情绪不单独触发）。
