@@ -14,6 +14,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import tests._console  # noqa: F401,E402
+from tests._src import module_text  # noqa: E402
 
 _passed = 0
 _failed = 0
@@ -162,7 +163,7 @@ def t_capability_registry() -> None:
           "⭐ `web.search` 不再挂在缺口台账上（它有真探针了）")
     check(not hasattr(H.Cap, "WEB_FETCH"),
           "⭐ `Cap.WEB_FETCH` 已删 —— 它完全派生自「有没有 server 声明 web.fetch」")
-    check("WEB_FETCH" in (ROOT / "core" / "health.py").read_text(encoding="utf-8"),
+    check("WEB_FETCH" in module_text("core.health"),
           "🪦 删除处留了墓碑，写清为什么别加回来")
     check(H.get_capability_spec(H.Cap.WEB_SEARCH).monitor_card == "net",
           "WEB_SEARCH 归「互联网检索」卡")
@@ -172,7 +173,7 @@ def t_provides_replaces_keyword_guessing() -> None:
     print("\n[6] 🔴 联网能力靠**配置声明**，不靠关键词猜")
     from core.mcp_client import MCPServer, MCPManager
 
-    src = _code_only((ROOT / "core" / "mcp_client.py").read_text(encoding="utf-8"))
+    src = _code_only(module_text("core.mcp_client"))
     # 🔴 旧实现：拿 name+command+args+url+所有工具名描述拼 blob 去撞 11 个关键词。
     #    已明确问题：playwright 那 24 个工具里必然有含 browse/url 的，
     #    所以只要它连上，「互联网检索」就永远绿 —— 而那 ≠ 能搜索。
@@ -252,13 +253,13 @@ def t_web_status_three_tier() -> None:
 
 def t_ui_card_and_avatar() -> None:
     print("\n[8] ⭐ UI 两处：三态状态卡（可用 / 降级 / 不可用）+ 考拉的上网动画")
-    app_src = (ROOT / "app.py").read_text(encoding="utf-8")
+    app_src = module_text("app")
     check("_NET_COLORS" in app_src and app_src.count('"LIMITED"') >= 1,
           "监控卡有三态配色（LIMITED 用琥珀）")
     check("web_status()" in _code_only(app_src),
           "⭐ 卡片读 `web_status()`，**不在 UI 侧重新判一次**（判据只能有一处）")
     # ⚠️ 这条修的是个不会报错的 bug：动画不亮不会抛异常，没人会报。
-    koala_src = (ROOT / "nano_koala.py").read_text(encoding="utf-8")
+    koala_src = module_text("nano_koala")
     check("'SearchTheWeb'" in koala_src,
           "⭐ 考拉头像的上网动画名单里有 SearchTheWeb（漏掉 = 上网时 wifi 不亮，"
           "而那是个不会报错的 bug）")
@@ -333,7 +334,7 @@ def t_fallback_layer() -> None:
     # 能力登记不认领模型看不见的工具名
     check(hidden.expose_tools is False and shown.expose_tools is True,
           "两个 server 的暴露性确实不同（上面的对比才成立）")
-    src = _code_only((ROOT / "core" / "mcp_client.py").read_text(encoding="utf-8"))
+    src = _code_only(module_text("core.mcp_client"))
     check("if not self.expose_tools" in src or "self.expose_tools else" in src,
           "⭐ 隐藏 server 登记成零工具（否则故障通知会说「你有 24 个工具坏了」，"
           "而模型手上从来没有过这些名字）")

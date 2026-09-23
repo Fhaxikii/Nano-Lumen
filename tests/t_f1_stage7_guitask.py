@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -369,7 +370,7 @@ def t_restart_kills_unrebuildable(tmp: pathlib.Path) -> None:
           "⭐ 再跑一次启动恢复：结果不变（`command_id` 带 revision 做的幂等）")
 
     # ── 豁免名单清空之后，SQL 那条空集分支必须存在 ──────────────────────
-    src = (ROOT / "core" / "runtime" / "reconciler.py").read_text(encoding="utf-8")
+    src = module_text("core.runtime.reconciler")
     check("_RESUMABLE_KINDS: frozenset = frozenset()" in src,
           "⭐⭐ 豁免名单已清空 —— ACTIVE 的一律终止")
     # ⚠️ `NOT IN ()` 在 SQLite 里是语法错误（空括号），所以必须有另一条分支。
@@ -381,7 +382,7 @@ def t_restart_kills_unrebuildable(tmp: pathlib.Path) -> None:
           "⭐⭐ 有空集分支 —— 否则 `NOT IN ()` 会直接抛 SQLite 语法错误")
 
     # ── 而「终止」不等于「闭嘴」──────────────────────────────────────────
-    _sched = (ROOT / "core" / "runtime" / "scheduler.py").read_text(encoding="utf-8")
+    _sched = module_text("core.runtime.scheduler")
     check("def startup_resume_notice" in _sched,
           "⭐⭐⭐ 有一条「要不要重做」的出口 —— 终止的是执行，不是这件事")
     check("do NOT say it crashed" in _sched,
@@ -390,8 +391,8 @@ def t_restart_kills_unrebuildable(tmp: pathlib.Path) -> None:
 
 def t_source_invariants() -> None:
     print("\n[6] 源码不变量")
-    ol = pathlib.Path("core/runtime/oslease.py").read_text(encoding="utf-8")
-    tk = pathlib.Path("core/runtime/task.py").read_text(encoding="utf-8")
+    ol = module_text("core.runtime.oslease")
+    tk = module_text("core.runtime.task")
 
     check("_create_gui_task(reason)" in ol, "缩窗时建 Task")
     check("_finish_gui_task(_tid)" in ol, "还原时收 Task")

@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -267,7 +268,7 @@ def t_no_repair_no_silent_pass() -> None:
           "📌 **不做任何修补**（补引号、猜字段）："
           "一个被我们猜着修好的 digest，错在哪永远查不出来")
 
-    src = pathlib.Path("core/context/decay.py").read_text(encoding="utf-8")
+    src = module_text("core.context.decay")
     fn = next((n for n in ast.walk(ast.parse(src))
                if isinstance(n, ast.AsyncFunctionDef) and n.name == "run_l1_to_l2"), None)
     seg = (ast.get_source_segment(src, fn) or "") if fn else ""
@@ -277,7 +278,7 @@ def t_no_repair_no_silent_pass() -> None:
 
 def t_ordering_cheap_before_expensive() -> None:
     print("\n[6] ⭐ 便宜的那一档排在贵的前面")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     i1, i2 = src.find("_run_l1(self.memory"), src.find("await _run_l2(")
     check(i1 > 0 and i2 > i1,
           "⭐ L0→L1（免费）排在 L1→L2（要花钱）**之前** —— "

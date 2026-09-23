@@ -23,6 +23,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 import _console  # noqa: F401,E402  控制台编码保护（见它的模块文档）
+from tests._src import module_text  # noqa: E402
 
 from core.tools import (  # noqa: E402
     ALWAYS, CatalogConflict, Flow, Preload, Presentation, Scheduling,
@@ -1012,7 +1013,7 @@ def _strip_docs_and_comments(src: str) -> str:
 
 def t_no_second_authority():
     print("\n[13] ⭐⭐ 防绕开：旧权威一个不剩 + 不许新建第二套 dispatcher")
-    orch = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orch = module_text("core.orchestrator")
     code = _strip_docs_and_comments(orch)
 
     left = [n for n in _DEAD_AUTHORITIES if n in code]

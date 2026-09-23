@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -140,7 +141,7 @@ async def _answer(o, iid, answer, relation):
 def t_hijacks_gone(tmp: pathlib.Path) -> None:
     print("\n[1] ⭐ 两处劫持与两个分类器确实被删掉了")
     import core.provider as prov
-    src_o = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src_o = module_text("core.orchestrator")
     # 用 AST 而不是文本匹配 —— 注释里还留着这些名字做留档（的纪律）
     import ast
     tree = ast.parse(src_o)

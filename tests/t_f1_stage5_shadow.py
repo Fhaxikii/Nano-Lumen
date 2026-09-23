@@ -43,6 +43,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -203,7 +204,7 @@ def t_gui_session(tmp: pathlib.Path) -> None:
 
 def t_never_breaks_main_flow() -> None:
     print("\n[5] ⚠️ 观测/接线手段不许反过来影响主流程")
-    src = pathlib.Path("core/runtime/oslease.py").read_text(encoding="utf-8")
+    src = module_text("core.runtime.oslease")
     tree = ast.parse(src)
 
     def _seg(name):
@@ -227,8 +228,8 @@ def t_never_breaks_main_flow() -> None:
 
 def t_wiring_c_phase() -> None:
     print("\n[6] ⭐⭐ 终态：旧 bool 已删、粒度是一整段 GUI 操作")
-    orc = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
-    app = pathlib.Path("app.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
+    app = module_text("app")
     oc = "\n".join(l for l in orc.splitlines() if not l.strip().startswith("#"))
     ac = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
 

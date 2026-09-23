@@ -47,6 +47,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -384,7 +385,7 @@ def t_parking_stops_nothing(tmp: pathlib.Path) -> None:
 def t_drawer_keeps_them_apart(tmp: pathlib.Path) -> None:
     print("\n[8] ⭐⭐ 抽屉：搁置的**不进 pill**、也不混进 Running")
     import ast as _ast
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = _ast.parse(src)
     fn = next((f for f in _ast.walk(tree)
                if isinstance(f, _ast.FunctionDef) and f.name == "_refresh_tasks_panel"), None)

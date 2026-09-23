@@ -46,6 +46,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -446,7 +447,7 @@ def t_mcp_slow_path_consumes_waitrecord(tmp: pathlib.Path) -> None:
           f"progress_ref={getattr(manager, 'progress_ref', None)!r}")
 
     # ⭐ 类型无关：常量名与合同名里都不许再出现 MCP
-    orc_src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orc_src = module_text("core.orchestrator")
     # ⚠️⚠️ **改成数【赋值】，不数文本**（2026-08-20）。
     #    原来写的是 `"_MCP_BG_THRESHOLD" not in orc_src` —— 而 2026-08-20 给
     #    `_AGENT_HANDBACK_SEC` 写留痕时，注释里引用了这个旧名字来说明"同族阈值"，
@@ -470,7 +471,7 @@ def t_mcp_slow_path_consumes_waitrecord(tmp: pathlib.Path) -> None:
 
 def t_source_wiring() -> None:
     print("\n[10] ⭐⭐ 接线：阈值 / 引导 / 工具 / 状态清理")
-    orc = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
     tree = ast.parse(orc)
 
     # ① 阈值
@@ -498,7 +499,7 @@ def t_source_wiring() -> None:
           "⭐⭐ 快路径宽限期 **5s**（命令/MCP/Subagent统一）—— "
           "📌 它不是「要不要干等」的决策，是「先同步等一下，多半马上就好」的**测量**")
     check("_FOREGROUND_WAIT_SEC = 5" in
-          (ROOT / "core" / "os_layer" / "executor_write.py").read_text(encoding="utf-8"),
+          module_text("core.os_layer.executor_write"),
           "⭐ 命令那条也是 5s（三个数字本来就在答同一个问题）")
     check("_FIRST_RECHECK_SEC = 60.0" in orc, "⭐ 第一次回看 60s（「开始怀疑」）")
     check("_RECHECK_FALLBACK_SEC" in orc,
@@ -625,7 +626,7 @@ def t_long_command_is_the_same_contract() -> None:
        📌 **一个「不要合并」的决定，必须先证明「被合并的两边真的各自存在」。**
     """
     print("\n[10] ⭐⭐⭐ 长命令 = 同一条交还合同（类型无关）")
-    orc = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
     oc = "\n".join(l for l in orc.splitlines() if not l.strip().startswith("#"))
 
     check(oc.count("_hand_back_long_task(") >= 3,
@@ -641,7 +642,7 @@ def t_long_command_is_the_same_contract() -> None:
     #       这里直接删掉重复的那份，判据只留一个出处（见 t_carrier_neutral）。
 
     # ── run_command 的出口不再是「失败」──────────────────────────────────
-    ew = (ROOT / "core" / "os_layer" / "executor_write.py").read_text(encoding="utf-8")
+    ew = module_text("core.os_layer.executor_write")
     ec = "\n".join(l for l in ew.splitlines() if not l.strip().startswith("#"))
     check("command timed out" not in ec,
           "⭐⭐⭐ `run_command` **再也不会因为「跑得久」而报 timed out** —— "
@@ -662,7 +663,7 @@ def t_long_command_is_the_same_contract() -> None:
     # ── 两个时间语义必须是两个数 ────────────────────────────────────────
     check("_FOREGROUND_WAIT_SEC" in ec,
           "⭐⭐ 「**前台愿意等多久**」是它自己的常量")
-    lc = (ROOT / "core" / "os_layer" / "longcmd.py").read_text(encoding="utf-8")
+    lc = module_text("core.os_layer.longcmd")
     check("_HARD_DEADLINE_SEC" in lc,
           "⭐⭐ 而「**这件事最多允许跑多久**」是另一个 —— "
           "📌 **两个不同的问题，不许由一个数字回答**（今天第二次："
@@ -721,7 +722,7 @@ def t_long_command_progress_is_real(tmp: pathlib.Path) -> None:
     # ── 缓冲满了丢头不丢尾 ──────────────────────────────────────────────
     check(LC._MAX_LINES > 0,
           "⭐ 输出缓冲有上限（长命令可能刷几十万行）")
-    lcs = (ROOT / "core" / "os_layer" / "longcmd.py").read_text(encoding="utf-8")
+    lcs = module_text("core.os_layer.longcmd")
     check("丢头不丢尾" in lcs,
           "⭐⭐ 而且是**丢最旧的** —— 回看要看的是「现在到哪了」，"
           "最新那几行才回答那个问题")
@@ -746,7 +747,7 @@ def t_wake_continues_same_bubble() -> None:
        「Nano 对用户的一次回应」，用户没说话就不该有第二个头。
     """
     print("\n[12] ⭐⭐⭐ 唤醒续接进同一个气泡")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     tree = ast.parse(app)
     fn = [n for n in ast.walk(tree)
           if isinstance(n, ast.AsyncFunctionDef)
@@ -819,7 +820,7 @@ def t_handback_action_spinner_finishes_honestly() -> None:
     check(done.text == "✓",
           "⭐⭐ 后台载体返回后，明细进入终态而不是永久加载")
 
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     tree = ast.parse(app)
     # ⚠️ [2026-08-22] 唤醒是**两个函数**（壳 + 内层）—— 拼起来算一条路。
     #    📌 用 `next(...)` 只会拿到 walk 顺序里的第一个（那是薄壳），
@@ -838,8 +839,8 @@ def t_handback_action_spinner_finishes_honestly() -> None:
 def t_waiting_intent_keeps_user_controls_off_system_rechecks() -> None:
     """定时计划可控；系统回看不是一个让用户催促/取消的假计时器。"""
     print("\n[14] ⭐⭐⭐ 等待意图：计划可控，系统回看不露出控制面")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
-    orch = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    app = module_text("app")
+    orch = module_text("core.orchestrator")
 
     check('"waiting_intent": "system_recheck"' in orch,
           "长调用交还明确标成 system_recheck —— 不从 timer_at 猜语义")
@@ -908,8 +909,8 @@ def t_cancelled_handback_still_closes_its_original_action() -> None:
     check(settled == 1 and spin.visible is False and done.text == "✓",
           "取消等待后载体完成，仍只收原 action 而不重新唤醒 Nano")
 
-    orch = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    orch = module_text("core.orchestrator")
+    app = module_text("app")
     orch_tree = ast.parse(orch)
     wait_open = next(n for n in ast.walk(orch_tree)
                      if isinstance(n, ast.FunctionDef) and n.name == "_rt_wait_open")
@@ -927,8 +928,8 @@ def t_cancelled_handback_still_closes_its_original_action() -> None:
 def t_handback_never_restarts_carrier_and_keeps_epoch_clock_live() -> None:
     """交还不是重跑；等载体时整段计时不得冻结。"""
     print("\n[16] 交还不重跑 carrier，等待期间回应期计时不冻结")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
-    orch = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    app = module_text("app")
+    orch = module_text("core.orchestrator")
 
     check("It is the command you already started" in orch and
           "launch it, retry it, or ask the user whether to launch it again." in orch,

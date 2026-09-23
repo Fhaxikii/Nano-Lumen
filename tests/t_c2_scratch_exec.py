@@ -42,6 +42,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -54,11 +55,12 @@ def check(ok: bool, name: str, note: str = "") -> None:
     print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"   [{note}]" if note else ""))
 
 
-def _code_only(path: pathlib.Path) -> str:
+def _code_only(module: str) -> str:
+    src = module_text(module)
     try:
-        return ast.unparse(ast.parse(path.read_text(encoding="utf-8")))
+        return ast.unparse(ast.parse(src))
     except SyntaxError:
-        return path.read_text(encoding="utf-8")
+        return src
 
 
 class _Q:
@@ -150,7 +152,7 @@ def t_side_effect_uses_the_same_dialog() -> None:
 
 def t_preview_is_readonly() -> None:
     print("\n[4] 🔴🔴 代码**另开一个只读窗**，授权窗保持与 Skill 一模一样")
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     i = src.index("def _show_execution_confirm_dialog")
     j = src.index("# 操作栏", i)
     seg = src[i:j]
@@ -316,7 +318,7 @@ def t_isolation_and_deps() -> None:
           "⭐⭐⭐ `import core.*` **进不来** —— cwd + 干净 env 挡住")
     # 📌 早先的设计把「依赖可用」和「能 import core」绑成了一件事，**其实是两件**：
     #    前者靠同解释器拿到，后者靠 cwd/env 挡住。
-    src = _code_only(ROOT / "core" / "temp_exec.py")
+    src = _code_only("core.temp_exec")
     check("PYTHONPATH" in src and "PYTHONHOME" in src and "PYTHONSTARTUP" in src,
           "⚠️ 三个变量都摘（只挡 PYTHONPATH 不够：HOME 换标准库、STARTUP 会执行文件）")
     check('"-I"' not in src,
@@ -329,8 +331,8 @@ def t_isolation_and_deps() -> None:
 
 def t_one_scanner_one_vocabulary() -> None:
     print("\n[8] 🔴 扫描器和词表**全项目各只有一份**")
-    orch = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
-    cs = (ROOT / "core" / "code_scan.py").read_text(encoding="utf-8")
+    orch = module_text("core.orchestrator")
+    cs = module_text("core.code_scan")
     # 🔴 两份扫描器分叉时不会报错，表现是「Skill 审计拦得住的，临时通道放过去了」
     check(orch.count("full_name == \"open\"") == 0,
           "⭐⭐ 扫描实现已从 orchestrator 移走（那里只剩一行转发）")
@@ -373,13 +375,13 @@ def t_mechanical_guard_against_shadowing_skills() -> None:
 
 def t_reuses_longcmd_not_a_second_pipeline() -> None:
     print("\n[10] ⭐ 输出走 longcmd，不是第二套")
-    src = _code_only(ROOT / "core" / "temp_exec.py")
+    src = _code_only("core.temp_exec")
     check("longcmd" in src, "⭐⭐ 执行走 `longcmd` —— 长任务交还/落盘/回收全白拿")
     # ⚠️ 不能用 `"Popen" not in src` —— `_code_only` 走的是 `ast.unparse`，
     #    而它**保留 docstring**（那里正好写着「走 longcmd 而不是自己 Popen」）。
     #    📌 今天已经栽过一次（`search_markup_changed` 的计数）。
     # ⭐ 走 AST 数**真实调用**，跟注释和文档字符串都无关。
-    _tree = ast.parse((ROOT / "core" / "temp_exec.py").read_text(encoding="utf-8"))
+    _tree = ast.parse(module_text("core.temp_exec"))
     _popen_calls = [
         n for n in ast.walk(_tree)
         if isinstance(n, ast.Call) and (
@@ -389,7 +391,7 @@ def t_reuses_longcmd_not_a_second_pipeline() -> None:
     check(not _popen_calls,
           "⭐⭐⭐ 自己**一个 Popen 都没调** —— 调了就是第二套输出处理",
           str(len(_popen_calls)))
-    orch = _code_only(ROOT / "core" / "orchestrator.py")
+    orch = _code_only("core.orchestrator")
     i = orch.index("_handle_run_scratch_code")
     seg = orch[i:i + 4000]
     check("_hand_back_long_task" in seg,
@@ -464,7 +466,7 @@ def t_side_effect_aliases() -> None:
               f"⚠️ 不重复 · {name} —— 📌 一条被更通用规则完全覆盖的规则，"
               f"留着不是「双保险」，是重复", str(f))
 
-    src = (ROOT / "core" / "code_scan.py").read_text(encoding="utf-8")
+    src = module_text("core.code_scan")
     check("_alias" in src and "def _canon" in src,
           "⭐ 别名映射先摊平再匹配 —— 规则表一个字没改，却对所有 import 别名生效")
     check('"rename", "replace"' not in src,

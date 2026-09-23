@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -340,9 +341,9 @@ def t_validity_derived_from_lease() -> None:
 
 def t_wiring() -> None:
     print("\n[5] 接线（AST / 源码）")
-    orc = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
     oc = "\n".join(l for l in orc.splitlines() if not l.strip().startswith("#"))
-    low = (ROOT / "core" / "os_layer" / "executor_low.py").read_text(encoding="utf-8")
+    low = module_text("core.os_layer.executor_low")
     lc = "\n".join(l for l in low.splitlines() if not l.strip().startswith("#"))
 
     check("_wb.snapshot()" in oc and "_wb.bind_if_new(" in oc,
@@ -373,7 +374,7 @@ def t_wiring() -> None:
     check("window_binding" in note and "gone_note" in note,
           "⭐ 身份汇报里带上「我的目标窗口现在怎么样」，不只报前台是谁")
 
-    wbsrc = (ROOT / "core" / "os_layer" / "window_binding.py").read_text(encoding="utf-8")
+    wbsrc = module_text("core.os_layer.window_binding")
     check("EVENT_OBJECT_CREATE" in wbsrc,
           "⭐ 留痕：为什么用差集而**不用** `EVENT_OBJECT_CREATE` 钩子")
 

@@ -47,6 +47,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -125,7 +126,7 @@ def t_ui_resets_when_target_closed() -> None:
     用 AST 验，不跑 NiceGUI —— 这条是结构约束（复位调用必须在那个函数里）。
     """
     print("\n[3] UI 侧：目标关闭后自动复位（否则用户点不到撤销入口）")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
 
     fn = None
@@ -215,7 +216,7 @@ def t_send_path_hands_off_not_clears() -> None:
     📌 同：**要禁的是某个位置上的行为，不是某个名字。**
     """
     print("\n[5] ⭐⭐ 发送路径：移交，不清除")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -243,7 +244,7 @@ def t_send_path_hands_off_not_clears() -> None:
           "⚠️ 仍然刷一次 composer 提示符 —— 移交之后显示要立刻跟上")
 
     # finally 侧：两个字段都要清，漏一个就粘到下一轮
-    orch = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    orch = module_text("core.orchestrator")
     otree = ast.parse(orch)
     hq = next((n for n in ast.walk(otree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))

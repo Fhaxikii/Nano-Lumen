@@ -19,6 +19,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import tests._console  # noqa: F401,E402
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger  # noqa: E402
 logger.remove()
@@ -120,7 +121,7 @@ def _func(tree, name):
 
 def t_wiring() -> None:
     print("\n▶ 清空聊天区的两处都在清空之后重画")
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
     for name in ("_sync_evicted_after_turn", "_do_reset_conversation"):
         fn = _func(tree, name)

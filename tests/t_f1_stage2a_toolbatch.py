@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -357,7 +358,7 @@ def t_shadow_never_breaks(tmp):
 def t_orchestrator_wiring(tmp):
     """接线检查：只验"调用点存在且签名对得上"，不启动整个 app。"""
     print("\n[C2] orchestrator 接线：调用点齐全、参数顺序正确")
-    src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
 
     for pat, why in (
         ("_rt_shadow_prepare(self, round_idx, [c.name for c in calls], _RT_PATH.NORMAL)",
@@ -408,7 +409,7 @@ def t_orchestrator_wiring(tmp):
     #    "prepare → add_tool_calls() → `_active_tool_batch_open = True` → open" 误伤，
     #    报了一个假失败。**检查代码性质的断言要用 AST，不要用文本匹配。**
     import ast as _ast
-    tbsrc = (ROOT / "core" / "runtime" / "toolbatch.py").read_text(encoding="utf-8")
+    tbsrc = module_text("core.runtime.toolbatch")
     _writes: list[str] = []
     for node in _ast.walk(_ast.parse(tbsrc)):
         targets = []
@@ -455,7 +456,7 @@ def t_orchestrator_wiring(tmp):
           "回滚与 abort 成对出现（memory 与 Span 一起收，不能只收一边）")
 
     # 启动恢复必须在 ui.run() 之前同步调用
-    appsrc = (ROOT / "app.py").read_text(encoding="utf-8")
+    appsrc = module_text("app")
     check("_rt_reconcile(_rt_get_kernel())" in appsrc, "app.py 接了 reconcile_on_startup")
     check(appsrc.index("_rt_reconcile(_rt_get_kernel())") < appsrc.index("ui.run(**_run_kwargs)"),
           "  启动恢复在 ui.run() 【之前】（不能等事件循环）")

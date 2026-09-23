@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -73,7 +74,7 @@ def t_vendor_table() -> None:
     check(distiller_for("anthropic/claude-opus-5") != "",
           "⚠️ distiller 同样走池子")
 
-    src = (ROOT / "core" / "models.py").read_text(encoding="utf-8")
+    src = module_text("core.models")
     # ⚠️ 2026-08-30：三个角色统一成「取池子第一个」，原来那条"两者相反"的纪律
     #    已移除（禁令针对的是退回**主模型**=自己判自己；退回池子里的另一个
     #    模型仍然是第三方）。这里改钉**新的**不变量：三个角色同一个解析器。
@@ -236,7 +237,7 @@ def t_intent_source() -> None:
     check(len(C.build_intent(["x" * 5000])) <= C._MAX_USER_CHARS,
           "⚠️ 长会话有上限，不会越判越贵")
 
-    src = (ROOT / "core" / "os_layer" / "cmd_classifier.py").read_text(encoding="utf-8")
+    src = module_text("core.os_layer.cmd_classifier")
     check("reasoning-blind" in src and "注入的载体" in src,
           "⭐⭐ 钉住输入边界：看【用户消息+这一条工具调用】，"
           "剥掉【模型自己的话】和【工具输出】。"
@@ -250,8 +251,8 @@ def t_intent_source() -> None:
 def t_wiring() -> None:
     """接线：判据、fail-safe、以及「始终允许」为什么不用特意去掉。"""
     print("\n▶ 接线")
-    _app = (ROOT / "app.py").read_text(encoding="utf-8")
-    _orc = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    _app = module_text("app")
+    _orc = module_text("core.orchestrator")
 
     check('if self._auto_on() and step.get("auto_ok") is True:' in _app,
           "🔴🔴 **判据是「明确说可以」而不是「没人说不行」** —— "
@@ -279,7 +280,7 @@ def t_wiring() -> None:
 
     from core.os_layer import dsl
     check(dsl.action_floor("run_command") == 3, "⚠️ floor 表一个字没改")
-    src = (ROOT / "core" / "os_layer" / "safety.py").read_text(encoding="utf-8")
+    src = module_text("core.os_layer.safety")
     check("risk=3：永远返回 False" in src,
           "⭐ safety 的铁律**一个字没动** —— 这道闸加在 auto 那条路上，"
           "不是改风险等级。📌 risk 等级按 action【类型】定，"

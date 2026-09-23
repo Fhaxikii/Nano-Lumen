@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -345,12 +346,12 @@ tl._reset_for_test()
 # ══════════════════════════════════════════════════════════════════════════
 sec("⑩ 源码不变量")
 
-src_log = pathlib.Path("core/proactive/takeover_log.py").read_text(encoding="utf-8")
-src_tk = pathlib.Path("core/proactive/takeover.py").read_text(encoding="utf-8")
-src_hk = pathlib.Path("core/proactive/takeover_hooks.py").read_text(encoding="utf-8")
-src_hp = pathlib.Path("core/proactive/hooks.py").read_text(encoding="utf-8")
-src_or = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
-src_wb = pathlib.Path("core/os_layer/window_binding.py").read_text(encoding="utf-8")
+src_log = module_text("core.proactive.takeover_log")
+src_tk = module_text("core.proactive.takeover")
+src_hk = module_text("core.proactive.takeover_hooks")
+src_hp = module_text("core.proactive.hooks")
+src_or = module_text("core.orchestrator")
+src_wb = module_text("core.os_layer.window_binding")
 
 ck("独立第二传感器真的接上了（hooks.py 的 2s 轮询）",
    "takeover_log.note_poll_focus()" in src_hp)

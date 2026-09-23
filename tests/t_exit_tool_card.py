@@ -42,6 +42,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -51,7 +52,7 @@ def check(ok: bool, name: str, note: str = "") -> None:
     print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"   [{note}]" if note else ""))
 
 
-SRC = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+SRC = module_text("core.orchestrator")
 TREE = ast.parse(SRC)
 
 
@@ -231,7 +232,7 @@ def t_tool_end_before_terminal() -> None:
     #    人记不住，所以让测试去数。
     # 📌 同：**常量表必须能被证明等于真实分发链。**
     import core.orchestrator as _om
-    app_src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    app_src = module_text("app")
     app_tree = ast.parse(app_src)
     real: set[str] = set()
     for n in ast.walk(app_tree):
@@ -280,7 +281,7 @@ def t_tool_end_before_terminal() -> None:
           "🔴 改造前是 5 条（按工具名分派出来的），于是「别忘了 _pre」要靠人记 5 次；"
           "现在忘不了，因为**没有第二条路可走**",
           f"实际 {len(_fwd_loops)} 条")
-    _orch_src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    _orch_src = module_text("core.orchestrator")
     _ot = ast.parse(_orch_src)
     _adapters = {n.name for n in ast.walk(_ot)
                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -306,7 +307,7 @@ def t_tool_end_before_terminal() -> None:
 
     # ⚠️ 反向前置：证明消费端确实会在 final_result 处 return，
     #    否则上面整条推理不成立、这些断言就只是形式主义。
-    app = pathlib.Path("app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     app_t = ast.parse(app)
     found = False
     for n in ast.walk(app_t):

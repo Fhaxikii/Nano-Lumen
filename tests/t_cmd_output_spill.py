@@ -62,6 +62,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -159,7 +160,7 @@ def t_truncation_is_never_silent() -> None:
 
 def t_spill_failure_says_so() -> None:
     print("\n[5] ⚠️ 落盘失败时必须说没有，不能给一个不存在的路径")
-    src = (ROOT / "core" / "os_layer" / "longcmd.py").read_text(encoding="utf-8")
+    src = module_text("core.os_layer.longcmd")
     # 📌 「失败信息必须正确」—— 指向一个不存在的文件比不指路更糟：
     #    模型会去读，然后拿到第二个错误。
     check("could NOT be saved to disk" in src,
@@ -181,7 +182,7 @@ def t_spill_failure_says_so() -> None:
 def t_recycle_by_bytes() -> None:
     print("\n[6] ⭐ 输出目录按体积回收，且不许删还在跑的")
     import core.os_layer.longcmd as LC
-    src = (ROOT / "core" / "os_layer" / "longcmd.py").read_text(encoding="utf-8")
+    src = module_text("core.os_layer.longcmd")
     check(LC._SPILL_BUDGET_BYTES == 50 * MB,
           "⭐ 预算 50MB —— 比截图的 200MB 小，因为**有效寿命差一个数量级**："
           "截图是审计证据（价值在以后），命令输出读完就没用了",
@@ -216,7 +217,7 @@ def t_recycle_by_bytes() -> None:
 
 def t_buffer_and_file_serve_different_questions() -> None:
     print("\n[7] ⭐⭐ 缓冲和文件各司其职（这是整个设计的支点）")
-    src = (ROOT / "core" / "os_layer" / "longcmd.py").read_text(encoding="utf-8")
+    src = module_text("core.os_layer.longcmd")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "_append"), None)

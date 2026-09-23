@@ -50,6 +50,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -115,7 +116,7 @@ def t_same_name_superseded() -> None:
     这条要钉的是"**登记时确实去收同名的旧条目了**"这个结构事实。
     """
     print("\n[3] 同名旧草稿被新草稿取代（一个文件名只能有一份待审）")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
 
     fn = next((n for n in ast.walk(tree)
@@ -176,7 +177,7 @@ def t_guard_reject_keeps_draft_reachable() -> None:
     于是"被取代"第一次真的成立，用户也立刻有了新入口）。
     """
     print("\n[4] ⭐⭐ 指纹拒绝时不许关掉待审（否则用户的编辑连同入口一起没了）")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))

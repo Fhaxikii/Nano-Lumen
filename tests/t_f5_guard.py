@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -113,7 +114,7 @@ def t_messages_distinguish() -> None:
 def t_no_semantic_deletion() -> None:
     """🔴 Guard 只能强制安全降级，不能强制语义删除。"""
     print("\n[5] ⭐⭐⭐ Guard 自己不删任何东西")
-    src = pathlib.Path("core/context/guard.py").read_text(encoding="utf-8")
+    src = module_text("core.context.guard")
     tree = ast.parse(src)
     # 本模块只做判断，不该出现任何写/删动作
     bad = []

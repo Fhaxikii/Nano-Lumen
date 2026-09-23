@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -361,7 +362,7 @@ def t_targeted_claim(tmp: pathlib.Path) -> None:
 
 def t_app_wiring() -> None:
     print("\n[12] app.py 接线（源码不变量）")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     live = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
 
     check("内核正在处理中，请稍候...', type='warning')" not in live,
@@ -504,7 +505,7 @@ def t_dual_wait(tmp: pathlib.Path) -> None:
 
 def t_dual_wait_wiring() -> None:
     print("\n[14] 五个确认等待点都接上了")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     live = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
 
     # ⭐ 2026-08-26：第 6 处是临时执行通道（`run_scratch_code`）——
@@ -537,7 +538,7 @@ def t_dual_wait_wiring() -> None:
           "📌 **宁可承认「不知道为什么」，也不许替用户编一个用户没做过的动作**"
           "（超时时没人取消过；用户改口时那是换了话题）")
 
-    ib = pathlib.Path("core/runtime/inbox.py").read_text(encoding="utf-8")
+    ib = module_text("core.runtime.inbox")
     check("不许让代码去理解「算了别点了」" in ib,
           "⚠️ 职责切分留了痕：代码判「有没有新消息」，模型判「那句话什么意思」")
     check("不依赖模型判断的确定性 Cancel" in ib,
@@ -550,7 +551,7 @@ def t_dual_wait_wiring() -> None:
 def t_wake_intent_wiring() -> None:
     print("\n[15] ⭐⭐ 最后一个还在丢用户意图的地方也接上了")
     import re
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     live = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
 
     check(live.count("内核正在处理中，请稍候") == 0,
@@ -583,7 +584,7 @@ def t_wake_intent_wiring() -> None:
 
 def t_seam_wiring() -> None:
     print("\n[16] ⭐⭐⭐ [无缝对话] 插话切开回应期；无插话才续接原气泡")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     live = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
 
     # ⚠️ 构造形式从 dict 字面量换成了 `ViewSession(...)` 关键字实参，
@@ -619,7 +620,7 @@ def t_seam_wiring() -> None:
     #    崩掉比失败更糟：它会掩盖掉这个文件里后面所有本来会跑的断言。
     # ⭐ 改成按 AST 认「那个分支」，同时把断言加强成
     #    「三件事在 else 支里、且**不在** if 支里」。
-    _mod = ast.parse((ROOT / "app.py").read_text(encoding="utf-8"))
+    _mod = ast.parse(module_text("app"))
     _np = next((n for n in ast.walk(_mod)
                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and n.name == "navigate_pipeline"), None)
@@ -754,7 +755,7 @@ def t_seam_epoch_handoff() -> None:
 
 def t_seam_cmd47_fix() -> None:
     print("\n[18] 🔴 插话交接的源码不变量")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     live = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
     tree = ast.parse(src)
     start = next(n for n in ast.walk(tree)
@@ -778,8 +779,8 @@ def t_seam_cmd47_fix() -> None:
 
 def t_seam_note() -> None:
     print("\n[19] ⭐⭐ [无缝 · 措辞] 注入的是「事实」，不是「表演指令」")
-    orc = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
-    app = pathlib.Path("app.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
+    app = module_text("app")
     live = "\n".join(l for l in orc.splitlines() if not l.strip().startswith("#"))
 
     # ⚠️⚠️ **这几条 2026-08-08 改过**：第一版验的是「[Same bubble] …你上一段回答
@@ -845,10 +846,10 @@ def t_seam_note() -> None:
 
 def t_source_invariants() -> None:
     print("\n[10] 源码不变量")
-    src = pathlib.Path("core/runtime/inbox.py").read_text(encoding="utf-8")
-    rec = pathlib.Path("core/runtime/reconciler.py").read_text(encoding="utf-8")
-    ker = pathlib.Path("core/runtime/kernel.py").read_text(encoding="utf-8")
-    sto = pathlib.Path("core/runtime/store.py").read_text(encoding="utf-8")
+    src = module_text("core.runtime.inbox")
+    rec = module_text("core.runtime.reconciler")
+    ker = module_text("core.runtime.kernel")
+    sto = module_text("core.runtime.store")
 
     check("_inbox.install(k)" in ker, "已接到 Kernel 上")
     check(ker.count("_inbox.install(k)") == 2,
@@ -893,8 +894,8 @@ def t_source_invariants() -> None:
 
 def t_stop_button() -> None:
     print("\n[20] ⭐⭐⭐ [B1] 终止按钮 —— 它**不是**无缝对话的一部分")
-    orc = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
-    app = pathlib.Path("app.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
+    app = module_text("app")
     olive = "\n".join(l for l in orc.splitlines() if not l.strip().startswith("#"))
     alive = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
 
@@ -1083,7 +1084,7 @@ def t_wake_never_silently_dropped() -> None:
           而它当时把 `_drive_wake` 当成了**正面例子**。
     """
     print("\n[11] ⭐⭐⭐ 唤醒在内核忙时进队列，不许静默丢掉")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     tree = ast.parse(app)
 
     fn = None
@@ -1239,7 +1240,7 @@ def t_l14_present_not_execute(tmp: pathlib.Path) -> None:
           "📌 **「不执行」不是靠没人去执行它，是靠它不再处于可被执行的状态**")
 
     # ④ 接线（AST，只看会执行的代码）
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     fn = _ast.parse(src)
     _m = next((n for n in _ast.walk(fn)
                if isinstance(n, _ast.AsyncFunctionDef)

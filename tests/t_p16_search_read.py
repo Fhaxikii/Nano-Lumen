@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -218,7 +219,7 @@ def t_edit_is_all_or_nothing() -> None:
 def t_edit_goes_through_the_safety_net() -> None:
     print("\n[6] ⭐⭐⭐ `edit_file` **穿过 OS 安全网**，不自己写盘")
     import ast as _ast
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = _ast.parse(src)
     _h = next((f for f in _ast.walk(tree)
                if isinstance(f, _ast.AsyncFunctionDef) and f.name == "_handle_edit_file"), None)

@@ -46,6 +46,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -144,7 +145,7 @@ def t_nano_cannot_grab_back(tmp: pathlib.Path) -> None:
           "否则上面只证明了「谁都拿不到」")
 
     # AST：acquire_activity 里不许再出现 preempt
-    src = pathlib.Path("core/runtime/oslease.py").read_text(encoding="utf-8")
+    src = module_text("core.runtime.oslease")
     tree = ast.parse(src)
     seg = ""
     for n in ast.walk(tree):
@@ -243,8 +244,8 @@ def t_streak_granularity(tmp: pathlib.Path) -> None:
 
 def t_wiring() -> None:
     print("\n[6] 接线核对（AST / 源码，不靠猜）")
-    orc = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
-    dsp = pathlib.Path("core/os_layer/dispatch.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
+    dsp = module_text("core.os_layer.dispatch")
     oc = "\n".join(l for l in orc.splitlines() if not l.strip().startswith("#"))
     dc = "\n".join(l for l in dsp.splitlines() if not l.strip().startswith("#"))
 
@@ -292,7 +293,7 @@ def t_wiring() -> None:
           "⚠️ 注释里的历史留着（`oc` 里没有 / `orc` 里有 = 正是想要的形状）")
 
     # ── 免确认授权也切到租约了 ──────────────────────────
-    apc = pathlib.Path("app.py").read_text(encoding="utf-8")
+    apc = module_text("app")
     apl = chr(10).join(l for l in apc.splitlines() if not l.strip().startswith("#"))
     check("_rt_auto_authorized()" in apl,
           "⭐⭐ `_auto_on()` 读的是**授权租约**，不是 `self._temp_auto`"

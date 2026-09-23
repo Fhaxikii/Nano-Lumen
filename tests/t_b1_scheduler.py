@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -46,11 +47,11 @@ def check(ok: bool, name: str, note: str = "") -> None:
     print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"   [{note}]" if note else ""))
 
 
-APP = (ROOT / "app.py").read_text(encoding="utf-8")
-SCHED = (ROOT / "core" / "runtime" / "scheduler.py").read_text(encoding="utf-8")
-ORCH = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
-RECON = (ROOT / "core" / "runtime" / "reconciler.py").read_text(encoding="utf-8")
-SCHED = (ROOT / "core" / "runtime" / "scheduler.py").read_text(encoding="utf-8")
+APP = module_text("app")
+SCHED = module_text("core.runtime.scheduler")
+ORCH = module_text("core.orchestrator")
+RECON = module_text("core.runtime.reconciler")
+SCHED = module_text("core.runtime.scheduler")
 
 BASE_T = 1_000_000.0
 
@@ -154,7 +155,7 @@ def t_startup_terminates_and_still_speaks() -> None:
 
 def t_no_fixed_text_fallback_anywhere() -> None:
     print("\n[4] ⭐⭐ 主动开口的固定文案兜底已拆干净")
-    sp = (ROOT / "core" / "proactive" / "speaker.py").read_text(encoding="utf-8")
+    sp = module_text("core.proactive.speaker")
     check("_HOLIDAY_FALLBACK" not in sp.replace("`_HOLIDAY_FALLBACK`", ""),
           "⭐ 节日兜底表没了")
     fn = _fn(sp, "_generate")

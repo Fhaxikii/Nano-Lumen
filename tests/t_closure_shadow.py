@@ -42,9 +42,10 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_files, module_text  # noqa: E402
 
-TARGETS = ["app.py", "core/orchestrator.py", "core/runtime/interaction.py",
-           "core/runtime/toolbatch.py", "core/runtime/kernel.py"]
+TARGETS = ["app", "core.orchestrator", "core.runtime.interaction",
+           "core.runtime.toolbatch", "core.runtime.kernel"]
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -151,10 +152,9 @@ def scan(path):
 
 def t_no_shadow() -> None:
     print("\n[1] 闭包遮蔽外层名字且【先读后赋值】→ UnboundLocalError")
-    for rel in TARGETS:
-        p = ROOT / rel
-        if not p.exists():
-            continue
+    for mod in TARGETS:
+      for p in module_files(mod):
+        rel = p.relative_to(ROOT).as_posix()
         hits = scan(str(p))
         if hits:
             for rl, o, i, nm, sl in hits:

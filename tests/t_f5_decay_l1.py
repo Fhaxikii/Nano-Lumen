@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -111,7 +112,7 @@ def t_replace_not_truncate() -> None:
           "⭐ 幂等：已经换过的不再换 —— 📌 否则占位符会被套娃，长度反而涨")
 
     # ⚠️ 不许当成「第二次截断」
-    src = pathlib.Path("core/context/decay.py").read_text(encoding="utf-8")
+    src = module_text("core.context.decay")
     fn = next((n for n in ast.walk(ast.parse(src))
                if isinstance(n, ast.FunctionDef) and n.name == "apply_l1"), None)
     _body = "\n".join((ast.get_source_segment(src, x) or "") for x in (fn.body if fn else [])
@@ -229,7 +230,7 @@ def t_off_by_default() -> None:
           "⚠️ 前置：总开关读得出来且是 bool",
           str(ladder_enabled()))
 
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     gated = False
     for n in ast.walk(tree):

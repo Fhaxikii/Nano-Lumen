@@ -23,6 +23,7 @@ import time as _time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import tests._console  # noqa: F401,E402
+from tests._src import module_text  # noqa: E402
 
 from core.runtime import progress as _prog_mod
 
@@ -41,7 +42,8 @@ def check(cond, label, detail=""):
 
 
 def _src(rel: str) -> str:
-    return (ROOT / rel).read_text(encoding="utf-8")
+    """`core/registry.py` 形式的相对路径 → 该模块（或拆分后的包）的源码。"""
+    return module_text(rel[:-3].replace("/", "."))
 
 
 def _code_only(rel: str) -> str:

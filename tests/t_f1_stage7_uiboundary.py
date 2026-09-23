@@ -54,6 +54,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -145,8 +146,8 @@ def t_no_ui_key_in_command_payload() -> None:
     # 🔴 而且**塞进去不会报错**：handler 只 `p.get()` 自己要的键，多余的静默忽略
     #    （2026-08-08 那个 `terminal_reason` vs `reason` 就是这个机制咬人的）。
     bad: list[str] = []
-    for rel in ("app.py", "core/orchestrator.py"):
-        src = (ROOT / rel).read_text(encoding="utf-8")
+    for rel in ("app", "core.orchestrator"):
+        src = module_text(rel)
         tree = ast.parse(src)
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call)
@@ -179,7 +180,7 @@ def t_resp_state_stays_in_app() -> None:
           "; ".join(hits))
 
     # ⏸ 而它**还没有**变成一个具名对象。这不是遗漏，是刻意推迟（见模块头）。
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     check("_resp_state" in src,
           "⏸ 它目前仍是 app 里的一个 dict —— "
           "结构重构与 [F3]（重启后 UI 重放）一起做，"
@@ -211,7 +212,7 @@ def t_no_dangling_method_calls() -> None:
     ⭐ 本条断言就是那个自查的常驻版：它同时看 `self.` 和 `gui.` 两种接收者。
     """
     print("\n[5] ⭐⭐⭐ 没有悬空的私有方法调用（事故后加的守护）")
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
 
     defined = {n.name for n in ast.walk(tree)
@@ -274,7 +275,7 @@ def t_l7_viewsession_declares_the_whole_field_set() -> None:
        📌 一次「行为零变化」的迁移，才有资格在测不到的地方做。
     """
     print("\n[L7] ViewSession 的字段集是唯一答案")
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
 
     check("class ViewSession:" in src, "前置：`ViewSession` 在")
     check("self._resp_state = {" not in src,

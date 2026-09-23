@@ -42,6 +42,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -121,7 +122,7 @@ def t_hash_is_on_the_ledger_not_the_projection() -> None:
           "⚠️ 反向：落盘范围真变了 → 指纹跟着变")
 
     # ⚠️ 指纹不该跟着 created_at 走
-    src = pathlib.Path("core/context/decay_store.py").read_text(encoding="utf-8")
+    src = module_text("core.context.decay_store")
     fn = next((n for n in ast.walk(ast.parse(src))
                if isinstance(n, ast.FunctionDef) and n.name == "_hash_rows"), None)
     _body = "\n".join((ast.get_source_segment(src, x) or "") for x in (fn.body if fn else [])
@@ -214,7 +215,7 @@ def t_shadow_only() -> None:
        而那才是这一层真正要守的东西。
     """
     print("\n[5] decay ledger never touches conversation_messages")
-    src = pathlib.Path("core/context/decay_store.py").read_text(encoding="utf-8")
+    src = module_text("core.context.decay_store")
     tree = ast.parse(src)
     bad = [n.lineno for n in ast.walk(tree)
            if isinstance(n, ast.Constant) and isinstance(n.value, str)
@@ -226,7 +227,7 @@ def t_shadow_only() -> None:
 
     # ⭐ 改成钉终态：它现在**确实**被接上了，但**整个包在开关里**
     from core.models import ladder_enabled
-    app_src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    app_src = module_text("core.orchestrator")
     check("DecayStore" in app_src,
           "⚠️ 前置：生产代码里确实接上了（第 2 步做的）")
     # ⚠️ 见 `t_f5_decay_l1.t_off_by_default` 里那段说明：

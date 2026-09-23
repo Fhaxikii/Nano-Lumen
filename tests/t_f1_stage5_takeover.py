@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -402,7 +403,7 @@ def t_armed_by_gui_mode_not_by_mouse(tmp: pathlib.Path) -> None:
           "证明武装条件真的换成了 GUI 模式，不是两个条件的或")
 
     # ⑤ GUI 模式是权威状态，不是 UI 标志
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     ac = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
     check("open_gui_session(" in ac and "close_gui_session(" in ac,
           "⭐ mini 窗的两个边界都接了 GUI 模式租约")
@@ -410,7 +411,7 @@ def t_armed_by_gui_mode_not_by_mouse(tmp: pathlib.Path) -> None:
     check(0 < i_mini and 0 < i_open and abs(i_open - i_mini) < 600,
           "⚠️ 开 GUI 模式紧挨着 `_mini_active = True` —— 两者必须同生同死",
           f"距 {abs(i_open - i_mini)} 字符")
-    tsrc = (ROOT / "core" / "proactive" / "takeover.py").read_text(encoding="utf-8")
+    tsrc = module_text("core.proactive.takeover")
     tc = "\n".join(l for l in tsrc.splitlines() if not l.strip().startswith("#"))
     check("gui_session_active(" in tc,
           "⭐⭐ 判定层读的是 GUI 模式")
@@ -450,7 +451,7 @@ def t_never_breaks_main_flow(tmp: pathlib.Path) -> None:
 def t_wiring() -> None:
     """AST：常量表和真实分发链必须对得上（不变量式断言）。"""
     print("\n[8] 接线核对（AST，不靠文本匹配）")
-    src = (ROOT / "core" / "proactive" / "takeover_hooks.py").read_text(encoding="utf-8")
+    src = module_text("core.proactive.takeover_hooks")
     tree = ast.parse(src)
 
     # 钩子回调里出现的 takeover.XXX 常量，必须都在 CONSEQUENTIAL 里
@@ -493,7 +494,7 @@ def t_wiring() -> None:
     # ⚠️ 2026-08-07 起判定逻辑在 `_on_user_signal_impl` 里，`on_user_signal` 只是
     #    「调判定 + 记诊断留痕」的薄壳。拆开的理由：**每一条信号（包括被忽略的）
     #    都必须留痕** —— 只记成功路径的日志没法回答"为什么它没发生"。
-    tsrc = (ROOT / "core" / "proactive" / "takeover.py").read_text(encoding="utf-8")
+    tsrc = module_text("core.proactive.takeover")
     ttree = ast.parse(tsrc)
     fn = next(n for n in ast.walk(ttree)
               if isinstance(n, ast.FunctionDef) and n.name == "_on_user_signal_impl")
@@ -508,7 +509,7 @@ def t_wiring() -> None:
           "包括被忽略的。只记成功路径的日志答不了「为什么它没发生」")
 
     # 启动接线
-    hsrc = (ROOT / "core" / "proactive" / "hooks.py").read_text(encoding="utf-8")
+    hsrc = module_text("core.proactive.hooks")
     htree = ast.parse(hsrc)
     start = next(n for n in ast.walk(htree)
                  if isinstance(n, ast.FunctionDef) and n.name == "start_hooks")

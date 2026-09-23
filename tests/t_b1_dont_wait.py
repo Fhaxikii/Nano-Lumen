@@ -50,6 +50,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -367,7 +368,7 @@ def t_handler_really_runs(tmp: pathlib.Path) -> None:
 def t_agent_goes_through_the_same_contract() -> None:
     print("")
     print("[5] ⭐⭐⭐ Subagent走**同一条**交还合同，且永远停在「不回看」那一档")
-    src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     fn = next((f for f in ast.walk(tree)
                if isinstance(f, ast.AsyncFunctionDef)
@@ -410,7 +411,7 @@ def t_pending_epoch_row_is_written_by_someone() -> None:
     print("")
     print("[6] 🔴 插话之后那一行**有人念**（秒数卡 0 再跳 84 的那个）")
     import app as _app
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
     _defs = {f.name for f in ast.walk(tree)
              if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
@@ -554,7 +555,7 @@ def t_cmd71_carrier_outlives_the_turn() -> None:
     📌 一个防御措施的理由被另一个更精确的措施接管之后，它自己就该移除。
     """
     print("\n[cmd71-1] 🔴 可交载体必须活过一轮")
-    orc = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
     tree = ast.parse(orc)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -586,7 +587,7 @@ def t_cmd71_carrier_outlives_the_turn() -> None:
           "⭐ 清除改由 **liveness** 决定（记录点存在 ≠ 对象还在）")
 
     # ⭐ 第二半：工具的出现条件必须跟着载体走（那条）
-    bt = (ROOT / "core" / "tools" / "builtin.py").read_text(encoding="utf-8")
+    bt = module_text("core.tools.builtin")
     check("def _when_has_carrier(" in bt,
           "⭐⭐ 有一个「有活载体」的判据（回看轮 **或** 上一轮交还且还活着）")
     for _tool in ("dont_wait", "stop_background"):
@@ -598,7 +599,7 @@ def t_cmd71_carrier_outlives_the_turn() -> None:
               _tool)
     # 🔴 实测代价：`stop_background` 当时不在表里，Nano 改用 taskkill 按**进程名**杀
     check("has_detachable_carrier" in
-          (ROOT / "core" / "tools" / "catalog.py").read_text(encoding="utf-8"),
+          module_text("core.tools.catalog"),
           "⭐ 这个事实进了 `ToolRuntimeView` 的窄接口（不是直接摸 orchestrator）")
     # ⚠️ `set_next_checkin` **仍然**只在回看轮 —— 它问的是「我刚看过它」，
     #    是另一个问题。📌 答的不是同一个问题，就不合并。
@@ -628,7 +629,7 @@ def t_cmd71_recheck_continues_into_the_same_bubble() -> None:
        📌 **用一个回答 A 的信号去回答 B，它再准也是错的。**
     """
     print("\n[气泡] 合并 = 最新气泡是 nano 的 AND 触发那刻前台上有东西")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     tree = ast.parse(app)
     wake = "\n".join(
         ast.unparse(n) for n in ast.walk(tree)
@@ -682,7 +683,7 @@ def t_cmd71_wake_closes_its_own_inbox_row() -> None:
     📌 `delivery_count` 存在的唯一理由，是回答「崩溃时这条给模型看过没有」。
     """
     print("\n[cmd71-3] 🔴 唤醒轮要收自己那条 inbox 记录")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     tree = ast.parse(app)
     outer = next((n for n in ast.walk(tree)
                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -748,11 +749,11 @@ def t_cmd71_reply_survives_a_restart() -> None:
     check(_message_from_payload("user", {"content": "x"}).reply_quote == "",
           "⚠️ 老行读回是空串，不是崩溃")
     # ⚠️ 存的是原文不是 id
-    check("[:200]" in (ROOT / "core" / "schema.py").read_text(encoding="utf-8")
+    check("[:200]" in module_text("core.schema")
           .split("self.reply_quote")[1][:60],
           "⚠️ 截到 200 —— 引用是指路标，不是重新贴一遍")
 
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     # ⭐⭐⭐ live 与重放**共用同一份**横幅实现
     check("def _render_quote_banner(" in app, "⭐⭐ 引用横幅抽成了一份实现")
     check(app.count("self._render_quote_banner(") == 2,
@@ -773,7 +774,7 @@ def t_cmd71_reply_survives_a_restart() -> None:
               "🔴 重放会画 `↳` —— 在此之前它**写死 `_NORMAL_PROMPT`**")
     # 生产端
     check("def attach_reply_quote(" in
-          (ROOT / "memory" / "manager.py").read_text(encoding="utf-8"),
+          module_text("memory.manager"),
           "⭐ 落盘收口在 memory 那一侧（形状照抄 `attach_user_images`）")
 
 
@@ -785,7 +786,7 @@ def t_cmd71_model_prose_is_whitelisted_for_reply() -> None:
        而漏掉的那种不会报错 —— 它会安静地允许一个不该允许的动作。
     """
     print("\n[cmd71-5] 「回复」的白名单")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     check("def nano_md(" in app,
           "⭐ 模型正文收成一个函数 —— 📌 贴 class 那种写法，**第 10 处会忘**，"
           "而忘了的表现是「那条 Nano 说的话回复不了」，一个没人会报的静默缺失")

@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -42,9 +43,9 @@ def check(ok: bool, name: str, note: str = "") -> None:
     print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"   [{note}]" if note else ""))
 
 
-ORCH = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
-IDENT = pathlib.Path("core/runtime/identity.py").read_text(encoding="utf-8")
-HEALTH = pathlib.Path("core/health.py").read_text(encoding="utf-8")
+ORCH = module_text("core.orchestrator")
+IDENT = module_text("core.runtime.identity")
+HEALTH = module_text("core.health")
 OTREE = ast.parse(ORCH)
 
 
@@ -110,7 +111,7 @@ def t_runtime_id() -> None:
           "📌 库里那些全是**历史**；真正的当前身份只能来自本进程刚生成的那个。")
 
     # ⚠️ 刻意没有 previous_shutdown_clean：现在造不出这个值
-    store = pathlib.Path("core/runtime/store.py").read_text(encoding="utf-8")
+    store = module_text("core.runtime.store")
     _ddl_i = store.find("CREATE TABLE IF NOT EXISTS runtime_runs")
     _ddl = store[_ddl_i:_ddl_i + 400] if _ddl_i > 0 else ""
     check(bool(_ddl), "runtime_runs 建表语句存在")
@@ -266,7 +267,7 @@ def t_execution_scope() -> None:
 
 def t_supersede_declared() -> None:
     print("\n[5] ⚠️ 推翻工具目录那条既有规定，必须留声明")
-    cat = pathlib.Path("core/tools/catalog.py").read_text(encoding="utf-8")
+    cat = module_text("core.tools.catalog")
     check("没附带但仍可执行" in cat,
           "⚠️ 前置：那条原文确实还在（`deferred 工具 schema 没附带但仍可执行是正常状态`）")
     # ⚠️ 区段锚点用的是**那一段自己的标题行**，不是代号 —— 代号会随清理消失。

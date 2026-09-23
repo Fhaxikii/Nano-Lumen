@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -186,7 +187,7 @@ def t_startup_sweep(tmp: pathlib.Path) -> None:
 
 def t_wiring() -> None:
     print("\n[6] 接线：commit boundary 在真正调执行器之前")
-    dsp = (ROOT / "core" / "os_layer" / "dispatch.py").read_text(encoding="utf-8")
+    dsp = module_text("core.os_layer.dispatch")
     dc = "\n".join(l for l in dsp.splitlines() if not l.strip().startswith("#"))
     i_mark = dc.find("mark_in_flight_current()")
     i_call = dc.find("result = await fn(params)")
@@ -200,7 +201,7 @@ def t_wiring() -> None:
           "⚠️ 标在**定位之后** —— 定位和授权确认期间现实一点没变；"
           "标早了会把「等用户点确认」也算成「正在改世界」")
 
-    orc = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
     oc = "\n".join(l for l in orc.splitlines() if not l.strip().startswith("#"))
     check("_att_m.begin(" in oc, "⭐ `os_execute` 开尝试")
     check("_att_m2.interrupt(" in oc and "_att_m2.finish(" in oc,
@@ -216,7 +217,7 @@ def t_wiring() -> None:
           "⭐ 恢复提示用的是 `describe_for_model()`，不再是笼统那句「环境可能变了」")
 
     # ⚠️ 不许复用 ToolBatchSpan
-    att = (ROOT / "core" / "runtime" / "attempt.py").read_text(encoding="utf-8")
+    att = module_text("core.runtime.attempt")
     check("ToolBatchSpan" in att and "绝对不能解释成" in att,
           "⭐ 模块头留痕：为什么**不能**复用 `ToolBatchSpan` —— "
           "它表达的是工具协议闭没闭合，不是现实有没有被改")
@@ -225,7 +226,7 @@ def t_wiring() -> None:
 def t_handed_back_long_command_finishes_only_on_real_result() -> None:
     """交还不是完成；join 返回的真实结果才是 attempt 的收口点。"""
     print("\n[7] 被交还的长命令在真实完成时收尾 ActionAttempt")
-    source = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    source = module_text("core.orchestrator")
     tree = ast.parse(source)
     waiter = next((node for node in ast.walk(tree)
                    if isinstance(node, ast.AsyncFunctionDef) and node.name == "_await_longcmd"),

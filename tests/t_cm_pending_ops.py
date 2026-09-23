@@ -58,6 +58,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -67,7 +68,7 @@ def check(ok: bool, name: str, note: str = "") -> None:
     print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"   [{note}]" if note else ""))
 
 
-APP = pathlib.Path("app.py").read_text(encoding="utf-8")
+APP = module_text("app")
 
 
 def _js_method(name: str) -> str:

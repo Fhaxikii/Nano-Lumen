@@ -44,6 +44,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -53,7 +54,7 @@ def check(ok: bool, name: str, note: str = "") -> None:
     print(f"  {'PASS' if ok else 'FAIL'}  {name}" + (f"   [{note}]" if note else ""))
 
 
-APP_SRC = pathlib.Path("app.py").read_text(encoding="utf-8")
+APP_SRC = module_text("app")
 APP_TREE = ast.parse(APP_SRC)
 
 
@@ -194,7 +195,7 @@ def t_visual_tool_name_still_exists() -> None:
         names = {getattr(d, "name", None) for d in BUILTIN_TOOLS}
     except Exception:
         # 目录的导出名可能变；退回到源码认领（仍然能抓到"改名"这件事）
-        src = pathlib.Path("core/tools/builtin.py").read_text(encoding="utf-8")
+        src = module_text("core.tools.builtin")
         names = set()
         for n in ast.walk(ast.parse(src)):
             if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
@@ -215,7 +216,7 @@ def t_args_are_durable() -> None:
        万一哪天 args 改成只存摘要，重放照样画不出图，而上面全绿。
     """
     print("\n[5] ⚠️ 地基：工具调用的 args 逐字进落盘（重放能拿到 html 的唯一理由）")
-    src = pathlib.Path("core/runtime/conversation.py").read_text(encoding="utf-8")
+    src = module_text("core.runtime.conversation")
     tree = ast.parse(src)
     found_ser, found_de = False, False
     for n in ast.walk(tree):

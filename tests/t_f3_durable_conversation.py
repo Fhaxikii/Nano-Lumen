@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from core.runtime import RuntimeStore
 from core.runtime.conversation import ConversationRepository, _message_from_payload
@@ -147,8 +148,8 @@ def t_explicit_reset_rotates_only_session_boundary(tmp: pathlib.Path) -> None:
 
 def t_real_app_wires_durable_memory_and_reset() -> None:
     print("\n[6] 真实 WebUI 与重置入口接到持久会话")
-    app_source = (ROOT / "app.py").read_text(encoding="utf-8")
-    orch_source = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    app_source = module_text("app")
+    orch_source = module_text("core.orchestrator")
     app_tree = ast.parse(app_source)
     webui = next(node for node in app_tree.body
                  if isinstance(node, ast.ClassDef) and node.name == "WebUI")
@@ -189,7 +190,7 @@ def t_ui_replay_reads_full_session_not_bounded_model_projection(tmp: pathlib.Pat
 
 def t_ui_replay_is_passive_and_uses_durable_messages() -> None:
     print("\n[8] UI 重放是账本的被动投影，不触发新执行")
-    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    source = module_text("app")
     tree = ast.parse(source)
     webui = next(node for node in tree.body
                  if isinstance(node, ast.ClassDef) and node.name == "WebUI")
@@ -372,7 +373,7 @@ def t_system_notes_reach_model_but_never_the_screen(tmp: pathlib.Path) -> None:
           "⭐ 老行即使正文长得像注记也照常显示 —— 不留前缀启发式")
 
     # ④ UI 重放确实**消费**了这个事实
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     fn = next((n for n in ast.walk(ast.parse(src))
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
                and n.name == "_replay_durable_conversation"), None)
@@ -411,8 +412,8 @@ def t_no_system_note_still_uses_add_message() -> None:
             out.append(a.values[0].value)
 
     bad, good = [], 0
-    for f in ("app.py", "core/orchestrator.py"):
-        src = pathlib.Path(f).read_text(encoding="utf-8")
+    for f in ("app", "core.orchestrator"):
+        src = module_text(f)
         for n in ast.walk(ast.parse(src)):
             if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                     and n.func.attr in ("add_message", "add_system_note")

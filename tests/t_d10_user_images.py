@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -108,7 +109,7 @@ def t_payload_roundtrip() -> None:
 def t_compress_never_touches_history() -> None:
     """🔴 本套件的核心：压缩只许动模型投影，不许改写用户历史。"""
     print("\n[3] ⭐⭐⭐ compress_image_blocks 不再写回权威账本")
-    src = pathlib.Path("memory/manager.py").read_text(encoding="utf-8")
+    src = module_text("memory.manager")
     tree = ast.parse(src)
     fn = None
     for n in ast.walk(tree):
@@ -136,7 +137,7 @@ def t_compress_never_touches_history() -> None:
 def t_note_is_derived_not_stored() -> None:
     print("\n[4] ⭐⭐ 重启后那句「你当时确实看过」是【算】出来的，不是【存】在历史里的")
     from memory.manager import MemoryManager
-    src = pathlib.Path("memory/manager.py").read_text(encoding="utf-8")
+    src = module_text("memory.manager")
     tree = ast.parse(src)
     names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
     check("_restore_image_notes" in names, "存在 `_restore_image_notes`")
@@ -170,7 +171,7 @@ def t_note_is_derived_not_stored() -> None:
 
 def t_ui_reads_history_not_context() -> None:
     print("\n[5] ⭐⭐ UI 重放读的是 ui_images（历史），不是 content 里的 image block（上下文）")
-    app_src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    app_src = module_text("app")
     app_tree = ast.parse(app_src)
     fn = None
     for n in ast.walk(app_tree):
@@ -203,7 +204,7 @@ def t_ui_reads_history_not_context() -> None:
 def t_attach_runs_before_content_patch() -> None:
     """🔴 顺序错了 = 把整张图的 base64 塞进权威账本。"""
     print("\n[6] ⭐⭐⭐ 留档排在 content 被换成 base64 list 【之前】")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     attach_line = patch_line = None
     for n in ast.walk(tree):
@@ -245,7 +246,7 @@ def t_attach_runs_before_content_patch() -> None:
     # 📌 **一条顺序断言只保护它写下的那个顺序；能取消顺序依赖就别去排顺序。**
     print("\n[6b] ⭐⭐⭐ 判据不挂在 memory 上：本轮标志，与三处顺序全部无关")
     import core.orchestrator as _O
-    src2 = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src2 = module_text("core.orchestrator")
     t2 = ast.parse(src2)
     fn = next((n for n in ast.walk(t2)
                if isinstance(n, ast.FunctionDef) and n.name == "has_unsummarized_image"), None)
@@ -293,7 +294,7 @@ def t_attach_runs_before_content_patch() -> None:
     #    但 `set_image_summary` 读 `storage[-1]` —— ReAct 循环里那已经是 `tool_calls`，
     #    于是它答"当前没有图"，摘要永远落不下去。**日志里工具是成功的，摘要却是 None。**
     # 📌 **别问"最后一条是什么"，直接问"我要的那条在哪"。**
-    src3 = pathlib.Path("memory/manager.py").read_text(encoding="utf-8")
+    src3 = module_text("memory.manager")
     t3 = ast.parse(src3)
     for _name in ("set_image_summary", "attach_user_images"):
         _f = next((n for n in ast.walk(t3)
@@ -329,6 +330,7 @@ def t_attach_runs_before_content_patch() -> None:
     # 记完之后标志必须翻假，且**落库失败也要翻**
     h = next((n for n in ast.walk(t2)
               if isinstance(n, ast.AsyncFunctionDef) and n.name == "_handle_note_image"), None)
+    check(h is not None, "存在 `_handle_note_image`（找不到时下面的检查不能静默跳过）")
     if h is not None:
         _clear = [n for n in ast.walk(h)
                   if isinstance(n, ast.Assign) and len(n.targets) == 1
@@ -376,7 +378,7 @@ def t_summary_is_one_shot_not_per_turn() -> None:
           "这就是「不会每轮注入」的结构性保证（不是靠谁记得）")
 
     # 提示段与工具**必须由同一个判据控制**（：一个工具和它的事实来源同源）
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     blk = None
     for n in ast.walk(tree):
@@ -448,7 +450,7 @@ def t_ledger_never_stores_pixels() -> None:
 def t_review_tool_fails_loudly() -> None:
     print("\n[10] ⭐⭐ 回看的三种失败**必须彼此可区分**")
     import core.orchestrator as O
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.AsyncFunctionDef) and n.name == "_handle_view_past_image"), None)

@@ -32,6 +32,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import tests._console  # noqa: F401,E402
+from tests._src import module_files, module_text  # noqa: E402
 
 _passed = 0
 _failed: list[str] = []
@@ -207,8 +208,7 @@ def t_executor_low_ctypes() -> None:
     check(E._H(30803936) is not None,
           "⭐ `_H()` 不再抛 `NameError`（大 hwnd 转句柄那条路真的能走）")
 
-    _tree = ast.parse((ROOT / "core/os_layer/executor_low.py")
-                      .read_text(encoding="utf-8"))
+    _tree = ast.parse(module_text("core.os_layer.executor_low"))
     _mod_imports = {al.asname or al.name for st in _tree.body
                     if isinstance(st, ast.Import) for al in st.names}
     check("ctypes" in _mod_imports,
@@ -256,7 +256,7 @@ def t_is_self_window_pid_path_reachable() -> None:
 
 def t_rag_health_report() -> None:
     print("\n[3] 🔴 `rag.py` 那条「向量库已自愈」的上报能真的落下去")
-    _src = (ROOT / "core/rag.py").read_text(encoding="utf-8")
+    _src = module_text("core.rag")
     _tree = ast.parse(_src)
     _fn = next(n for n in ast.walk(_tree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -345,10 +345,10 @@ def outer():
 
 def t_no_undefined_in_hot_modules() -> None:
     print("\n[5] ⭐ 常驻检查：核心模块里没有未定义名")
-    _targets = ["core/os_layer/executor_low.py", "core/os_layer/executor_write.py",
-                "core/os_layer/longcmd.py", "core/rag.py",
-                "core/runtime/progress.py", "core/registry.py",
-                "core/mcp_client.py", "core/schema.py"]
+    _targets = [p.relative_to(ROOT).as_posix() for m in (
+        "core.os_layer.executor_low", "core.os_layer.executor_write",
+        "core.os_layer.longcmd", "core.rag", "core.runtime.progress", "core.registry",
+        "core.mcp_client", "core.schema") for p in module_files(m)]
     _all = []
     for rel in _targets:
         _hits = [h for h in undefined_names(ROOT / rel)

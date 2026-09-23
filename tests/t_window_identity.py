@@ -41,6 +41,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -124,7 +125,7 @@ def t_warning_is_actionable() -> None:
 
 def t_scope_is_the_turn() -> None:
     print("\n[3] 比较基准的边界 = 本轮（与活动租约同一个边界）")
-    src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     oc = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
     check("self._last_fg_window = None" in oc, "每轮开头清零")
 
@@ -137,7 +138,7 @@ def t_scope_is_the_turn() -> None:
 
 def t_wiring() -> None:
     print("\n[4] 接线：两条会动手的路都带上身份")
-    src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
 
     def _seg(name):
@@ -165,7 +166,7 @@ def t_wiring() -> None:
           "⚠️⚠️ **不许**用视觉模型判身份 —— 它连这个问题都没被问过，"
           "而答错的后果是破坏性误操作")
 
-    low = (ROOT / "core" / "os_layer" / "executor_low.py").read_text(encoding="utf-8")
+    low = module_text("core.os_layer.executor_low")
     check("启发式" in low and "get_target_window" in low,
           "⭐ 根因函数上留了痕：它是「任务开始时」的启发式，不是每步可重问的权威")
 

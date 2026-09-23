@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -200,7 +201,7 @@ def t_clip_announces_itself() -> None:
 
 def t_no_storage_in_u8_path() -> None:
     print("\n[5] ⭐⭐ 结构守卫：这几个方法里**不许出现 storage**")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
     bad = []
     for fn in ast.walk(tree):

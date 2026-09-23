@@ -32,6 +32,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -123,7 +124,7 @@ def t_equivalence_with_legacy_truncate() -> None:
           "⚠️ 前置：对拍有真实内容（不是两边都返回空）")
 
     # ⭐ 真正接线了吗
-    src = pathlib.Path("memory/manager.py").read_text(encoding="utf-8")
+    src = module_text("memory.manager")
     fn = next((n for n in ast.walk(ast.parse(src))
                if isinstance(n, ast.FunctionDef) and n.name == "_truncate_safely"), None)
     check(fn is not None, "前置条件：找得到 `_truncate_safely`")
@@ -137,7 +138,7 @@ def t_equivalence_with_legacy_truncate() -> None:
 def t_purity_and_no_kernel() -> None:
     """：一次交换**不进 Kernel**。"""
     print("\n[4] ⭐⭐ 纯视图：不持有状态、不进 Kernel")
-    src = pathlib.Path("core/context/exchange.py").read_text(encoding="utf-8")
+    src = module_text("core.context.exchange")
     tree = ast.parse(src)
 
     # 不许 import kernel / store / sqlite —— 它只是"怎么看这堆数据"

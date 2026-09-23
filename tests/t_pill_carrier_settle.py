@@ -19,6 +19,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import tests._console  # noqa: F401,E402
+from tests._src import module_text  # noqa: E402
 
 _passed = 0
 _failed: list[str] = []
@@ -215,7 +216,7 @@ def t_action_done_always_set() -> None:
 
 def t_source_invariants() -> None:
     print("\n[7] 源码不变量")
-    _src = (ROOT / "app.py").read_text(encoding="utf-8")
+    _src = module_text("app")
     _tree = ast.parse(_src)
 
     def _fn(name):
@@ -254,7 +255,7 @@ def t_source_invariants() -> None:
 
 def t_meta_row_never_naked() -> None:
     print("\n[8] 🔴🔴 载体在跑时，元信息行不许变成一个裸计时器（实测 2026-08-10）")
-    _src = (ROOT / "app.py").read_text(encoding="utf-8")
+    _src = module_text("app")
     _tree = ast.parse(_src)
     _timer = next(n for n in ast.walk(_tree)
                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))

@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -257,7 +258,7 @@ def t_manifest_dispatch_invariant(tmp: pathlib.Path) -> None:
 # 3｜作用域污染的两个源头
 # ══════════════════════════════════════════════════════════════════════════
 
-def _prompt_text(path: str) -> str:
+def _prompt_text(module: str) -> str:
     """把一个模块里**所有字符串常量**拼起来。
 
     ⚠️ 为什么不能直接 `in src`：源码里的注释会打中。
@@ -276,7 +277,7 @@ def _prompt_text(path: str) -> str:
        两者都是写给人看的，区别只是一个进 AST、一个不进。
        而"进不进 AST"是实现细节，不是判据。
     """
-    tree = ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
+    tree = ast.parse(module_text(module))
     # ⚠️ 按**节点身份**排除，不能按内容排除 —— 同一段文字完全可能真的是提示词。
     _docs = set()
     for n in ast.walk(tree):
@@ -295,8 +296,8 @@ def _prompt_text(path: str) -> str:
 
 def t_scope_pollution(tmp: pathlib.Path) -> None:
     print("\n[3] 两个诱导源头：load_tools 的返回文案 + 继承来的按需加载广告")
-    prompts = _prompt_text("core/orchestrator.py")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    prompts = _prompt_text("core.orchestrator")
+    src = module_text("core.orchestrator")
 
     # 前置条件：证明取样面真的有内容
     check(len(prompts) > 20000, "前置条件：AST 取到了大量提示词字符串",
@@ -365,7 +366,7 @@ def t_guide_strips_ad(tmp: pathlib.Path) -> None:
 
 def t_provider_diagnostics(tmp: pathlib.Path) -> None:
     print("\n[7] provider：空文本要能诊断，tool_use 要能上报")
-    src = pathlib.Path("core/provider.py").read_text(encoding="utf-8")
+    src = module_text("core.provider")
     check("stop_reason=" in src and "blocks=" in src,
           "空文本时会打出 stop_reason 与 block 类型（事故当天这两个都没有）")
     check("if not text.strip():" in src, "只在没提取到文本时打，正常路径不加噪音")

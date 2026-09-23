@@ -81,6 +81,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -221,7 +222,7 @@ def t_trigger_lives_in_audit() -> None:
     check("_maybe_prune_screenshots" in audit_src, "有一条节流后的心跳")
 
     # ⭐ 心跳必须挂在 `record()` 里 —— 那是唯一没有例外的通路。
-    tree = ast.parse((ROOT / "core" / "os_layer" / "audit.py").read_text(encoding="utf-8"))
+    tree = ast.parse(module_text("core.os_layer.audit"))
     rec = next((n for n in ast.walk(tree)
                 if isinstance(n, ast.FunctionDef) and n.name == "record"), None)
     check(rec is not None, "找得到 record()")
@@ -233,7 +234,7 @@ def t_trigger_lives_in_audit() -> None:
     check("_prune_shots" not in low_src,
           "⭐⭐ executor_low 里的旧回收**已删除**（判据只能有一处）")
     check("_SHOT_KEEP" not in low_src, "⭐ 旧的「留 20 张」常量已删除")
-    check("🪦" in (ROOT / "core" / "os_layer" / "executor_low.py").read_text(encoding="utf-8"),
+    check("🪦" in module_text("core.os_layer.executor_low"),
           "🪦 删除处留了墓碑，写清为什么别加回来")
 
 
@@ -297,7 +298,7 @@ def t_look_only_actions_write_no_audit() -> None:
     #      审计与否  不由「是不是动作」决定，由「是不是动了电脑」决定
     # ⭐⭐ 而这带来一个自洽性：**心跳只在真动电脑时跳，而产图的正是同一批动作**
     #     ⇒「不动电脑 → 不产图 → 不需要回收」，回收的覆盖面天然是对的。
-    orch = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orch = module_text("core.orchestrator")
     tree = ast.parse(orch)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -314,7 +315,7 @@ def t_look_only_actions_write_no_audit() -> None:
 
 def t_prune_never_breaks_screenshot() -> None:
     print("\n[5] ⚠️ 回收是家务，不该有能力让主功能失败")
-    src = (ROOT / "core" / "os_layer" / "audit.py").read_text(encoding="utf-8")
+    src = module_text("core.os_layer.audit")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "_maybe_prune_screenshots"), None)
@@ -338,7 +339,7 @@ def t_prune_never_breaks_screenshot() -> None:
 def t_look_at_screen_does_not_write_disk() -> None:
     print("")
     print("[5] 🔴🔴🔴 「截图没进 screenshots/」—— 是真的，且**不是 bug**")
-    orch = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orch = module_text("core.orchestrator")
     tree = ast.parse(orch)
 
     # ① _capture_screen_image 返回 PIL 图，_pil_to_png 返回 bytes —— 全程不落盘
@@ -365,7 +366,7 @@ def t_look_at_screen_does_not_write_disk() -> None:
               "⚠️ 里面没有任何写文件动作")
 
     # ③ 而且它刻意不持久化 —— 这是 用户自己定的
-    app_src = (ROOT / "app.py").read_text(encoding="utf-8")
+    app_src = module_text("app")
     i = app_src.find("_CHAT_EVENTS_EPHEMERAL")
     j = app_src.find("_CHAT_EVENTS_INTERACTION")
     check(0 < i < j and '"screenshot_preview"' in app_src[i:j],

@@ -25,6 +25,7 @@ os.environ["MODELSCOPE_CACHE"] = str(_TMP / "ms")
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -222,7 +223,7 @@ def t_all_ready_is_read_only() -> None:
 def t_single_download_implementation() -> None:
     print("\n[9] 安装器与运行时共用同一份下载代码")
     ps1 = (ROOT / "install.ps1").read_text(encoding="utf-8-sig")
-    rag = (ROOT / "core" / "rag.py").read_text(encoding="utf-8")
+    rag = module_text("core.rag")
     check("snapshot_download" not in ps1, "install.ps1 中不再有独立的下载脚本")
     check("core.rag_models import ensure_all" in ps1, "install.ps1 调用 core.rag_models.ensure_all")
     check("core.rag_models import all_ready" in ps1, "install.ps1 的最终校验调用 core.rag_models.all_ready")

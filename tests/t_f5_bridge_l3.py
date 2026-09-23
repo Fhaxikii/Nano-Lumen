@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -83,7 +84,7 @@ def t_memory_type_is_new() -> None:
           "🔴 硬塞会让 `semantic_memory.py` 里那条按 task_pattern 检索的召回腿"
           "**开始返回对话摘要**，一个正在正常工作的机制被污染，而且不报错")
 
-    src = pathlib.Path("core/context/bridge.py").read_text(encoding="utf-8")
+    src = module_text("core.context.bridge")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "hand_off"), None)
@@ -116,7 +117,7 @@ def t_memory_type_is_new() -> None:
 
 def t_commit_order_is_fail_closed() -> None:
     print("\n[4] ⭐⭐⭐ ① 提交顺序：验证通过才 commit，失败一律留 L2")
-    src = pathlib.Path("core/context/decay.py").read_text(encoding="utf-8")
+    src = module_text("core.context.decay")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "run_l2_to_l3"), None)
@@ -148,7 +149,7 @@ def t_commit_order_is_fail_closed() -> None:
 
 def t_bridge_two_legs() -> None:
     print("\n[5] ⭐⭐ ④ 两条腿：SQLite fail-closed / 向量 best-effort 但响亮")
-    src = pathlib.Path("core/context/bridge.py").read_text(encoding="utf-8")
+    src = module_text("core.context.bridge")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "hand_off"), None)
@@ -176,7 +177,7 @@ def t_bridge_two_legs() -> None:
 
 def t_index_injected_unconditionally() -> None:
     print("\n[6] ⭐⭐⭐ ③ 索引条目**无条件注入** system")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "_l3_index_block"), None)

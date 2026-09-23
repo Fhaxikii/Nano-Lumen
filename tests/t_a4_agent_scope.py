@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -177,7 +178,7 @@ def t_resolve_really_blocks() -> None:
 
 def t_isolation_and_report() -> None:
     print("\n[4] ⭐⭐ 上下文隔离：回 main agent 的**只有报告**")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     _loop = next((f for f in ast.walk(tree)
                   if isinstance(f, ast.AsyncFunctionDef) and f.name == "_run_agent_loop"), None)
@@ -372,7 +373,7 @@ def t_parallel_agents() -> None:
           f"峰值 {state['peak']}")
 
     # 并发闸本身（`_run_agent_loop` 不带闸，闸在 handler 里）
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     _h = next((f for f in ast.walk(tree)
                if isinstance(f, ast.AsyncFunctionDef) and f.name == "_handle_spawn_agent"), None)
@@ -399,7 +400,7 @@ def t_agent_monitor_drawer() -> None:
     #    那是**一处走偏的设计**，用户说了三遍才纠正过来。
     #    📌 **一条断言可以完全正确地守着一个放错了位置的设计**
     #       （同 `chat` 混进 STATUS 那次）—— 它绿着，反而让人以为这件事被想过了。
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
 
     _f = next((f for f in ast.walk(tree)
@@ -648,7 +649,7 @@ def t_agent_label_rides_the_execution_chain() -> None:
           repr(_after))
 
     # ⭐ 它真的被Subagent循环 set 了（零调用方的 ContextVar 和没有它一样）
-    _src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    _src = module_text("core.orchestrator")
     _tree = ast.parse(_src)
     _sa = next((f for f in ast.walk(_tree)
                 if isinstance(f, ast.AsyncFunctionDef)
@@ -771,7 +772,7 @@ def t_agent_ui_requests_survive_its_turn() -> None:
         _o._ui_oob_events = _oob_q
 
     # ⭐ 而轮外通道必须**真的有人读**（零消费者的通道 = 没有通道）
-    _src = (ROOT / "app.py").read_text(encoding="utf-8")
+    _src = module_text("app")
     _tree = ast.parse(_src)
     _defs_app = {f.name for f in ast.walk(_tree)
                  if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}

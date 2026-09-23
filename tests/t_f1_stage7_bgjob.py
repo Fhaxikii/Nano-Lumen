@@ -45,6 +45,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -278,8 +279,8 @@ def t_slots(tmp: pathlib.Path) -> None:
 
 def t_source_invariants() -> None:
     print("\n[6] ⭐⭐ 源码不变量")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
-    tsk = (ROOT / "core" / "runtime" / "task.py").read_text(encoding="utf-8")
+    app = module_text("app")
+    tsk = module_text("core.runtime.task")
 
     # ① 句柄必须被保住（终止功能的前提）
     tree = ast.parse(app)

@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -67,7 +68,7 @@ def _func_src(src: str, name: str) -> str:
 
 def t_cancel_has_a_ui_caller() -> None:
     print("\n[1] ⭐⭐⭐ `cancel_bg_task()` **真的有 UI 调用方了**（这一项就是那笔债）")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
 
     # ⚠️ 走 AST 找**调用**，不是在源码里搜字符串 ——
@@ -279,7 +280,7 @@ def t_run_marker_uses_kernel_clock() -> None:
     check(abs(k.started_at - BASE_T) < 1e-6,
           "⭐⭐ `kernel.started_at` 跟着**注入的时钟**走", str(k.started_at))
 
-    src = pathlib.Path("core/runtime/task.py").read_text(encoding="utf-8")
+    src = module_text("core.runtime.task")
     fn = next((f for f in ast.walk(ast.parse(src))
                if isinstance(f, ast.FunctionDef)
                and f.name == "finished_background_jobs"), None)
@@ -290,7 +291,7 @@ def t_run_marker_uses_kernel_clock() -> None:
 
 def t_pill_and_button_are_two_clocks() -> None:
     print("\n[5] ⭐ pill 管「向未来」/ 常驻按钮管「向过去」")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
     _sync = next((f for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)
                   and f.name == "_sync_task_pill"), None)
@@ -345,8 +346,8 @@ def t_running_is_not_shown_as_queued() -> None:
 
     # ⭐ 而它必须**真的有生产调用方** —— 这一项就是那笔债本身
     _hits = []
-    for _f in ("app.py", "core/orchestrator.py"):
-        _src = (ROOT / _f).read_text(encoding="utf-8")
+    for _f in ("app", "core.orchestrator"):
+        _src = module_text(_f)
         _tree = _ast.parse(_src)
         for n in _ast.walk(_tree):
             if not (isinstance(n, _ast.Call)
@@ -384,7 +385,7 @@ def t_cancel_reason_reaches_the_model() -> None:
     print("")
     print("[2d] 🔴 「是用户停的」这件事必须到得了模型")
     import ast as _ast
-    _src = (ROOT / "app.py").read_text(encoding="utf-8")
+    _src = module_text("app")
     _tree = _ast.parse(_src)
     _fn = next((f for f in _ast.walk(_tree)
                 if isinstance(f, (_ast.FunctionDef, _ast.AsyncFunctionDef))
@@ -437,7 +438,7 @@ def t_pill_handle_cannot_outlive_its_element() -> None:
     🔴 后果一样：死句柄上 `set_visibility(True)` **不报错也不显示**。
     """
     print("\n[L5] pill 句柄不许活得比元素长")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     fn_src = _func_src(app, "_sync_task_pill")
     check("default_slot.children" in fn_src,
           "⭐⭐⭐ 重建判据是「**它还在不在聊天容器的孩子里**」（level-triggered），"

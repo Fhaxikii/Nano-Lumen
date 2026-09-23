@@ -13,6 +13,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import tests._console  # noqa: F401,E402
+from tests._src import module_files, module_text  # noqa: E402
 
 _passed = 0
 _failed: list[str] = []
@@ -28,7 +29,7 @@ def check(cond, label, detail=""):
         print(f"  FAIL  {label}" + (f"   [{detail}]" if detail else ""))
 
 
-_SRC = (ROOT / "app.py").read_text(encoding="utf-8")
+_SRC = module_text("app")
 _TREE = ast.parse(_SRC)
 
 
@@ -206,7 +207,7 @@ def t_scope_clean() -> None:
     #    📌 一个查错工具的价值，在它抓到你自己刚写的错时才真正兑现。
     sys.path.insert(0, str(ROOT / "tests"))
     from t_l23_missing_imports import undefined_names
-    _hits = [h for h in undefined_names(ROOT / "app.py") if h[1] != h[0]]
+    _hits = [h for p in module_files("app") for h in undefined_names(p) if h[1] != h[0]]
     check(not _hits, "app.py 无未定义名", str(_hits[:3]) if _hits else "")
 
 

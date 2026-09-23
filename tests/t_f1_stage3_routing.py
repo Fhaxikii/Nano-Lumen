@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -143,7 +144,7 @@ def answer_call(iid: str, text: str, relation: str = "ANSWER"):
 
 def t_field_removed(tmp: pathlib.Path) -> None:
     print("\n[1] `_pending_skill_clarification` 已从代码里消失")
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
 
     # ⭐ 用 AST 而不是文本匹配。文本匹配会被注释和 docstring 里的历史说明打中——

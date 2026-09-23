@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -53,7 +54,7 @@ def t_fastpath_gone() -> None:
 
     # ⚠️ 不能用 `"_SKILL_CREATE_KEYWORDS" not in src` —— 注释里留着它的名字做留档，
     # 文本匹配会误报。这与 那条纪律同源：**检查代码性质的断言要用 AST。**
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     check("_SKILL_CREATE_KEYWORDS" in src,
           "前置条件：源码里仍能找到这个名字（注释留档），所以文本匹配确实不可靠")
 

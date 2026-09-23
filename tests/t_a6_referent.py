@@ -45,6 +45,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -286,7 +287,7 @@ def t_wiring() -> None:
           == R.parse_title("notepad", "a.txt - 记事本"),
           "⭐ orchestrator 侧留的是**转发**，判据只有 referent 一处")
 
-    src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     check("resolve_ambient_referent with the timestamp" in src,
           "⭐⭐ 稳定前缀里**接上了出口** —— ⚠️ 上一步刻意没接："
           "工具还不存在时指向它，就是「schema 说有、运行说没有」那类最难查的失败")
@@ -321,7 +322,7 @@ def t_wiring() -> None:
           "⚠️ **CORE 常驻** —— 理由同 `peek_file`：它存在的意义就是省轮数，"
           "逼它先 `load_tools` 等于自己把收益抵消掉")
 
-    hk = (ROOT / "core" / "proactive" / "hooks.py").read_text(encoding="utf-8")
+    hk = module_text("core.proactive.hooks")
     # ⚠️ 判据用 **运行时属性**，不用文本搜索 —— 第一版搜 `_domain_of` 字符串，
     #    结果搜到了那条**留痕注释**里提到的同名函数。
     #    📌 一条搜注释的断言，测的是「有没有人提过它」，不是「它还在不在」。
@@ -393,7 +394,7 @@ def t_argv_split() -> None:
         _ps.Process = _real
         R._single_document = _real_single
 
-    _src = (ROOT / "core" / "proactive" / "referent.py").read_text(encoding="utf-8")
+    _src = module_text("core.proactive.referent")
     check("用一个近似场景去验真实场景" in _src,
           "🪦 留痕记下**我第一次为什么没抓到它**：实测用的是 "
           "`subprocess.Popen(['notepad.exe', 路径])` —— 那是直接传 argv 数组，"
@@ -448,7 +449,7 @@ def t_browser_no_handle() -> None:
     b.set_url_domain("bilibili.com")
     check(b.snapshot()["url_domain"] == "bilibili.com", "⚠️ 域名这条路照旧")
 
-    hk = (ROOT / "core" / "proactive" / "hooks.py").read_text(encoding="utf-8")
+    hk = module_text("core.proactive.hooks")
     check("_a6_probe" not in hk,
           "⚠️ 那段临时诊断代码**已经删干净** —— 📌 定位用的脚手架不留在仓库里")
 

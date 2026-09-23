@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -84,7 +85,7 @@ def t_two_layer_table() -> None:
 def t_price_has_exactly_one_authority() -> None:
     """🔴 搬表最容易留下的半截状态：两处都在算价。"""
     print("\n[2] ⭐⭐⭐ 价格只有一个权威")
-    src = pathlib.Path("core/usage.py").read_text(encoding="utf-8")
+    src = module_text("core.usage")
     tree = ast.parse(src)
 
     # 计费函数里不许再从 config 取 model_prices
@@ -239,14 +240,14 @@ def t_pressure_block_discipline() -> None:
         _mm._write_last_known(_lk)
 
     # 注入点确实接上了
-    src = pathlib.Path("core/orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     check("pressure_block" in src,
           "⭐ orchestrator 里确实调了 `pressure_block` —— 📌 写了没人调，和没写一模一样")
 
 
 def t_monitor_card() -> None:
     print("\n[6] ⭐ 监控卡：量不到显示 `--`，失准明说失准")
-    src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "_refresh_context_card"), None)
@@ -339,7 +340,7 @@ def t_distribution_sampler() -> None:
 
     # ⚠️ 写盘必须在锁外：Subagent会并发调 provider
     import ast, pathlib
-    src = pathlib.Path("core/context/meter.py").read_text(encoding="utf-8")
+    src = module_text("core.context.meter")
     fn = next((x for x in ast.walk(ast.parse(src))
                if isinstance(x, ast.FunctionDef) and x.name == "observe"), None)
     check(fn is not None, "前置条件：找得到 observe")
@@ -434,7 +435,7 @@ def t_continuity_across_restart() -> None:
         M._last_known_path = _orig_path_fn      # ⚠️ 路径也要还原
 
     # 重置路径确实接上了
-    app_src = pathlib.Path("app.py").read_text(encoding="utf-8")
+    app_src = module_text("app")
     check("forget_conversation_size" in app_src,
           "⭐ 「重置对话」按钮里确实调了它 —— 📌 写了没人调，和没写一模一样")
     check("_refresh_context_card()" in app_src.split("self.ctx_lbl = ui.label")[1][:400],

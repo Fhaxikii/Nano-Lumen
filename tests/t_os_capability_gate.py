@@ -47,6 +47,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -219,7 +220,7 @@ def t_labels_do_not_drift() -> None:
 def t_authorized_by_is_visible() -> None:
     print("")
     print("[6] ⭐⭐ 「谁批的」对模型可见，且**用户点的**与**auto 替用户点的**分得开")
-    src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
     fn = next((f for f in ast.walk(tree)
                if isinstance(f, ast.AsyncFunctionDef) and f.name == "_execute_dsl_step"), None)
@@ -252,7 +253,7 @@ def t_authorized_by_is_visible() -> None:
           "而它是唯一一条模型必须停手的")
 
     # 预授权/无需授权那两档在 dispatch 侧
-    _dsp = (ROOT / "core" / "os_layer" / "dispatch.py").read_text(encoding="utf-8")
+    _dsp = module_text("core.os_layer.dispatch")
     # ⚠️ 按 AST 数字符串常量，不按引号形状 —— 源码里可能是单引号也可能是双引号，
     #    📌 一条断言不该在「我换了个引号」时变红。
     _consts = {n.value for n in ast.walk(ast.parse(_dsp))
@@ -338,7 +339,7 @@ def t_injection_names_the_affected_tools() -> None:
           "🔴 实测那次它正是这么干的")
 
     # ⭐ 那张表必须与「真的会走 OS 层的 handler」一一对应 —— **数出来，不靠记性**
-    _src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    _src = module_text("core.orchestrator")
     _tree = ast.parse(_src)
     _hosts = set()
     for n in ast.walk(_tree):

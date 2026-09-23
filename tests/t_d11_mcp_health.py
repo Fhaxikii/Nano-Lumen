@@ -39,6 +39,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -180,7 +181,7 @@ def t_stderr_is_the_real_source() -> None:
         check(isinstance(tap.fileno(), int), "⭐ `_StderrTap` 有真的 fileno()")
     finally:
         tap.close()
-    src = (ROOT / "core" / "mcp_client.py").read_text(encoding="utf-8")
+    src = module_text("core.mcp_client")
     check("stdio_client(params, errlog=" in _code_only(src).replace(" ", "").replace(
               "stdio_client(params,errlog=", "stdio_client(params, errlog=") or
           "errlog" in _code_only(src),
@@ -250,7 +251,7 @@ def t_f6_hook_is_filled() -> None:
     check(stale in h.blocked_tools(), "同时出现在 blocked_tools 里")
     # 📌 分不清「从来不存在」和「曾经存在现在断了」，缺的是事实来源；
     #    现在事实来源有了 —— 而【执行层拦截必须发生在 UNKNOWN_TOOL 判定之前】。
-    src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     i_blk = src.find("tool_block_reason(name)")
     i_unk = src.find("_cause = self._ToolFailCause.UNKNOWN_TOOL")
     check(i_blk > 0 and i_unk > 0 and i_blk < i_unk,
@@ -276,7 +277,7 @@ def t_user_removal_leaves_nothing() -> None:
           "它的工具名也不再被拦")
 
     # ⚠️ forget ≠ recover：删掉一个 server 不该产生「已恢复」的说法（那是假话）
-    src = (ROOT / "core" / "health.py").read_text(encoding="utf-8")
+    src = module_text("core.health")
     tree = ast.parse(src)
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, ast.FunctionDef) and n.name == "forget"), None)
@@ -298,7 +299,7 @@ def t_probes() -> None:
     check(H.Cap.mcp_server("fetch") in H.get_health()._probes,
           "⭐ 每个 MCP server 都有探针（否则退避 5 次约 31 秒后永久放弃）")
 
-    mcp_src = (ROOT / "core" / "mcp_client.py").read_text(encoding="utf-8")
+    mcp_src = module_text("core.mcp_client")
     node = next(n for n in ast.walk(ast.parse(mcp_src))
                 if isinstance(n, ast.FunctionDef) and n.name == "_make_probe")
     probe_src = ast.get_source_segment(mcp_src, node) or ""
@@ -310,7 +311,7 @@ def t_probes() -> None:
           "needs_auth 不自动重试（凭据要用户给，重试没用）")
 
     # rag 那两个
-    rag_src = (ROOT / "core" / "rag.py").read_text(encoding="utf-8")
+    rag_src = module_text("core.rag")
     check("register_probe(Cap.KB_RERANKER" in rag_src, "KB_RERANKER 探针已登记")
     check("register_probe(Cap.KB_KEYWORD_SEARCH" in rag_src, "KB_KEYWORD_SEARCH 探针已登记")
     # 🔴 BM25 探针不能调 `_check_bm25_available()` —— 它缓存结果，第一次 False
@@ -358,7 +359,7 @@ def t_no_silent_probe_gap() -> None:
           "⭐ `web.search` 不再是豁免 —— 它拿到了真探针（SearchTheWeb.py 里）")
     check(not hasattr(H.Cap, "WEB_FETCH"),
           "⭐ `WEB_FETCH` 整条能力已删（派生态：等于「有没有 server 声明 web.fetch」）")
-    check("WEB_FETCH" in (ROOT / "core" / "health.py").read_text(encoding="utf-8"),
+    check("WEB_FETCH" in module_text("core.health"),
           "🪦 但删除处留了墓碑，说明为什么别加回来")
     # 🔴 删一条能力最容易漏的就是别处还在引用它 —— 那会在运行时才炸。
     _refs = []
@@ -371,7 +372,7 @@ def t_no_silent_probe_gap() -> None:
 
 def t_truncation_is_gone() -> None:
     print("\n[9] `app.py` 那个 36 字符截断真的没了（与 [D9] 同形状）")
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
     # ⚠️ 必须剥掉注释再判 —— 修复处的注释里写着旧写法（那是留痕，不是问题本身）。
     _code = _code_only(src)
     check("[:36]" not in _code.replace(" ", ""),
@@ -440,7 +441,7 @@ def t_two_audiences_two_texts() -> None:
         print("    📌 给了中文建议却没给英文那份 = 模型永远说不出怎么修。")
 
     # ① 故障卡片的语气：恢复建议前面要有小标题，别读起来像在聊天
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     seg = app[app.find("def _render_fault_card"):][:2200]
     check("修复建议" in seg, "⭐ 故障卡片的恢复建议有小标题（系统提示语气，不是聊天）")
 
@@ -482,7 +483,7 @@ def t_config_is_reread() -> None:
     check(mgr.servers["fetch"].cfg["args"] == ["-m", "good_mod"], "也不动已有的 cfg")
 
     # 两个入口都必须刷：手动重试 + 探针
-    src = (ROOT / "core" / "mcp_client.py").read_text(encoding="utf-8")
+    src = module_text("core.mcp_client")
     tree = _ast.parse(src)
     for fname, why in (("retry_server", "UI 的「重试」按钮"), ("_make_probe", "自愈探针")):
         fn = next((n for n in _ast.walk(tree)
@@ -537,7 +538,7 @@ def t_nano_can_actually_fix_it() -> None:
 def t_native_selection_and_scroll() -> None:
     """的根因 + 开窗滚动位置（用户两条实测线索直接指到根）。"""
     print("\n[13] ⭐⭐ [U3] 根因锁定 + 开窗停在最新一条")
-    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    src = module_text("app")
 
     # ⭐⭐ 根因是 pywebview 的 `text_select` 默认 False：它在**页面加载之后**
     #    注入 `body{user-select:none}`。用户的两条线索是同一个原因：

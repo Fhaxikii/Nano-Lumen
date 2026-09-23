@@ -39,6 +39,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -107,7 +108,7 @@ async def t_cap_is_graceful() -> None:
 async def t_no_llm_no_token() -> None:
     """⚠️ 等待必须是纯 sleep —— 否则"等 3 分钟"会变成一笔账。"""
     print("\n[3] ⚠️ 等待期间零 LLM、零 token")
-    src = (ROOT / "core" / "runtime" / "oslease.py").read_text(encoding="utf-8")
+    src = module_text("core.runtime.oslease")
     tree = ast.parse(src)
     seg = ""
     for n in ast.walk(tree):
@@ -190,7 +191,7 @@ def t_bar_text_six_cases() -> None:
           "⚠️ 向上取整 —— 不会显示「0 秒内」却还没醒", _txt(0.3, True))
 
     # `parked` 必须由 await 自己维护，不靠调用方
-    src = (ROOT / "core" / "runtime" / "oslease.py").read_text(encoding="utf-8")
+    src = module_text("core.runtime.oslease")
     tree2 = ast.parse(src)
     seg = ""
     for n in ast.walk(tree2):
@@ -208,7 +209,7 @@ def t_bar_text_six_cases() -> None:
 
 def t_wiring() -> None:
     print("\n[5] 接线：出口是「等」而不是「失败」，且**范围与感知一致**")
-    orc = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    orc = module_text("core.orchestrator")
     oc = "\n".join(l for l in orc.splitlines() if not l.strip().startswith("#"))
     tree = ast.parse(orc)
 

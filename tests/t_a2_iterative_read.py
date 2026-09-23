@@ -45,6 +45,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -294,7 +295,7 @@ def t_scratchpad_and_compression() -> None:
 
 def t_rag_cap_is_gone() -> None:
     print("\n[6] 🔴🔴 RAG 层那道 300K 截断已取消（否则 [A2] 整个落空）")
-    src = (ROOT / "core" / "rag.py").read_text(encoding="utf-8")
+    src = module_text("core.rag")
     check("LOAD_FULL_MAX_CHARS = 1 << 62" in src,
           "⭐⭐ 阈值改成哨兵值 = 不再截断")
     tree = ast.parse(src)
@@ -338,7 +339,7 @@ def t_dead_pit_four() -> None:
           "⭐⭐ 全仓**没有任何代码调它** —— 📌 一个没有调用方的函数"
           "不构成任何人的阻塞；给它做「廉价路径」优化，是在优化一条没人走的路",
           str(hits))
-    src = (ROOT / "core" / "rag.py").read_text(encoding="utf-8")
+    src = module_text("core.rag")
     check("零调用方" in src, "🪦 函数上留了墓碑，说清那个坑的前提不成立")
 
 
@@ -453,7 +454,7 @@ def t_read_tool_prompts() -> None:
           str(_MM.MAX_SINGLE_TOOL_RESULT_CHARS))
 
     # ── 前置，不是追加 ──────────────────────────────────────────────
-    _src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    _src = module_text("core.orchestrator")
     check("result_text = _fr_note + result_text" in _src,
           "🔴🔴 提示**前置**到 result_text —— ⚠️ 截断切的是尾巴"
           "（`content[:limit]`），附在后面的话正好在需要它的那一刻被切掉。"

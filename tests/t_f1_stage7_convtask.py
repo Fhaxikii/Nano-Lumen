@@ -40,6 +40,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -284,6 +285,8 @@ def t_tool_and_facts_same_gate(tmp: pathlib.Path) -> None:
     #    **结构上不可能变陈旧**。
     # 📌 **一个复制来的事实需要有人负责让它过期；一个读出来的事实不需要。**
     _rec_now = T.get_task(k, tid) if hasattr(T, "get_task") else None
+    check(_rec_now is not None,
+          "读得到这个 Task（`get_task` 改名或查不到时，下面的检查不能静默跳过）")
     if _rec_now is not None:
         check(not (_rec_now.goal_summary or ""),
               "⭐⭐⭐ `goal_summary` 是**空的** —— 那句 pip 来自 blocker，"
@@ -342,7 +345,7 @@ def t_creation_failure_isolated(tmp: pathlib.Path) -> None:
 
 def t_source_invariants() -> None:
     print("\n[7] ⭐⭐ 源码不变量：把规则绑在能被检查的地方")
-    src = (ROOT / "core" / "orchestrator.py").read_text(encoding="utf-8")
+    src = module_text("core.orchestrator")
     tree = ast.parse(src)
 
     import asyncio as _aio
@@ -454,7 +457,7 @@ def t_source_invariants() -> None:
           "⭐ 创建那条路真的挂在 DEFERRED 上（不是反的）")
 
     # ⑥ 归属物那两类必须**分开调**：等待用 ensure，一轮内的东西用 owner_label
-    wsrc = (ROOT / "core" / "runtime" / "waitcond.py").read_text(encoding="utf-8")
+    wsrc = module_text("core.runtime.waitcond")
     check("ensure_conversation_task" in wsrc,
           "⭐ waitcond 用 `ensure_...`（有权创建）")
     for mod in ("inbox", "attempt", "toolbatch"):
@@ -486,7 +489,7 @@ def t_pill_settle_from_authority() -> None:
           edge-triggered 的补发只修当前这一条。**
     """
     print("\n[8] ⭐⭐⭐ 等待 pill 收尾：时机与措辞都回权威读")
-    app = (ROOT / "app.py").read_text(encoding="utf-8")
+    app = module_text("app")
     alive = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
     tree = ast.parse(app)
 
@@ -659,14 +662,14 @@ def t_stale_conversation_closed(tmp: pathlib.Path) -> None:
           "📌 一个写好但没人调的回收，比没写更坏："
           "没写时缺口可见，写了不接时缺口**看起来已经补上了**"
           "（`mcp_client.awareness_lines()` 的教训）")
-    ksrc = (ROOT / "core" / "runtime" / "kernel.py").read_text(encoding="utf-8")
+    ksrc = module_text("core.runtime.kernel")
     check(ksrc.count("_task.install_reconcile(k)") == 2,
           "⭐ 而且**两条内核初始化路径都接了**（生产 + 测试重置）—— "
           "只接一条会让测试里永远看不到它",
           str(ksrc.count("_task.install_reconcile(k)")))
 
     # ── ⑧ TTL 取值必须有先例，不是新发明一个数 ────────────────────────────
-    tsrc = (ROOT / "core" / "runtime" / "task.py").read_text(encoding="utf-8")
+    tsrc = module_text("core.runtime.task")
     check("_CLARIFICATION_TTL_SECONDS" in tsrc,
           "⭐ TTL 的取值在注释里指明了**项目内的同语义先例**（澄清交互的 2 小时）—— "
           "📌 一个新 TTL 应该先找已有的同语义先例，而不是另发明一个数")
