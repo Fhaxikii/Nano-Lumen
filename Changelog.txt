@@ -2137,6 +2137,8 @@
 - Fixed scrolling up when Nano was asked to scroll down.
 - Fixed drag actions always failing.
 - Fixed the test suite reading and writing the user's real data (memory, runtime state, knowledge base index, settings, audit log).
+- Fixed the "Unprocessed message" card reappearing in the chat every time Nano started.
+- Fixed error cards with repair suggestions disappearing from the chat after context compaction or Reset conversation while the error still existed.
 
 ### Improvements
 - Redundant model copies (unusable .bin weights and duplicate download caches, about 4 GB) are removed automatically.
@@ -2161,6 +2163,8 @@
 - 修复 Nano 被要求向下滚动时实际向上滚动的问题。
 - 修复拖拽操作总是失败的问题。
 - 修复测试套件读写用户真实数据（记忆、运行时状态、知识库索引、设置、审计日志）的问题。
+- 修复「未处理的消息」卡片每次启动 Nano 都会再次出现的问题。
+- 修复错误仍然存在时，带修复建议的错误卡片在上下文压缩或「重置对话」后从聊天区消失的问题。
 
 ### 优化
 - 自动清理多余的模型副本（无法使用的 .bin 权重与重复的下载缓存，约 4 GB）。

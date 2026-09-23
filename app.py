@@ -714,7 +714,7 @@ def render_sys_error_card(text: str) -> None:
 #    不是 Nano 在对你说话 —— 早先定的判据是**文字出现在哪里**。
 #    ⭐ 而卡里的**正文是用户自己打的原话**，本来就不该由模型改写。
 def render_unsent_user_card(payload: str) -> None:
-    """画一张「这条当时没被处理」的卡。**live 与重放共用这一个实现。**
+    """画一张「这条当时没被处理」的卡。只在启动时呈现一次，不写进聊天记录、不重放。
 
     ⚠️ `payload` 是 JSON（`{"text": ..., "had_image": bool}`），
        解析失败就当纯文本 —— 📌 一张画不出来的卡，比一张信息少一点的卡糟得多。
@@ -1117,6 +1117,9 @@ class WebUI:
         self._ui_ready: bool = False
         self._pending_chat_events: list = []
         self._emitted_chat_keys: set = set()   # 按 dedupe_key 保证一个事件只渲染一次
+        # 本次运行发出过的故障卡。聊天区被清空重画（压缩同步、重置对话）后重新画到末尾：
+        # 故障卡不进聊天记录，重放画不出它，而错误本身并没有因为重画而消失。
+        self._live_fault_events: list = []
 
         # 对话窗口图片上传状态（直接进context）
         self._pending_image_bytes: bytes | None = None
@@ -7735,7 +7738,16 @@ class WebUI:
             return          # 一个事件只渲染一次
         if _key:
             self._emitted_chat_keys.add(_key)
+        if ev.get("category") == "fault":
+            self._live_fault_events.append(ev)
+        self._draw_chat_event(ev)
+        try:
+            self.scroll_area.scroll_to(percent=1.0, duration=0.2)
+        except Exception:
+            pass
 
+    def _draw_chat_event(self, ev: dict):
+        """把一条聊天事件画进聊天区（不做去重，不滚动）。"""
         category = ev.get("category", "speech")
         with self._ui_scope():
             # 空状态问候语是 chat_container 的【兄弟节点】且排在它后面，所以聊天区
@@ -7756,10 +7768,14 @@ class WebUI:
                                 self._render_fault_card(ev)
                             else:
                                 self._render_speech(ev, _blk)
-        try:
-            self.scroll_area.scroll_to(percent=1.0, duration=0.2)
-        except Exception:
-            pass
+
+    def _redraw_live_faults(self):
+        """聊天区清空重画之后，把本次运行的故障卡重新画到末尾。"""
+        for ev in list(self._live_fault_events):
+            try:
+                self._draw_chat_event(ev)
+            except Exception as e:
+                logger.debug(f"[UI] 重画故障卡失败: {e}")
 
     def _render_fault_card(self, ev: dict):
         """醒目错误卡。宗旨：尽可能让致命报错摆脱 cmd —— Nano 是原生桌面
@@ -8216,10 +8232,9 @@ class WebUI:
         ⚠️ **呈现完必须丢弃。** 留着 PENDING 的话，下一次 `_drain_inbox` 会把它
            捡起来真的执行 —— 那正是被否掉的那一支。
            📌 **「不执行」不是靠没人去执行它，是靠它不再处于可被执行的状态。**
-        ⚠️ 只走 `add_ui_only_record`（用户看得见、模型看不见）——
-           📌 一旦进了模型的上下文，「呈现」和「执行」的界限就没了：
-              模型看见一条没人处理的用户请求，它会去做。
-           ⭐ 复用 前一半刚建的那条通道，不新增轴。
+        ⚠️ 只画在界面上：不进模型上下文（模型看见一条没人处理的用户请求会去做，
+           「呈现」和「执行」的界限就没了），也不写进聊天记录（它说明的是「上次关闭时
+           的状态」，重启后、或所在上下文被压缩移出后都不再有意义，所以不重放）。
         ⚠️ `WAKE_INTENT` 不呈现（只丢弃）：那不是用户打的字，是系统的唤醒信号；
            「上个进程有没干完的活」由 `_startup_resume_offer` 负责问。
            📌 两条路各答各的问题，别让一件事在两个地方说两遍。
@@ -8245,13 +8260,8 @@ class WebUI:
                 _payload = _j.dumps({"text": it.body or "",
                                      "had_image": bool(_d.get("had_image"))},
                                     ensure_ascii=False)
-                # ⭐ 先落账本（下次重启还能重放），再画到屏幕上。
-                #    📌 顺序不能反：先画后存的话，画完崩了这条就真没了 ——
-                #       同 那条「先产生可召回内容 → 持久化 → 才 commit」。
-                try:
-                    self.agent.memory.add_ui_only_record(_payload, "inbox_unsent")
-                except Exception as _e:
-                    logger.warning(f"[L14] 落账本失败（仍然画出来）: {_e}")
+                # 只在本次启动呈现一次，不写进聊天记录：它说明的是「上次关闭时的状态」，
+                # 重启后、或所在的上下文被压缩移出后都不再有意义。
                 with self._ui_scope():
                     with self.chat_container:
                         render_unsent_user_card(_payload)
@@ -10599,6 +10609,8 @@ class WebUI:
         self._clear_empty_state_greeting()
         with self.scroll_area:
             self._render_empty_state_greeting()
+        # 重置清掉的是对话，不是错误：未修复的故障卡要留在界面上。
+        self._redraw_live_faults()
         # 清空临时知识库和文件列表
         try:
             rag_engine.clear_temp_knowledge()
@@ -11153,10 +11165,8 @@ class WebUI:
                     render_sys_error_card(msg.content or "")
                 index += 1
                 continue
-            # ⭐ 关软件时还没处理的那些话 —— 同样走**同一个**渲染器。
+            # 旧版本写进记录的「未处理的消息」卡：只在呈现当次有意义，重放时跳过。
             if _rk == "inbox_unsent":
-                with self.chat_container:
-                    render_unsent_user_card(msg.content or "")
                 index += 1
                 continue
             if msg.role == "user":
@@ -11322,6 +11332,7 @@ class WebUI:
             with self._ui_scope():
                 self.chat_container.clear()
                 self._replay_durable_conversation()
+                self._redraw_live_faults()
                 if self.scroll_area is not None:
                     self.scroll_area.scroll_to(percent=1.0, duration=0.2)
         except Exception as e:

@@ -1247,29 +1247,26 @@ def t_l14_present_not_execute(tmp: pathlib.Path) -> None:
     check(_m is not None, "⭐ `_startup_present_unsent` 存在")
     if _m is not None:
         body = _ast.unparse(_m)
-        check("add_ui_only_record" in body,
-              "⭐⭐⭐ 走 `add_ui_only_record`（用户看得见、**模型看不见**）—— "
-              "📌 一旦进了模型的上下文，「呈现」和「执行」的界限就没了："
-              "模型看见一条没人处理的用户请求，它会去做")
         check("add_system_note" not in body and "add_message" not in body,
-              "🔴 **没有**任何一条写进模型上下文的路径")
+              "🔴 **没有**任何一条写进模型上下文的路径 —— 模型看见一条没人处理的"
+              "用户请求会去做，「呈现」和「执行」的界限就没了")
+        check("add_ui_only_record" not in body,
+              "只呈现一次、不写进聊天记录：它说明的是「上次关闭时的状态」，"
+              "重启后或所在上下文被压缩移出后都不再有意义")
         check("discard" in body,
               "⭐⭐ 呈现之后**真的丢弃** —— 留着 PENDING 的话下次 drain 会执行它")
         check("WAKE_INTENT" in body or "USER_MESSAGE" in body,
               "⚠️ 按 kind 分流：`WAKE_INTENT` 不呈现（那不是用户打的字，"
               "「上个进程有没干完的活」归 [B1] `_startup_resume_offer` 问）")
-        # ⭐ 落账本必须在画之前
-        _i_led = body.index("add_ui_only_record")
-        _i_draw = body.index("render_unsent_user_card")
-        check(_i_led < _i_draw,
-              "⭐ **先落账本再画** —— 📌 先画后存的话，画完崩了这条就真没了"
-              "（同 [F5]「先持久化再 commit」）")
+        check("render_unsent_user_card" in body, "呈现时画出这张卡")
 
-    # ⑤ live 与重放**共用同一个渲染器**
-    check(src.count("def render_unsent_user_card") == 1,
-          "⭐⭐ 渲染器只有一份 —— 📌 live 那张和重放那张必须逐像素一样")
-    check('_rk == "inbox_unsent"' in src,
-          "⭐ 重放认得 `inbox_unsent` 这个 render_kind")
+    # ⑤ 重放：旧版本写进记录的 inbox_unsent 一律跳过，不再画出来
+    check(src.count("def render_unsent_user_card") == 1, "渲染器只有一份")
+    _rp = next((n for n in _ast.walk(fn)
+                if isinstance(n, _ast.FunctionDef) and n.name == "_replay_durable_conversation"), None)
+    _rp_src = _ast.unparse(_rp) if _rp is not None else ""
+    check("inbox_unsent" in _rp_src and "render_unsent_user_card" not in _rp_src,
+          "重放认得旧的 `inbox_unsent` 记录并跳过，不画这张卡")
 
     # ⑥ ⚠️ 顺序：呈现排在「要不要接着做」之前
     _i_present = src.index("self._startup_present_unsent, once=True")
