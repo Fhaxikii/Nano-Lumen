@@ -111,7 +111,7 @@ def _cache_diag(sig: dict, tag: str = "") -> None:
     prev = _CACHE_SIG_PREV
     _CACHE_SIG_PREV = sig
     if not prev:
-        logger.warning(f"[CACHE-DIAG{(' ' + tag) if tag else ''}] 首次请求（无可比对象）"
+        logger.debug(f"[CACHE-DIAG{(' ' + tag) if tag else ''}] 首次请求（无可比对象）"
                        f" | tools={sig['tools_n']}个/{sig['tools_c']}字符"
                        f" stable={sig['stable_c']}字符 dyn={sig['dyn_c']}字符"
                        f" msgs={sig['msgs_n']}条")
@@ -131,7 +131,7 @@ def _cache_diag(sig: dict, tag: str = "") -> None:
             ("dyn_h", "system.dynamic", f"{prev['dyn_c']}→{sig['dyn_c']}字符"),
     ):
         if prev.get(_key) != sig.get(_key):
-            logger.warning(
+            logger.debug(
                 f"[CACHE-DIAG{(' ' + tag) if tag else ''}] 🔴 前缀在 **{_label}** 处断开"
                 f"（{_extra}）→ 它**后面的缓存全部作废**"
                 f" | 稳定块={sig.get('stbl_n')}个/{sig.get('stbl_c')}字符"
@@ -145,14 +145,14 @@ def _cache_diag(sig: dict, tag: str = "") -> None:
         # 找出第一条对不上的，那才是被改写的位置
         _at = next((i for i in range(min(len(_pm), len(_sm))) if _pm[i] != _sm[i]),
                    min(len(_pm), len(_sm)))
-        logger.warning(
+        logger.debug(
             f"[CACHE-DIAG{(' ' + tag) if tag else ''}] 🔴 前缀在 **messages 第 {_at} 条**"
             f"处断开（历史被改写：{prev['msgs_n']}→{sig['msgs_n']}条）"
             f"→ 它**后面的缓存全部作废** | tools={sig['tools_n']}个 "
             f"stable={sig['stable_c']} dyn={sig['dyn_c']}")
         return
     _grew = sig["msgs_n"] - prev["msgs_n"]
-    logger.warning(
+    logger.debug(
         f"[CACHE-DIAG{(' ' + tag) if tag else ''}] ✅ 前缀完好"
         f"（历史{'追加 +%d 条' % _grew if _grew else '未变'}，仍是有效前缀）"
         f" | 稳定块={sig.get('stbl_n')}个/{sig.get('stbl_c')}字符"
@@ -170,7 +170,7 @@ def _record_usage(usage, model: str, tag: str = "") -> None:
     out = getattr(usage, "output_tokens", 0) or 0
     # 成本按缓存权重算准；session/UI 单条显示只累计 fresh+output（本轮真花的量）。
     usage_tracker.record_detailed(fresh, cr, cc, out, model)
-    logger.warning(
+    logger.debug(
         f"[TOKEN-USAGE{(' ' + tag) if tag else ''}] "
         f"fresh={fresh} cache_read={cr} cache_creation={cc} output={out} "
         f"(gross_in={fresh + cr + cc})"
@@ -415,6 +415,14 @@ def endpoint_models(base_url: str, api_key: str, vendor: str = "") -> list[str]:
                 return list(hit)
     except Exception:
         pass
+    # 没有 key 时探测必然失败（401），不发请求，直接使用厂商表。
+    # 不写进进程内缓存：配置好 key 之后需要重新探测。
+    if not (api_key or "").strip():
+        try:
+            from core.models import load as _load
+            return list(((_load().get(vendor) or {}).get("models") or {}).keys())
+        except Exception:
+            return []
     ids = fetch_endpoint_models(base_url, api_key)
     if not ids:
         # 回落厂商表 —— 并把结果（含这次探测失败）记进进程内缓存
@@ -915,7 +923,7 @@ class ClaudeProvider:
                 _tools_c = len(_dbgjson.dumps(tools, ensure_ascii=False)) if tools else 0
                 _msgs_c = len(_dbgjson.dumps(messages, ensure_ascii=False))
                 _ntools = len(tools) if tools else 0
-                logger.warning(
+                logger.debug(
                     f"[TOKEN-DIAG] system={_sys_c}字符 | tools={_tools_c}字符({_ntools}个) "
                     f"| messages={_msgs_c}字符({len(messages)}条) | 合计≈{_sys_c+_tools_c+_msgs_c}字符"
                 )
@@ -936,13 +944,13 @@ class ClaudeProvider:
                         except Exception:
                             pass
                     _tool_sizes.sort(reverse=True)
-                    logger.warning(
+                    logger.debug(
                         "[TOKEN-DIAG-TOOLS] "
                         + " | ".join(f"{_name}:{_size}" for _size, _name in _tool_sizes[:10])
                     )
                 if CACHE_BREAK_MARKER in (system_guide or ""):
                     _stable, _, _dynamic = (system_guide or "").partition(CACHE_BREAK_MARKER)
-                    logger.warning(f"[TOKEN-DIAG-SYSTEM] stable={len(_stable)}字符 | dynamic={len(_dynamic)}字符")
+                    logger.debug(f"[TOKEN-DIAG-SYSTEM] stable={len(_stable)}字符 | dynamic={len(_dynamic)}字符")
             except Exception:
                 pass
             # Debug: log messages with thinking blocks to catch "cannot be modified" errors
@@ -1230,13 +1238,13 @@ class ClaudeProvider:
                 import json as _dbgjson
                 _sys_c = len(system_guide or "")
                 _msgs_c = len(_dbgjson.dumps(messages, ensure_ascii=False))
-                logger.warning(
+                logger.debug(
                     f"[TOKEN-DIAG-NOTOOLS] system={_sys_c}字符 | tools=0字符(0个) "
                     f"| messages={_msgs_c}字符({len(messages)}条) | 合计≈{_sys_c+_msgs_c}字符"
                 )
                 if CACHE_BREAK_MARKER in (system_guide or ""):
                     _stable, _, _dynamic = (system_guide or "").partition(CACHE_BREAK_MARKER)
-                    logger.warning(f"[TOKEN-DIAG-SYSTEM] stable={len(_stable)}字符 | dynamic={len(_dynamic)}字符")
+                    logger.debug(f"[TOKEN-DIAG-SYSTEM] stable={len(_stable)}字符 | dynamic={len(_dynamic)}字符")
             except Exception:
                 pass
             async with self._client.messages.stream(
@@ -1293,13 +1301,13 @@ class ClaudeProvider:
                 import json as _dbgjson
                 _sys_c = len(system_guide or "")
                 _msgs_c = len(_dbgjson.dumps(messages, ensure_ascii=False))
-                logger.warning(
+                logger.debug(
                     f"[TOKEN-DIAG-NOTOOLS] system={_sys_c}字符 | tools=0字符(0个) "
                     f"| messages={_msgs_c}字符({len(messages)}条) | 合计≈{_sys_c+_msgs_c}字符"
                 )
                 if CACHE_BREAK_MARKER in (system_guide or ""):
                     _stable, _, _dynamic = (system_guide or "").partition(CACHE_BREAK_MARKER)
-                    logger.warning(f"[TOKEN-DIAG-SYSTEM] stable={len(_stable)}字符 | dynamic={len(_dynamic)}字符")
+                    logger.debug(f"[TOKEN-DIAG-SYSTEM] stable={len(_stable)}字符 | dynamic={len(_dynamic)}字符")
             except Exception:
                 pass
             resp = await self._client.messages.create(

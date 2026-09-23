@@ -412,7 +412,7 @@ def _trace(kind: str, injected: bool, hwnd, verdict: str) -> None:
     global _trace_flushed_at
     try:
         if kind in (CLICK, FOCUS_CHANGE):
-            logger.info(f"[Takeover-Trace] {kind} injected={injected} "
+            logger.debug(f"[Takeover-Trace] {kind} injected={injected} "
                         f"verdict={verdict} 落点={_describe_hwnd(hwnd) or '未知'}")
             return
         now = time.time()
@@ -427,7 +427,7 @@ def _trace(kind: str, injected: bool, hwnd, verdict: str) -> None:
         if snap:
             parts = [f"{k[0]}/{'inj' if k[1] else 'real'}→{k[2]}×{v}"
                      for k, v in sorted(snap.items(), key=lambda x: str(x[0]))]
-            logger.info(f"[Takeover-Trace] 近 {_TRACE_FLUSH_SEC:.0f}s 聚合: "
+            logger.debug(f"[Takeover-Trace] 近 {_TRACE_FLUSH_SEC:.0f}s 聚合: "
                         + "  ".join(parts))
     except Exception:
         pass

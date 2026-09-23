@@ -49,17 +49,10 @@ import threading
 from typing import List, Dict, Any, Optional, Tuple
 from loguru import logger
 
-# ── 环境变量必须在这里也加载一次（不能只靠 app.py / provider.py）──────────────
-# 2026-08-04 实测代价：一次 `python -c "import core.rag"` 的直接导入，因为没走 .env，
-# `HF_HUB_OFFLINE=1` 没生效 → huggingface 联网去 hf-mirror 拉模型 → 只拿到几个小配置
-# 文件就被中断 → 它把 refs/main 从 ModelScope 布局的 "main" 改写成真实 commit 哈希，
-# 又在 .no_exist/ 里写下"model.safetensors 不存在"的否定缓存。
-# 结果：**权重明明在磁盘上（2.27 GB），但从此再也加载不了**，
-# 报错是 "does not appear to have a file named pytorch_model.bin or model.safetensors"，
-# 看起来像模型没装，实际是缓存元数据被改坏了。
-#
-# 所以离线开关不能只挂在应用入口上——rag 是会被脚本、子进程、测试直接 import 的模块，
-# 任何一个不走 app.py 的入口都可能把用户的模型缓存搞坏。
+from core import rag_models as _rag_models
+
+# ── 加载 .env（本模块会被脚本、子进程和测试直接 import，不经过 app.py）──
+# 模型文件的定位与下载不依赖任何环境变量，见 core/rag_models.py。
 try:
     from dotenv import load_dotenv as _load_dotenv
     _load_dotenv(dotenv_path=pathlib.Path(__file__).parent.parent / ".env")
@@ -181,71 +174,20 @@ LOAD_FULL_MAX_CHARS = 1 << 62
 # 内部工具
 # ══════════════════════════════════════════════
 
-def _resolve_hf_snapshot(repo_id: str) -> str:
-    """把模型快照显式备齐到本地（只取 safetensors），返回可加载的目录路径。
+def _build_model(repo_id: str, factory):
+    """准备本地模型文件并构造模型对象。
 
-    🔴 为什么不让 SentenceTransformer 直接吃 hub id（2026-09-14 实测）：
-       transformers 在快照缺 safetensors 时会**静默回退** pytorch_model.bin，
-       而 transformers 5.x 又因 CVE-2025-32434 拒载 .bin（要求 torch≥2.6）。
-       实测新机器上镜像源解析出的快照只有 .bin → WEIGHTS_FORMAT_REJECTED，
-       且重启无法自愈——refs 指向的那份快照里永远等不来 safetensors，
-       后补下载的 safetensors 反而落进另一个 revision 的目录（缓存三份互不相认）。
-       ⇒ 显式 allow_patterns 只取 safetensors 和配置，让 .bin 根本不进缓存；
-       格式选择权收回自己手里，而不是托付给上游的回退顺序。
+    权重格式被拒或文件缺失时，忽略本进程的检查缓存、重新检查（必要时转换或下载）后重试一次；
+    其他错误直接抛出。
     """
-    from huggingface_hub import snapshot_download
-    patterns = ["*.json", "*.txt", "*.model",
-                "model.safetensors", "1_Pooling/*", "2_Dense/*"]
     try:
-        return snapshot_download(repo_id, allow_patterns=patterns)
+        return factory(_rag_models.ensure_model(repo_id))
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(
-            "[RAG] huggingface download failed (%s), falling back to modelscope",
-            type(e).__name__)
-        return _download_via_modelscope(repo_id)
-
-
-def _download_via_modelscope(repo_id: str) -> str:
-    """Download via modelscope (Aliyun mirror), lay out as HF cache, return snapshot dir."""
-    import os, shutil
-    os.environ.setdefault("MODELSCOPE_ENDPOINT", "https://mirrors.aliyun.com/modelscope/")
-    os.environ.setdefault("MODELSCOPE_DOWNLOAD_PARALLELS", "16")
-    ms_patterns = ["*.json", "*.txt", "*.bin", "*.safetensors",
-                   "*.model", "tokenizer*", "sentence*"]
-    from modelscope.hub.snapshot_download import snapshot_download as ms_dl
-    md = ms_dl(repo_id, allow_patterns=ms_patterns)
-    hub = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-    cdir = os.path.join(hub, "models--" + repo_id.replace("/", "--"))
-    snap = os.path.join(cdir, "snapshots", "main")
-    refs = os.path.join(cdir, "refs")
-    if os.path.exists(cdir):
-        shutil.rmtree(cdir, ignore_errors=True)
-    os.makedirs(snap, exist_ok=True)
-    os.makedirs(refs, exist_ok=True)
-    for item in os.listdir(md):
-        src = os.path.join(md, item)
-        dst = os.path.join(snap, item)
-        (shutil.copy2 if os.path.isfile(src) else shutil.copytree)(src, dst)
-    with open(os.path.join(refs, "main"), "w") as f:
-        f.write("main")
-    st = os.path.join(snap, "model.safetensors")
-    binf = os.path.join(snap, "pytorch_model.bin")
-    if not os.path.exists(st) and os.path.exists(binf):
-        import torch
-        from safetensors.torch import save_file
-        sd = torch.load(binf, map_location="cpu", weights_only=True)
-        cleaned, seen = {}, {}
-        for k, v in sd.items():
-            if not isinstance(v, torch.Tensor):
-                continue
-            if v.data_ptr() in seen:
-                v = v.clone()
-            else:
-                seen[v.data_ptr()] = k
-            cleaned[k] = v.contiguous()
-        save_file(cleaned, st, metadata={"format": "pt"})
-    return snap
+        code = _model_load_code(e)
+        if code not in ("WEIGHTS_FORMAT_REJECTED", "MODEL_MISSING"):
+            raise
+        logger.warning(f"[RAG] {repo_id} 加载失败（{code}），重新检查本地模型文件后重试一次")
+        return factory(_rag_models.ensure_model(repo_id, recheck=True))
 
 
 def _load_embedder():
@@ -273,34 +215,14 @@ def _load_embedder():
                 detail="SentenceTransformer('BAAI/bge-m3') —— 原生栈崩溃高发点",
             ):
                 from sentence_transformers import SentenceTransformer
-                # bge-m3：智源 2024 年发布的多语言嵌入模型，中文 RAG 业界默认选择
+                # bge-m3：智源 2024 年发布的多语言嵌入模型，中文 RAG 业界默认选择。
                 # 上一代 paraphrase-multilingual-MiniLM-L12-v2 在中文短查询场景下相似度信号过弱
-                # （实测"解释权"对原文 chunk 余弦相似度仅 0.24，远低于无关 Excel cell 的 0.47）
-                # bge-m3 模型大小约 2.27GB，首次启动会从 HuggingFace 下载（只取 safetensors，
-                # 见 _resolve_hf_snapshot）
-                # 推理内存约 1-2GB，比 MiniLM 高一个数量级，但召回质量显著提升
-                _embedder = SentenceTransformer(_resolve_hf_snapshot("BAAI/bge-m3"))
+                # （"解释权"对原文 chunk 余弦相似度仅 0.24，低于无关 Excel cell 的 0.47）。
+                # 模型约 2.27GB，推理内存约 1-2GB。文件的定位、下载与格式转换见 core/rag_models.py。
+                _embedder = _build_model(_rag_models.EMBEDDER_REPO, SentenceTransformer)
         except Exception as e:
             code = _model_load_code(e)
-            # WEIGHTS_FORMAT_REJECTED: local cache only has .bin (legacy download).
-            # Delete the bad cache and re-fetch via ModelScope, which converts to safetensors.
-            if code == "WEIGHTS_FORMAT_REJECTED":
-                try:
-                    logger.warning("[RAG] .bin-only cache detected, re-downloading via ModelScope...")
-                    import shutil
-                    hub = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-                    cdir = os.path.join(hub, "models--BAAI--bge-m3")
-                    if os.path.exists(cdir):
-                        shutil.rmtree(cdir, ignore_errors=True)
-                    _download_via_modelscope("BAAI/bge-m3")
-                    _embedder = SentenceTransformer(_resolve_hf_snapshot("BAAI/bge-m3"))
-                    logger.info("[RAG] self-heal: reloaded via ModelScope with safetensors")
-                    _init_stage_log.append("embedder_ready")
-                    report_ok(Cap.KB_VECTOR_SEARCH, note="embedder loaded (self-healed)")
-                    return _embedder
-                except Exception as e2:
-                    logger.error("[RAG] self-heal failed: %s", e2)
-            _msg, _hint, _hint_en = _classify_model_load_error(e, "BAAI/bge-m3")
+            _msg, _hint, _hint_en = _classify_model_load_error(e, _rag_models.EMBEDDER_REPO)
             report_fault(
                 Cap.KB_VECTOR_SEARCH, code,
                 user_message=_msg, hint=_hint, hint_en=_hint_en,
@@ -319,6 +241,8 @@ def _model_load_code(e: Exception) -> str:
     不能用完整异常字符串做指纹——路径、内存地址、下载进度都会变，同一根因会被识别成
     多个故障，去重直接失效。所以这里只映射成有限的几个 code。
     """
+    if isinstance(e, _rag_models.ModelUnavailable):
+        return "MODEL_FETCH_OFFLINE"
     s = f"{type(e).__name__}: {e}".lower()
     # ⚠️ 不要匹配裸的 "safetensors" —— 那是**权重文件的文件名**，
     #    几乎每条权重相关报错都带它（「找不到 model.safetensors」也会命中）。
@@ -678,8 +602,9 @@ def _load_reranker():
                 from sentence_transformers import CrossEncoder
                 # bge-reranker-v2-m3：智源 2024 年发布的多语言 cross-encoder
                 # max_length=512：bge-reranker-v2-m3 的最大输入长度
-                # 同 _load_embedder：显式备齐 safetensors 快照，不走 hub id
-                _reranker = CrossEncoder(_resolve_hf_snapshot("BAAI/bge-reranker-v2-m3"), max_length=512)
+                _reranker = _build_model(
+                    _rag_models.RERANKER_REPO,
+                    lambda path: CrossEncoder(path, max_length=512))
         except Exception as e:
             # 重排缺失只是质量下降（保持 RRF 原序），不是失能 → degraded 不是 fault。
             # 但仍要登记，否则用户永远不知道检索质量为什么变差了。

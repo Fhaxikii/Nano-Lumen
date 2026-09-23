@@ -78,7 +78,7 @@ class WorkingMemoryStore:
             try:
                 conn.execute("ALTER TABLE working_memory ADD COLUMN status TEXT NOT NULL DEFAULT 'confirmed'")
                 conn.commit()
-                logger.info("[WorkingMemory] 已迁移：添加 status 列")
+                logger.debug("[WorkingMemory] 已迁移：添加 status 列")
             except Exception:
                 pass  # 列已存在，忽略
             # status 索引放在迁移之后，确保列存在
@@ -119,7 +119,7 @@ class WorkingMemoryStore:
                     conn.execute(
                         f"ALTER TABLE working_memory ADD COLUMN {_col} TEXT NOT NULL DEFAULT ''")
                     conn.commit()
-                    logger.info(f"[WorkingMemory] 已迁移：添加 {_col} 列")
+                    logger.debug(f"[WorkingMemory] 已迁移：添加 {_col} 列")
                 except Exception:
                     pass  # 列已存在，忽略
 

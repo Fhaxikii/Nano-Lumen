@@ -14556,7 +14556,7 @@ class Orchestrator:
                                              for d in _deferred)
         ) if _deferred else ""
         try:
-            logger.warning(
+            logger.debug(
                 f"[TOKEN-PLAN] core_tools={len(self._core_manifest)} "
                 f"({','.join(m.get('name','') for m in self._core_manifest)}); "
                 f"deferred_tools={len(_deferred)}"

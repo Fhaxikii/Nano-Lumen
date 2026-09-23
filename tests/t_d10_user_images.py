@@ -274,7 +274,7 @@ def t_attach_runs_before_content_patch() -> None:
                 and n.targets[0].attr == "_turn_image_pending"]
         _plan = [n.lineno for n in ast.walk(impl)
                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                 and n.func.attr == "warning"
+                 and n.func.attr in ("debug", "info", "warning")
                  and "TOKEN-PLAN" in (ast.get_source_segment(src2, n) or "")]
         check(bool(_set), "本轮标志确实在 `_handle_query_impl` 里落定", f"L{_set}")
         check(bool(_plan), "⚠️ [L5] 前置：找得到核心工具清单那一步（TOKEN-PLAN）", f"L{_plan}")

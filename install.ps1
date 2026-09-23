@@ -72,30 +72,12 @@ else { Write-Host " pip dependency installation failed (all sources)." -Foregrou
 
 # -- 3. RAG models (BGE-M3 + reranker, offline cache) ----------------------
 Hr "3/6 RAG models (~3GB)"
-$ragPy = @'
-import os, shutil
-def dl(repo, pats):
-    os.environ['MODELSCOPE_ENDPOINT'] = 'https://mirrors.aliyun.com/modelscope/'
-    os.environ['MODELSCOPE_DOWNLOAD_PARALLELS'] = '16'
-    from modelscope.hub.snapshot_download import snapshot_download
-    md = snapshot_download(repo, allow_patterns=pats)
-    hub = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-    cdir = os.path.join(hub, "models--" + repo.replace("/", "--"))
-    snap = os.path.join(cdir, "snapshots", "main"); refs = os.path.join(cdir, "refs")
-    if os.path.exists(cdir): shutil.rmtree(cdir, ignore_errors=True)
-    os.makedirs(snap, exist_ok=True); os.makedirs(refs, exist_ok=True)
-    for it in os.listdir(md):
-        s = os.path.join(md, it); d = os.path.join(snap, it)
-        (shutil.copy2 if os.path.isfile(s) else shutil.copytree)(s, d)
-    open(os.path.join(refs, "main"), "w").write("main")
-    print("[OK]", repo)
-P = ["*.json","*.txt","*.bin","*.safetensors","*.model","tokenizer*","sentence*"]
-dl("BAAI/bge-m3", P); dl("BAAI/bge-reranker-v2-m3", P)
-'@
-$ragPy | Out-File "$env:TEMP\nano_dl_rag.py" -Encoding utf8
-& python "$env:TEMP\nano_dl_rag.py"
+# Downloading, laying out and converting the models is done by core/rag_models.py,
+# the same code Nano uses at runtime. It checks the local cache first and only
+# downloads what is missing.
+$env:HF_ENDPOINT = "https://hf-mirror.com"
+& python -c "from core.rag_models import ensure_all; ensure_all(); print('[OK] RAG models')"
 $ragOk = ($LASTEXITCODE -eq 0)
-Remove-Item "$env:TEMP\nano_dl_rag.py" -Force -ErrorAction SilentlyContinue
 if ($ragOk) {
     [System.Environment]::SetEnvironmentVariable("HF_ENDPOINT","https://hf-mirror.com","User")
     Write-Host " RAG models ready." -ForegroundColor Green
@@ -336,9 +318,10 @@ if (-not (Test-EdgeBrowser)) { $fail += "Edge browser (required by Playwright)" 
 if (-not (Test-Path "$tessDir\tesseract.exe")) { $fail += "Tesseract" }
 if (-not (Test-Path "$tessDir\tessdata\chi_sim.traineddata")) { $fail += "Tesseract chi_sim language pack" }
 if (-not (Test-WebView2 -Quiet)) { $fail += "WebView2" }
-$hub = Join-Path $env:USERPROFILE ".cache\huggingface\hub"
-if (-not (Test-Path (Join-Path $hub "models--BAAI--bge-m3\snapshots\main"))) { $fail += "RAG: bge-m3" }
-if (-not (Test-Path (Join-Path $hub "models--BAAI--bge-reranker-v2-m3\snapshots\main"))) { $fail += "RAG: reranker" }
+# Passes only if both models have loadable safetensors weights and the required
+# files, checked by the same code the runtime uses (no download, no conversion).
+& python -c "import sys; from core.rag_models import all_ready; sys.exit(0 if all_ready() else 1)" *> $null
+if ($LASTEXITCODE -ne 0) { $fail += "RAG models (bge-m3 / bge-reranker-v2-m3)" }
 
 Write-Host ""
 if ($fail.Count -eq 0) {

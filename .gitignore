@@ -22,6 +22,7 @@ data/chroma_memory_db/
 data/cmd_output/
 data/context_last_known.json
 data/context_samples.jsonl
+data/fault_journal.jsonl
 data/nano_memory.db
 data/nano_runtime.db
 data/*.db-shm
@@ -31,6 +32,8 @@ data/os_state.json
 data/proactive_ledger.json
 data/proactive_shadow.jsonl
 data/throttle_config.json
+# Developer-only switches (core/dev_flags.py). Never committed; absent = all off.
+data/dev_flags.json
 # 运行期 JSON 默认全忽略（含绝对路径，属机器信息），只放行随版本分发的白名单
 data/*.json
 !data/china_regions_city.json

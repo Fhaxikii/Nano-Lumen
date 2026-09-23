@@ -2121,3 +2121,30 @@
 - 修复 RAG 模型 `.bin` 格式缓存错误时，无法通过重新启动触发自动修复的问题。
 
 ---
+
+## v1.98 (beta)
+
+### Fixes
+- Fixed the knowledge-base embedding model taking about a minute to load the first time it was used in each session: on every load it tried to reach HuggingFace first and, when that failed, deleted and rebuilt the local model cache. Models are now loaded from the local cache without any network request; they are downloaded only when missing.
+- Fixed the installer placing the embedding model in a format the runtime refuses to load (.bin), which made the first launch convert it again.
+- Fixed the installer's final check passing without verifying that the model weights can actually be loaded.
+- Fixed Nano requesting the model list with an empty API key on every launch before a key is configured.
+
+### Improvements
+- Redundant model copies (unusable .bin weights and duplicate download caches, about 4 GB) are removed automatically.
+- The installer and Nano now share one implementation for downloading and preparing the knowledge-base models.
+- The console shows startup information, warnings and errors by default; per-request diagnostics are only shown in developer mode.
+
+
+### 修复
+- 修复知识库嵌入模型每次会话首次使用时加载约需一分钟的问题：此前每次加载都会先尝试连接 HuggingFace，失败后删除并重建本地模型缓存。现在直接从本地缓存加载，不发起任何网络请求，仅在本地缺失时下载。
+- 修复安装器下载的嵌入模型为运行时拒绝加载的格式（.bin），导致首次启动时需要再次转换的问题。
+- 修复安装器最终校验未确认模型权重可以正常加载的问题。
+- 修复未配置 API Key 时，每次启动仍用空 Key 请求模型列表的问题。
+
+### 优化
+- 自动清理多余的模型副本（无法使用的 .bin 权重与重复的下载缓存，约 4 GB）。
+- 安装器与 Nano 使用同一份知识库模型下载与准备逻辑。
+- 控制台默认只显示启动信息、警告与错误；逐次请求的诊断信息仅在开发者模式下显示。
+
+---

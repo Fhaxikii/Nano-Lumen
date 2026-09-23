@@ -16671,6 +16671,16 @@ if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
 
+    # 控制台日志：默认 INFO；data/dev_flags.json 中 console_debug 为 true 时输出 DEBUG。
+    # 必须在其他模块产生日志之前配置。
+    try:
+        import sys as _sys
+        from core import dev_flags as _dev_flags
+        logger.remove()
+        logger.add(_sys.stderr, level="DEBUG" if _dev_flags.enabled("console_debug") else "INFO")
+    except Exception as _log_err:
+        print(f"[Log] 控制台日志配置失败，沿用默认设置: {_log_err}")
+
     try:
         # 异常钩子尽早装（补充手段——抓得到的 Python 级异常也记进同一个 journal，
         # 免得只留在 cmd 里）。真正的主力是 rag.py 里那几处 write-ahead breadcrumb，
@@ -16705,7 +16715,8 @@ if __name__ == "__main__":
             #    它上面那条声明带类型标注，`global` 一个带标注的名字是 SyntaxError。
             _STARTUP_INTERRUPTED = list(
                 getattr(_rt_rep, "interrupted_details", []) or [])
-            if _rt_rep.did_anything or _rt_rep.extra:
+            # extra 中的计数全为 0 时不算有动作（reconciler 已记录「无需处理」）。
+            if _rt_rep.did_anything or any((_rt_rep.extra or {}).values()):
                 logger.warning(f"[Runtime] 启动恢复：{_rt_rep.summary()} extra={_rt_rep.extra}")
 
             # ⭐ 本次运行的身份留痕。**挂在恢复报告之后**——
