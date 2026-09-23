@@ -78,34 +78,21 @@
     "key_hint": "在 platform.deepseek.com 申请官方 API Key，或填写任意中转服务的 Key",
     "roles": {
       "distiller": [
-        "deepseek-v4-flash",
-        "deepseek-v4-flash-vision-exp",
+        "deepseek-flash",
         "deepseek-v4-pro"
       ],
       "classifier": [
-        "deepseek-v4-flash",
-        "deepseek-v4-flash-vision-exp",
+        "deepseek-flash",
         "deepseek-v4-pro"
       ],
       "vision": [
-        "deepseek-v4-flash-vision-exp"
+        "deepseek-flash"
       ]
     },
     "models": {
-      "deepseek-v4-flash": {
-        "input_per_1m": 3.0,
-        "output_per_1m": 9.0,
-        "window": 1000000,
-        "quota": {
-          "L0": 0.25,
-          "L1": 0.15,
-          "L2": 0.08,
-          "L3": 0.02
-        }
-      },
-      "deepseek-v4-flash-vision-exp": {
-        "input_per_1m": 3.0,
-        "output_per_1m": 9.0,
+      "deepseek-flash": {
+        "input_per_1m": 2.0,
+        "output_per_1m": 8.0,
         "window": 1000000,
         "quota": {
           "L0": 0.25,

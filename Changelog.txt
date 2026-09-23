@@ -2132,6 +2132,7 @@
 - Fixed Nano taking the first tab instead of the selected one as the confirmed folder of a File Explorer window with several tabs (Windows 11).
 - Fixed Nano treating the command-line path of an editor process (the first file opened) as the confirmed path of another open file with the same name in a different folder.
 - Fixed the full file path being shown as the file name in the activity summary for editors whose window title contains the full path (Notepad++ by default).
+- Fixed the DeepSeek model list showing only deepseek-v4-pro.
 
 ### Improvements
 - Redundant model copies (unusable .bin weights and duplicate download caches, about 4 GB) are removed automatically.
@@ -2148,6 +2149,7 @@
 - 修复资源管理器窗口有多个标签页时（Windows 11），Nano 将第一个标签而非当前选中标签的文件夹标记为已确认的问题。
 - 修复编辑器同一进程中打开了不同文件夹下的同名文件时，Nano 把进程命令行中的路径（最先打开的文件）当作另一个文件的已确认路径的问题。
 - 修复窗口标题含完整路径的编辑器（Notepad++ 默认如此）在活动摘要中把完整路径当作文件名显示的问题。
+- 修复深度求索模型下拉菜单只显示 deepseek-v4-pro 的问题。
 
 ### 优化
 - 自动清理多余的模型副本（无法使用的 .bin 权重与重复的下载缓存，约 4 GB）。
