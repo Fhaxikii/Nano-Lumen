@@ -21,6 +21,7 @@ core/mcp_client.py — MCP（Model Context Protocol）客户端核心。
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 import io
 import json
 import os
@@ -75,6 +76,11 @@ ST_DISABLED = "disabled"
 _MAX_RECONNECT = 5
 _CALL_TIMEOUT_DEFAULT = 120.0   # 单次工具调用超时（秒）；长任务应走后台唤醒而非拉长这个
 _READY_TIMEOUT = 25.0           # 等待首次连接就绪的超时（秒）
+# 连接握手（打开传输 + initialize + list_tools）中每个请求的读取超时（秒）。
+# 没有它时，远端接受连接却不回应会让 worker 永远停在 connecting：既不失败也不重连，
+# 界面上也没有「重试」可点。本地 stdio 给得更宽：npx 首次启动可能要先下载包。
+_HANDSHAKE_TIMEOUT_HTTP = 30.0
+_HANDSHAKE_TIMEOUT_STDIO = 120.0
 
 
 # ── ${VAR} / ${VAR:-default} 环境变量展开（生态约定，Claude Code 同款）──────────
@@ -451,7 +457,10 @@ class MCPServer:
             read, write, _ = await stack.enter_async_context(
                 streamablehttp_client(url, headers=headers or None)
             )
-        session = await stack.enter_async_context(ClientSession(read, write))
+        # 会话默认读取超时只用于握手与工具列表刷新；工具调用在 _serve 里按调用方的超时单独给。
+        _hs = _HANDSHAKE_TIMEOUT_STDIO if self.transport == "stdio" else _HANDSHAKE_TIMEOUT_HTTP
+        session = await stack.enter_async_context(
+            ClientSession(read, write, read_timeout_seconds=timedelta(seconds=_hs)))
         return session
 
     async def _refresh_tools(self, session: "ClientSession") -> None:
@@ -480,7 +489,7 @@ class MCPServer:
             # 上限回收：一个话痨 server 在长连接里能把 stderr 写很久
             if self._stderr_tap is not None:
                 self._stderr_tap.reset_if_huge()
-            tool, args, fut, _prog_ref = req
+            tool, args, fut, _prog_ref, _timeout = req
             if fut.done():  # 调用方已超时取消
                 continue
             try:
@@ -508,7 +517,8 @@ class MCPServer:
                         _prog_bus.report(_r, message or _t,
                                          progress=progress, total=total)
                 result = await session.call_tool(
-                    tool, args or {}, progress_callback=_cb)
+                    tool, args or {}, progress_callback=_cb,
+                    read_timeout_seconds=timedelta(seconds=_timeout + 5))
                 if not fut.done():
                     fut.set_result(result)
             except asyncio.CancelledError:
@@ -546,7 +556,7 @@ class MCPServer:
 
         loop = asyncio.get_event_loop()
         fut: asyncio.Future = loop.create_future()
-        await self._req_q.put((tool, args, fut, progress_ref))
+        await self._req_q.put((tool, args, fut, progress_ref, float(timeout)))
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
         except asyncio.TimeoutError:
