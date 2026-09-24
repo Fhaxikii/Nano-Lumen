@@ -200,11 +200,11 @@ def _build_model(repo_id: str, factory):
 def _load_embedder():
     """加载 bge-m3。
 
-    ⚠️ 这是全项目最危险的一次调用 —— 实测结论是
-    bge-m3 模型栈(torch/transformers) 与 chroma-hnswlib 在同一进程里会造成原生堆内存
-    损坏 → 随机 segfault（5 次复现 3 崩）。segfault 走不到任何 except，所以这里必须
-    用 write-ahead breadcrumb：动手【之前】写盘，成功后清掉；下次启动看到没清掉的痕迹
-    就知道上次死在这一步。excepthook 抓不到 segfault，指望不上。
+    ⚠️ 这是全项目内存占用最大的一次调用（与重排模型合计约 2 GB 常驻）。系统内存耗尽时
+    进程会在这里或写向量库时直接崩溃（segfault），崩溃原因见 core/crash_journal.py
+    （已确定为系统内存耗尽，不是 torch 与 chroma 同进程的兼容问题）。segfault 走不到
+    任何 except，所以这里必须用 write-ahead breadcrumb：动手【之前】写盘，成功后清掉；
+    下次启动看到没清掉的痕迹就知道上次死在这一步。excepthook 抓不到 segfault，指望不上。
     """
     global _embedder
     if _embedder is not None:                # 快路径：已加载，不进锁

@@ -8359,8 +8359,8 @@ class WebUI:
         """启动后展示上一个进程的崩溃留痕（一次性）。
 
         进程级登记表只能处理"异常被 Python 捕获、进程还活着"。它处理不了原生库崩溃、
-        segfault、os._exit、启动早期 import 终止——而那恰是本项目的已知崩溃形态
-        （内部诊断记录：torch+chromadb 原生堆损坏 → 随机 segfault）。
+        segfault、os._exit、启动早期 import 终止——而那恰是本项目实际遇到过的崩溃形态
+        （系统内存耗尽时加载模型 / 写向量库的 segfault，见 core/crash_journal.py）。
         那些靠 write-ahead breadcrumb 留痕，在这里读出来。
         """
         try:

@@ -7,9 +7,12 @@ Nano 崩溃留痕 —— 故障上报体系里"进程已经死了"那个出口
 HealthRegistry 只能处理"异常被 Python 捕获、进程还活着"这一种情况。它处理不了：
 原生库崩溃 / segfault / os._exit / 启动早期 import 直接终止。
 
-而这恰好就是本项目的已知崩溃形态——内部诊断记录 的结论是
-"bge-m3 模型栈(torch/transformers)与 chroma-hnswlib 在同一进程里造成间歇性原生堆
-内存损坏 → 随机 segfault，5 次复现 3 崩"。
+本项目实际遇到过的正是这一类：加载 bge-m3 / 重排模型、或向量库写入时进程直接崩溃
+（segfault）。原因已确定为系统内存耗尽，不是 torch 与 chroma 同进程的兼容问题：
+崩溃时其他程序也一起崩溃；崩溃频率随时间变化，不做任何改动也会恢复；升级 VC++
+运行时无效；同一份代码在空闲内存约 3 GB 时加载第二个模型连续失败，在约 20 GB 时
+chroma + 嵌入 + 重排同进程加载与推理连续通过。内存不足时这类崩溃仍可能发生，
+所以留痕仍然需要。
 
 sys.excepthook / threading.excepthook / asyncio exception handler 这三个钩子
 **一个都抓不到 segfault**：原生层直接杀进程，Python 栈根本不会展开。os._exit 按
