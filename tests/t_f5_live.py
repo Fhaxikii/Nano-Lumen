@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# nano-test: live — loads the real embedding / reranker models (about 2.3 GB)
+# nano-test: live — loads the real embedding model (about 2.3 GB) into a real vector store
 """**真的把它跑一遍** ——那五个的回归。
 
 ═══ 这个套件为什么必须存在 ═══
