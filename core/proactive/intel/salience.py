@@ -16,20 +16,13 @@ from typing import Optional
 from core.proactive.activity import get_buffer
 from core.proactive.intel.scene import classify_scene
 from core.proactive.intel.types import Episode, Scene
+from core.self_identity import is_self_pid
 
 # [原型期标定]
 _IDLE_GAP_S = 15 * 60         # 多久无键盘算"空闲"（实测：5min 太短，喝杯咖啡就触发 recover，recover 占 52%；抬到 15min 只有真正离开才续上）
 _TYPING_STOP_S = 180         # 连续输入后停多久算"停下来了"
 _MIN_EPISODE_S = 30          # 太短的 episode 不产出反思类候选
 _USE_SOFT_BOUNDARY = False   # v0 关；实际需要时再开
-
-_SELF_TITLES = ("nano",)     # 排除 Nano 自己窗口
-
-
-def _is_self(title: str, proc: str) -> bool:
-    t = (title or "").lower()
-    return any(s in t for s in _SELF_TITLES) and "office" not in t  # 粗排除，够用
-
 
 class SalienceTracker:
     def __init__(self):
@@ -69,7 +62,7 @@ class SalienceTracker:
 
         with self._lock:
             # 排除 Nano 自己窗口：当前现场是切过来之前那个，跳过更新
-            if _is_self(title, proc):
+            if is_self_pid(snap.get("foreground_pid", 0) or 0):
                 return {"closed": None, "events": [], "scene": scene}
 
             # ── 硬锚点边界判定 ──

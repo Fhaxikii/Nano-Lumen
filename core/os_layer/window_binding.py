@@ -55,6 +55,8 @@ from typing import Any, Dict, Optional, Set
 
 from loguru import logger
 
+from core.self_identity import is_self_window
+
 _lock = threading.Lock()
 #: `{"lease_id": str, "hwnd": int, "pid": int, "title": str, "proc": str, "sure": bool}`
 _bound: Optional[Dict[str, Any]] = None
@@ -109,15 +111,6 @@ def _rect(hwnd: int):
         return None
 
 
-def _is_self_window(title: str) -> bool:
-    """排掉 Nano 自己的窗口。复用 `executor_low` 那份判据，不另立标准。"""
-    try:
-        from core.os_layer.executor_low import _is_self_window_title
-        return _is_self_window_title(title)
-    except Exception:
-        return "nano" in (title or "").lower()
-
-
 def snapshot() -> Set[int]:
     """当前所有"够大的、可见的、不是 Nano 自己"的顶层窗口 hwnd。"""
     out: Set[int] = set()
@@ -130,7 +123,7 @@ def snapshot() -> Set[int]:
                 if not u.IsWindowVisible(hwnd):
                     return True
                 t = _title(hwnd)
-                if not t or _is_self_window(t):
+                if not t or is_self_window(int(hwnd)):
                     return True
                 rc = _rect(hwnd)
                 if not rc or rc[2] < _MIN_W or rc[3] < _MIN_H:

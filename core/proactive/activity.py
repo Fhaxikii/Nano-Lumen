@@ -172,7 +172,8 @@ class ActivityBuffer:
                            reverse=True)
             if procs:
                 top_proc = procs[0].info.get("name", "")
-                is_nano = top_proc.lower() in ("python.exe", "python3.exe", "python")
+                from core.self_identity import is_self_pid
+                is_nano = is_self_pid(procs[0].pid)
         except Exception:
             pass
         with self._lock:

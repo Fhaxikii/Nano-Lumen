@@ -23,122 +23,16 @@
 from __future__ import annotations
 import asyncio
 import pathlib
-# ⚠️⚠️ **这一行以前不在这儿。**
-#
-# 🔴 唯一的 `import ctypes` 写在 `_window_title()` 函数体里（154 行），
-#    而 `_own_pid()` / `_pid_and_proc()` / `_H()` 三个模块级函数都用 `ctypes.` ——
-#    它们全都包着 `except Exception`，于是**不崩，只是永远走 except**：
-#      · `_own_pid()` 永远返回 **-1**（实测确认）
-#      · `_pid_and_proc()` 永远返回 `(0, "")`
-#      · `_H()` 直接抛 `NameError`，被调用方的 except 吞掉
-#
-# 🔴🔴 **后果是一次重写整体失效。** `is_self_window()` 在 2026-08-07 被专门
-#    重写过，把「这个窗口是不是我自己」的主键**从标题换成 PID**，理由写在它
-#    自己的 docstring 里（标题判据实际误判了用户的 cmd 控制台、
-#    一个记事本文档……）。而那条路是 `if pid and pid == _own_pid()` ——
-#    `_own_pid()` 恒为 -1、`_pid_and_proc()` 恒为 `(0, "")` →
-#    **那个分支永远进不去**，`is_self_window` 每次都落到它想废掉的标题判据上。
-#    换句话说：**那次重写从落地的第一天起就没生效，而它看起来生效了。**
-#
-# 📌 **一次「把主键从 A 换成 B」的重写，如果 B 那条路上有一个静默返回哨兵值的
-#    缺陷，那次重写等于没发生 —— 而且看起来发生了。**
-# 📌 **一个包在 `except Exception` 里的 `NameError`，比一个崩掉的贵得多**：
-#    崩掉会被立刻修，静默降级会被当成「这个判据就是不太准」。
-# ⚠️ `import ctypes` 本身在所有平台都安全（`ctypes.windll` 才是 Windows 专属，
-#    而那些调用点本来就有 `except`）。
 import ctypes
 import platform
 from typing import Any, Dict, Optional
 from loguru import logger
 
+from core.self_identity import is_self_window
+
 
 def _missing(dep: str) -> Dict[str, Any]:
     return {"ok": False, "data": {}, "summary": "", "error": f"dependency_missing: {dep}"}
-
-
-# ── 自身窗口排除（2026-06-20 复现：UIA 定位 + 合法性校验双双失效）──
-# 根因：用户发消息这个动作本身必然让 Nano 的浏览器/原生窗口获得 OS 焦点，
-# 此前 UIA 扫描 (auto.GetForegroundControl()) 和 Gemini 候选点合法性校验
-# (_foreground_window_rect) 都直接信"当前前台窗口"，等于永远在对着 Nano
-# 自己的窗口找/校验，而不是用户真正想操作的那个窗口——UIA 因此永远扫错
-# 树（NOT_FOUND），Gemini 瞎猜出的、落在 Nano 自己窗口里的错误坐标反而能
-# 通过"是否在前台窗口范围内"的校验（因为前台窗口=Nano自己），两条防线
-# 同时失效。
-#
-# 标题关键词用 "nano"（小写匹配，覆盖 app.py 里 ui.run(title='Nano OS', ...)
-# 设置的标题，以及浏览器标签页显示的 "Nano"/"Nano OS"）。刻意只依赖标题，
-# 不依赖浏览器进程名——以后 NiceGUI 如果切换成 native=True（pywebview
-# 原生窗口而非浏览器标签页），进程会从 chrome.exe/msedge.exe 变成
-# python/webview 宿主进程，但标题大概率不变，这条判断不用跟着改。
-_SELF_WINDOW_TITLE_MARKERS = ("nano",)
-
-
-#: 浏览器降级模式下，Nano 的标签页属于浏览器进程 —— 那时只能靠标题认。
-_BROWSER_PROC_NAMES = {"chrome", "msedge", "firefox", "brave", "opera", "iexplore"}
-
-
-def _own_pid() -> int:
-    try:
-        return int(ctypes.windll.kernel32.GetCurrentProcessId())
-    except Exception:
-        return -1
-
-
-def _pid_and_proc(hwnd) -> tuple:
-    try:
-        pid = ctypes.c_ulong()
-        ctypes.windll.user32.GetWindowThreadProcessId(_H(hwnd), ctypes.byref(pid))
-        p = int(pid.value)
-    except Exception:
-        return (0, "")
-    try:
-        import psutil
-        return (p, (psutil.Process(p).name() or "").replace(".exe", "").lower())
-    except Exception:
-        return (p, "")
-
-
-def is_self_window(hwnd, title: str = "") -> bool:
-    """这个窗口是不是 **Nano 自己的界面**。
-
-    ⚠️⚠️ **2026-08-07 重写：主键从「标题含 nano」改成「PID 是不是我自己」。**
-
-    旧写法（只看标题里有没有 "nano"）误判了一大片，实测命中：
-      · `'管理员:  Nano Office'`（**一个 cmd 控制台**，993x519）
-      · `'某个项目文档.md - 记事本'`（一个普通文档窗口）
-      · 任何标题里带 Nano 的资源管理器窗口
-
-    后果不是"多排除几个"这么轻：
-    🔴 `_get_self_window_rect()` 返回的是**第一个**命中的窗口 →
-       于是 `look_at_screen` **遮掉了 cmd 控制台那块区域**，
-       而 **Nano 自己的窗口根本没被排除**，照样出现在截图里。
-       "中间一个黑框、而且 Nano 说缩了窗其实没缩"就是这么来的。
-    🔴 那个记事本被当成"自己"，于是 `get_target_window()` 和窗口绑定都**跳过它** ——
-       用户让 Nano 操作那个文档，它会看不见。
-
-    📌 **判据：身份判据不能用「用户能自由命名的东西」当主键。**
-    标题是用户可控的（文件名、控制台标题、文件夹名都能含 "nano"），
-    而 PID 是操作系统给的。这跟窗口绑定用 hwnd 不用标题、
-    以及键鼠用 `LLKHF_INJECTED` 不用自抑制标志，是同一条原则：
-    **问系统要事实，别拿可被巧合命中的特征去猜。**
-
-    ⚠️ 标题判据**保留为降级路径**，但收窄了：原注释担心的是
-    「NiceGUI 换成 native 之后进程名会变」，那个顾虑本身对 ——
-    **浏览器降级模式**下（检测不到 WebView2、用户自己开 8080）
-    Nano 的标签页属于 chrome/msedge，PID 确实不是我们的。
-    所以那条路改成「标题命中 **且** 宿主是浏览器进程」，不再单靠标题。
-    """
-    if hwnd:
-        pid, proc = _pid_and_proc(hwnd)
-        if pid and pid == _own_pid():
-            return True
-        t = (title or "").strip().lower()
-        if proc in _BROWSER_PROC_NAMES and any(m in t for m in _SELF_WINDOW_TITLE_MARKERS):
-            return True
-        return False
-    # 没给 hwnd：只能退回旧判据（调用方应尽量给 hwnd）
-    t = (title or "").strip().lower()
-    return any(m in t for m in _SELF_WINDOW_TITLE_MARKERS)
 
 
 def _H(hwnd):
@@ -151,13 +45,6 @@ def _H(hwnd):
     那个窗口就悄悄从枚举结果里消失了。同一个坑在 `takeover_hooks` 已经踩过一次。
     """
     return ctypes.c_void_p(int(hwnd))
-
-
-def _is_self_window_title(title: str) -> bool:
-    """⚠️ **旧接口，只看标题 —— 会误判，新代码请用 `is_self_window(hwnd, title)`。**
-    保留是因为有两处调用方只拿得到标题（Playwright 的 `window_title`）。"""
-    t = (title or "").strip().lower()
-    return any(m in t for m in _SELF_WINDOW_TITLE_MARKERS)
 
 
 def foreground_identity() -> Optional[Dict[str, Any]]:
@@ -251,7 +138,7 @@ def get_target_window():
             except Exception:
                 width = height = 0
             _seen.append(f"{title!r}(min={getattr(w,'isMinimized','?')},{width}x{height})")
-            if _is_self_window_title(title):
+            if is_self_window(getattr(w, "_hWnd", 0)):
                 continue
             # 过滤系统外壳小部件（任务栏"开始"按钮等），不是真实应用窗口。
             # 实测复现：pygetwindow 枚举会把"开始"排在最前面，宽高只有

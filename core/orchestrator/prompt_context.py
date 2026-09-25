@@ -951,7 +951,7 @@ class PromptContextMixin:
         """
         try:
             from core.proactive.activity import get_buffer
-            from core.os_layer.executor_low import _is_self_window_title
+            from core.self_identity import is_self_pid, is_self_window
             snap = get_buffer().snapshot()
         except Exception:
             return ""
@@ -962,7 +962,8 @@ class PromptContextMixin:
 
         def _self(w) -> bool:
             try:
-                return _is_self_window_title(getattr(w, "window_title", "") or "")
+                return (is_self_pid(getattr(w, "pid", 0) or 0)
+                        or is_self_window(getattr(w, "hwnd", 0) or 0))
             except Exception:
                 return False
 
@@ -1119,7 +1120,7 @@ class PromptContextMixin:
         """
         try:
             from core.proactive.activity import get_buffer
-            from core.os_layer.executor_low import _is_self_window_title
+            from core.self_identity import is_self_pid, is_self_window
             snap = get_buffer().snapshot()
         except Exception:
             return ("", None)
@@ -1132,7 +1133,8 @@ class PromptContextMixin:
         for i, w in enumerate(all_focus):
             end = all_focus[i + 1].ts if i + 1 < len(all_focus) else now
             try:
-                if _is_self_window_title(getattr(w, "window_title", "") or ""):
+                if (is_self_pid(getattr(w, "pid", 0) or 0)
+                        or is_self_window(getattr(w, "hwnd", 0) or 0)):
                     continue
             except Exception:
                 pass

@@ -11,6 +11,8 @@
    **永远进不去**，每次都落回它想废掉的标题判据。
    📌 **一次「把主键从 A 换成 B」的重写，如果 B 那条路上有一个静默返回哨兵值的
       缺陷，那次重写等于没发生 —— 而且看起来发生了。**
+   `_own_pid` / `_pid_and_proc` / `is_self_window` 已移除，自身窗口判据统一到
+   `core.self_identity`（见 `t_self_identity`）；这里只保留 `_H` 与模块级 `import ctypes` 的检查。
 
 🔴 `core/rag.py:878`：`Status` / `Severity` 没导入（同文件 724 行只导了
    `get_health, Cap`）→ 向量库损坏并被自动清理这件事**用户永远看不到**。
@@ -193,18 +195,9 @@ def undefined_names(path: pathlib.Path) -> list:
 
 # ══════════════════════════════════════════════════════════════════════════
 def t_executor_low_ctypes() -> None:
-    print("\n[1] 🔴🔴 `executor_low` 的三个函数恢复（实测，不是读源码）")
+    print("\n[1] `executor_low` 的 `_H` 可用、`ctypes` 在模块级导入")
     from core.os_layer import executor_low as E
 
-    _pid = E._own_pid()
-    check(_pid == os.getpid(),
-          "⭐⭐⭐ `_own_pid()` 返回**真实 PID** —— "
-          "🔴 修之前它恒为 -1（`ctypes` 没在模块级导入，外面包着 "
-          "`except Exception` → 不崩，永远走 except）。"
-          "📌 **一个包在 `except Exception` 里的 `NameError`，"
-          "比一个崩掉的贵得多**：崩掉会被立刻修，"
-          "静默降级会被当成「这个判据就是不太准」",
-          f"{_pid} == os.getpid()={os.getpid()}")
     check(E._H(30803936) is not None,
           "⭐ `_H()` 不再抛 `NameError`（大 hwnd 转句柄那条路真的能走）")
 
@@ -213,45 +206,6 @@ def t_executor_low_ctypes() -> None:
                     if isinstance(st, ast.Import) for al in st.names}
     check("ctypes" in _mod_imports,
           "`import ctypes` 在**模块级**（不是某个函数体里）")
-
-
-def t_is_self_window_pid_path_reachable() -> None:
-    print("\n[2] ⭐⭐⭐ 那次「主键从标题换成 PID」的重写，现在才真正生效")
-    from core.os_layer import executor_low as E
-
-    _seen = {}
-
-    def _fake_pid_proc(hwnd):
-        _seen["called"] = True
-        return (os.getpid(), "python")
-
-    _orig = E._pid_and_proc
-    E._pid_and_proc = _fake_pid_proc
-    try:
-        # ⚠️ 标题**故意不含 nano** —— 只有 PID 判据能让它返回 True
-        _r = E.is_self_window(12345, title="随便一个不含关键词的标题")
-    finally:
-        E._pid_and_proc = _orig
-
-    check(_r is True,
-          "⭐⭐⭐ **PID 命中即判为自己**，与标题无关 —— "
-          "🔴 修之前 `_own_pid()` 恒为 -1，`pid == _own_pid()` **永远为假**，"
-          "`is_self_window` 每次都落回它 2026-08-07 明确要废掉的标题判据"
-          "（实测误判过一个命令行控制台、一个记事本文档）。"
-          "📌 **一次「把主键从 A 换成 B」的重写，如果 B 那条路上有一个"
-          "静默返回哨兵值的缺陷，那次重写等于没发生 —— "
-          "而且看起来发生了**")
-
-    # 反面：PID 不是我的、标题也不含关键词 → 不是自己
-    E._pid_and_proc = lambda h: (999999, "notepad")
-    try:
-        _r2 = E.is_self_window(12345, title="Nano_使用手册.md - 记事本")
-    finally:
-        E._pid_and_proc = _orig
-    check(_r2 is False,
-          "⭐⭐ 反面成立：**标题含 `nano` 但 PID 不是我的、宿主也不是浏览器 → "
-          "不算自己**。这正是那次重写要修的那个误判（记事本文档被当成自己，"
-          "于是用户让 Nano 操作它，它看不见）")
 
 
 def t_rag_health_report() -> None:
@@ -366,7 +320,7 @@ if __name__ == "__main__":
     print("=" * 74)
     print("两处静默的缺失导入 + 常驻作用域检查")
     print("=" * 74)
-    for _t in (t_executor_low_ctypes, t_is_self_window_pid_path_reachable,
+    for _t in (t_executor_low_ctypes,
                t_rag_health_report, t_checker_catches_known_bug,
                t_no_undefined_in_hot_modules):
         _t()

@@ -182,59 +182,6 @@ class TakeoverResult:
     ERROR = "error"
 
 
-_own_pids_cache: tuple = (0.0, frozenset())
-
-
-def _own_pids() -> frozenset:
-    """**属于 Nano 自己的所有进程 pid** —— 本进程 + 它的全部子进程。
-
-    ⚠️⚠️ **这里原来只返回 `GetCurrentProcessId()`，那是本轮最贵的一个 bug。**
-
-    NiceGUI 的 `native=True` 用**独立子进程**跑 pywebview 窗口：
-      · **主进程**：服务端 / orchestrator / 钩子 / 内核 —— `GetCurrentProcessId()` 是它
-      · **子进程**：拥有那个标题为 `Nano` 的窗口
-    两者**永远不相等** → **Nano 自己的窗口永远被判成第三方** →
-    用户每次点 Nano、在里面打字、发消息，都在接管/续期。
-
-    实测日志逐条坐实：
-    ```
-    续期（click，落点 hwnd=6688140 pid=277128 python.exe 'Nano'，分类=other）
-    ```
-    ⭐ 反复出现的反馈是"完全找不到它触发的规律"—— **那句话本身就是最强的线索**：
-    触发源是**用户和 Nano 的交互本身**，而人当然不会把"点一下 Nano 窗口"
-    算成"操作电脑"。**找不到规律，往往意味着变量就在观察者自己身上。**
-
-    ⚠️ **而探针没能抓到它，是因为探针把这个 bug 盖住了**：探针是独立进程，
-    那里面把 `_own_pid` 重定向成了"拥有窗口的那个 pid"，于是分类当然正确。
-    📌 **探针必须复现「被测代码在生产里真实看到的世界」，
-       不是「我认为它应该看到的世界」。** 那一行重定向让 644 条观测全部失效。
-
-    ⚠️ 缓存 5 秒：子进程会变（崩溃重启、降级成浏览器模式），不能只取一次；
-    但每个输入事件都去枚举进程树太贵。
-    """
-    global _own_pids_cache
-    now = time.time()
-    ts, cached = _own_pids_cache
-    if cached and now - ts < 5.0:
-        return cached
-    pids = set()
-    try:
-        import os as _os
-        pids.add(_os.getpid())
-        import psutil
-        for c in psutil.Process(_os.getpid()).children(recursive=True):
-            try:
-                pids.add(c.pid)
-            except Exception:
-                pass
-    except Exception:
-        pass
-    out = frozenset(pids)
-    if out:
-        _own_pids_cache = (now, out)
-    return out
-
-
 def _describe_hwnd(hwnd: Optional[int]) -> str:
     """`hwnd=… pid=… proc 标题` —— 只给日志和租约 reason 用，取不到就返回空串。
 
@@ -278,8 +225,8 @@ def _target_class(hwnd: Optional[int], lease_id: str) -> str:
         u = ctypes.windll.user32
         pid = ctypes.c_ulong()
         u.GetWindowThreadProcessId(ctypes.c_void_p(int(hwnd)), ctypes.byref(pid))
-        # ⚠️ 比的是**整个进程树**，不是单个 pid —— 见 `_own_pids` 的说明。
-        if int(pid.value) in _own_pids():
+        from core.self_identity import is_self_pid
+        if is_self_pid(int(pid.value)):
             return "own"
     except Exception:
         return "unknown"

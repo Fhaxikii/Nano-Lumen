@@ -53,6 +53,24 @@ def _wire_check(event) -> None:
         pass
 
 
+def _register_native_window_process() -> None:
+    """把原生窗口所在的进程登记为 Nano 界面（`core.self_identity`）。
+
+    NiceGUI 的 native 模式用 `multiprocessing.Process(target=_open_window)` 在子进程里
+    打开 pywebview 窗口；按这个 target 从本进程的子进程里找出它。浏览器模式下没有这个
+    子进程，不登记。
+    """
+    try:
+        import multiprocessing as _mp
+        from core import self_identity as _si
+        for _proc in _mp.active_children():
+            if getattr(getattr(_proc, "_target", None), "__name__", "") == "_open_window":
+                _si.register_window_process(_proc.pid)
+                logger.debug(f"[SelfIdentity] 界面窗口进程 pid={_proc.pid}")
+    except Exception as e:
+        logger.warning(f"[SelfIdentity] 登记界面窗口进程失败: {e}")
+
+
 def _rt_auto_authorized() -> bool:
     """⭐ 切读之后的**权威读点**。⚠️ fail-safe 方向是「没授权」→ 照常弹确认。"""
     try:
@@ -16843,6 +16861,7 @@ if __name__ == "__main__":
                 pass
         _nicegui_app.on_shutdown(_mcp_shutdown)
         _nicegui_app.on_startup(lambda: logger.info("Nano 已启动"))
+        _nicegui_app.on_startup(_register_native_window_process)
 
         gui.render()
 
