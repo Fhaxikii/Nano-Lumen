@@ -31,6 +31,8 @@ from core.orchestrator._types import (  # noqa: F401
 )
 from core.orchestrator.orchestrator import (  # noqa: F401
     Orchestrator,
+)
+from core.orchestrator.prompt_context import (  # noqa: F401
     _ambient_parse_title,
 )
 from core.orchestrator.react_loop import (  # noqa: F401
