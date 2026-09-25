@@ -53,12 +53,8 @@ def check(ok: bool, name: str, note: str = "") -> None:
 def t_fastpath_gone() -> None:
     print("\n[1] ⭐ 关键词快路径已从源码里消失（用 AST 证明，不是 grep）")
 
-    # ⚠️ 不能用 `"_SKILL_CREATE_KEYWORDS" not in src` —— 注释里留着它的名字做留档，
-    # 文本匹配会误报。这与 那条纪律同源：**检查代码性质的断言要用 AST。**
+    # 检查代码性质用 AST，不用文本匹配：注释与字符串里出现这个名字不代表代码还在用它。
     src = module_text("core.orchestrator")
-    check("_SKILL_CREATE_KEYWORDS" in src,
-          "前置条件：源码里仍能找到这个名字（注释留档），所以文本匹配确实不可靠")
-
     tree = ast.parse(src)
     assigned: list[str] = []
     for n in ast.walk(tree):
@@ -68,6 +64,7 @@ def t_fastpath_gone() -> None:
                     assigned.append(t.id)
         elif isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name):
             assigned.append(n.target.id)
+    check(len(assigned) >= 1,"前置条件：AST 确实收集到了赋值（分析有效）", f"{len(assigned)} 个")
     check("_SKILL_CREATE_KEYWORDS" not in assigned,
           "⭐ 没有任何地方【赋值】这个常量了（真的删了）",
           f"命中: {[a for a in assigned if 'SKILL_CREATE' in a]}")

@@ -635,74 +635,10 @@ class TurnMixin:
         #    📌 对照：MCP 清单是**动态**的（状态会变），必须在哨兵之后。
         base_guide = base_guide + self._environment_block() + CACHE_BREAK_MARKER
 
-        # Step 4：pending 超时检查
+        # 清掉超时的待审 Skill / 待确认动作
         self._expire_stale_pending()
 
-        # 1. 待确认管理动作优先
-        # ── 1. 这里【曾经】是 Skill 管理/修改确认的路由劫持 ──────────────────
-        # [2026-08-06 删除] 原来是
-        #     if self._pending_action: -> _handle_pending_action()  （117 行 + 一个专用分类器）
-        # 每条消息先跑 `classify_pending_action_intent` 分成 6 个标签，再按标签分支，
-        # 其中 NEW_REQUEST 那一支还要靠一个伪事件 `__pending_new_request__`
-        # 从生成器里"逃逸"回常规路由 —— 那个 break-then-continue 的控制流本身就很脆。
-        #
-        # ⚠️ 顺带纠正一处长期误记：`_pending_action` 的四个 op
-        # （delete / disable / enable / update_skill）**全是 Skill 生命周期操作，
-        # 与 OS 无关**。早先的设计曾把它记成"OS 风险确认"，因为字段名太泛。
-        # 真正的 OS 确认是 `execution_confirm` + 300 秒同步等待（清单 ⑧）。
-        #
-        # 现在它是一条 `skill_manage` Interaction，用户下一条消息走正常路由，
-        # 模型从 `[Open Interactions]` 看到它自己判断。
-
-        # ── 2. 这里【曾经】是 Skill 审计的路由劫持 ──────────────────────────
-        # [2026-08-06 删除] 原来是
-        #     if self._pending_skill: -> _handle_pending_skill()  （约 90 行 + 一个专用分类器）
-        # 那条路把用户的下一条消息整条截走，先跑 `classify_pending_skill_intent`
-        # （**每条消息多一次 API 往返**）分成 8 个标签，再按标签分支。
-        #
-        # 三个问题一起没了：
-        #   ① 8 个标签里有一半（EXPLAIN / RISK / COMPLAINT / EXECUTE_BLOCKED）
-        #      本质就是"正常回答用户" —— 主模型天然会做，不需要先分类（设计原则 3）；
-        #   ② 模型看不见"有个 Skill 等着审"，用户说别的时它无从判断；
-        #   ③ `_pending_skill` 是纯内存 dict，崩溃/关窗后那份待审代码不留痕迹。
-        #
-        # 现在审计是一条 `skill_audit` Interaction（artifact 钉版本，），
-        # 用户的下一条消息走**完全正常的路由**，模型从 `[Open Interactions]` 看到它，
-        # 自己决定调不调 `answer_open_interaction`。UI 按钮那条路一字未改。
-
-        # ── 2.5 这里【曾经】是 Skill 澄清的路由劫持 ────────────────────────────
-        # [2026-08-05 删除] 整段约 50 行没了，没有替代分支——
-        # 澄清态现在是一条 Interaction，用户的下一条消息**走完全正常的路由**，
-        # 由主决策模型看着 [Open Interactions] 决定调不调 answer_open_interaction。
-        #
-        # 被删掉的三样东西，各自是一个独立的 bug：
-        #   ① `_CLARIFY_TIMEOUT = 600` —— 10 分钟没回应就静默作废。用户去开个会
-        #      回来，答案就没人接了，而且**没有任何提示**说它作废了。
-        #      新实现里澄清永不过期（deadline_at 留空），积压不是错误。
-        #   ② `_abort_words` / `_NEW_REQUEST_SIGNALS` 两张关键词表 + 一条
-        #      "长度>20 且不含 Skill 词就算新话题"的启发式。两个方向都会错：
-        #      "删除那一列的空行" 命中"删除"被判成新请求；
-        #      "帮我查一下今天的天气" 里的"查一下"同理。反过来，一句
-        #      "那个文件在 D 盘" 只要超过 20 字又不含表里的词，也会被判成新话题。
-        #   ③ **模型全程看不见这件事**。劫持发生在进模型之前，所以上面两类误判
-        #      模型一次纠错机会都没有——它连"有个问题挂着"都不知道。
-        #
-        # ⚠️ 顺带修掉一个从来没被记录过的形状：旧代码在调 Explorer **之前**
-        # 就把 `_pending_skill_clarification = None` 了。于是 Explorer 那一步
-        # 只要失败（provider 报错、进程被杀），用户刚说的答案就彻底消失，
-        # 只能让用户重说一遍。现在是先落盘 ANSWERED 再跑 Explorer，失败可重试。
-
-        # ── 这里【曾经】是"OS 层软急停前置检查" ──────────────────────────────
-        # 关键词硬匹配 + LLM 语义兜底两层，命中就置进程级 _aborted。整套软急停已删除
-        # （原因见 core/os_layer/safety.py 模块头：有甩鼠标和 Ctrl+` 两种瞬发物理手段在，
-        # 第三种没人用，而且它自己带着"一旦触发这个进程再也不能操作电脑"的坏性质）。
-        #
-        # 顺带修掉的 token 浪费：这段的进入条件是 hasattr(self, "_os_safety")，
-        # 而 _os_safety 一旦因为某次 os_execute 被懒创建就永久存在——于是本进程
-        # 之后【每一条】用户消息都要多跑一次 classify_os_abort_intent 的独立 LLM 往返。
-        # v1.1 那轮删顶层分类器时漏掉了这一处。
-
-        # 2.8 OS 定位失败后的简短纠正 → 把纠正并进 query，落到主 ReAct 循环续接。
+        # OS 定位失败后的简短纠正 → 把纠正并进 query，落到主 ReAct 循环续接。
         # 双循环合一后不再有独立 OS 循环，os_execute 始终在主循环里，模型看着
         # 对话历史（含上次定位失败）+ 用户纠正，自然重试，无需特殊路由。
         _os_followup = self._detect_os_locate_followup(query)
@@ -713,44 +649,9 @@ class TurnMixin:
                 f"{_os_followup['original_query']}"
                 f"（用户纠正/补充：{query}）"
             )
-            # 不 return，继续往下走常规分类 → 主 ReAct 循环（含 os_execute）
+            # 不 return，继续走主 ReAct 循环（含 os_execute）
 
-        # ── 3a. 这里【曾经】是 SKILL_CREATE 关键词快路径 ────────────────────
-        # [2026-08-06 删除] 整段约 45 行 + `_SKILL_CREATE_KEYWORDS`
-        # 那张 13 条的关键词表一起没了。
-        # （常量名写在这里是故意的 —— 早先的设计按名字引用它，有人 grep 时该找到这块墓碑，
-        #   而不是一无所获然后以为自己记错了。）
-        #
-        # 它最早是分类器的补丁（SKILL_CREATE 阈值 0.75 偏高，混进 OS 相关词会被稀释）。
-        # 但 v1.1 已经把 `classify_primary_intent` 整个删了，此后它保护的是一个
-        # **不存在的分类器**。后来留着它的理由换成了"防模型把明确的建 Skill 请求劝退"。
-        #
-        # 删掉的两条实测证据（08-06，都不是推测）：
-        #
-        # **证据 1 —— 同一个功能有两种可见性。**
-        # 「写一个skill 作用是提取dns」命中关键词 → **整个 ReAct 主循环被跳过**
-        # → 没有任何 tool_use → 屏幕上没有工具卡片。
-        # 紧接着「再写一个，作用是提取ip地址」没命中 → 走主循环 →
-        # 正常出现 `加载能力: create_new_skill ✓`。
-        # 用户那句话里有没有"写一个 skill"，决定了用户能不能看见 Nano 在做什么。
-        # 违反了那条约定（新工具必须能被工具卡片显示、且正确出现在感知清单里）。
-        #
-        # **证据 2 —— 它一直在替元工具入口越界那个 bug 挡枪。**
-        # 三份日志里"快路径入口从不越界、元工具入口每次都越界"，
-        # 当时判断成"快路径运气好"。真实原因是它的 `messages` 只有 1 条 ——
-        # 没有 `load_tools` 回执可污染。**所以那个 bug 才活了那么久没被定位。**
-        #
-        # 📌 判据：**一条绕过主流程的快路径，会同时绕过主流程的可见性与诊断。**
-        # 省下的两次往返，代价是同一个功能有两条行为不同的路，
-        # 而其中一条永远不产生可观测记录。
-        #
-        # ⚠️ 删它的前置条件已满足：`create_new_skill` 的感知行不再被截断到 28 字符
-        # （见 `core/tools/builtin.py` 里 `create_new_skill` 的 awareness）。那是"防劝退"这个理由的正面解法 ——
-        # 让模型看清工具是什么，而不是绕开它自己的判断。
-
-        # 2.7 Skill 报错后的简短回应 → 直接走修复通道，绕过顶层分类器
-        # 必须在 OS 急停和 SKILL_CREATE 强关键词之后检测，防止
-        # "别动屏幕了" / "写一个skill..." 等语句被错误拦截到修复路由。
+        # Skill 报错后的简短回应 → 直接走修复通道。
         # 短确认词（好的/可以/修一下）+ 显式修复动词 + 工具报错状态三条件同时满足才触发。
         _error_followup = self._detect_skill_error_followup(query)
         if _error_followup:
@@ -771,31 +672,6 @@ class TurnMixin:
                     self._last_skill_error["consumed"] = True
             return
 
-        # 3. 顶层语义分类【已删除 · 残骸清理 2026-08-04】
-        # 原来每条消息先跑一次分类器判 NO_TOOLS/REACT 决定走不走 fast-path。实测两点：
-        #   ① 分类器每条一次、~770 fresh token，且中转下这么小的前缀无法缓存（<4096 门槛）；
-        #   ② fast-path 的 system 前缀（~2.4K）同样够不到缓存门槛，每条全价重发。
-        # 合并做法：删分类器 + 删 fast-path，所有消息统一走 ReAct 主循环——它带核心工具、
-        # 稳定前缀+工具 >4096 会命中缓存（0.1x），闲聊时模型按 ReAct 协议直接出话、不调工具。
-        #
-        # 那次只删了分类器本身，把 `primary_intent="DIRECT_ANSWER"` / `primary_conf=0.0`
-        # 两个常量和一整套"防御性降级"判断留了下来。既然分类器已经不存在，
-        # 那些判断永远进不去（`0.0 >= 0.55` 恒假），一并删除：
-        #   - SKILL_CREATE / SKILL_UPDATE / SKILL_DELETE|DISABLE|ENABLE 三段降级分支
-        #     （它们的意图已由 create_new_skill / update_existing_skill /
-        #      manage_existing_skill 三个元工具在主循环里承担）
-        #   - SKILL_OTHER_THRESHOLD / OS_TASK_THRESHOLD 两个只服务于上述分支的阈值
-        #   - registered_skill_names —— **零引用，但每条消息都要跑一次
-        #     `get_all_manifests()` 建一个 set**，纯浪费
-        #   - _classifier_says_simple —— 恒为 False，在 or 链里等于不存在
-        #
-        # OS 也不再有前置硬路由：os_execute 始终注入主 ReAct 循环（见上方 include_os=True），
-        # OS 任务和普通任务走同一条循环、同一套工具集。这消除了"OS 任务被分流到独立循环、
-        # 够不到 wait_for/render_visual 等其它能力"的双循环漏洞
-        # （0627 os_execute replay bug、够不到屏幕都源于此）。
-
-
-        # 4. 常规路径
         self.memory.add_message("user", query)
 
         # ⭐ 用户发的图 → Nano 自存一份，引用落进刚写的这条 user 消息。
