@@ -44,6 +44,15 @@ def _rt_auto_revoke() -> None:
         pass
 
 
+def _wire_check(event) -> None:
+    """后端事件的可序列化检查（问题只记日志，不影响呈现）。"""
+    try:
+        from core.runtime.wire import warn_if_not_serializable
+        warn_if_not_serializable(event)
+    except Exception:
+        pass
+
+
 def _rt_auto_authorized() -> bool:
     """⭐ 切读之后的**权威读点**。⚠️ fail-safe 方向是「没授权」→ 照常弹确认。"""
     try:
@@ -2483,6 +2492,7 @@ class WebUI:
             except Exception:
                 break
             try:
+                _wire_check(_ev or {})
                 _kind = (_ev or {}).get("event", "")
                 if _kind == "os_action_confirm":
                     self._present_os_confirm(_ev)
@@ -3624,6 +3634,7 @@ class WebUI:
 
         _stream = event_source if event_source is not None else self.agent.handle_query(query, image_parts=_image_parts, temp_file_hint=temp_file_hint)
         async for step in _stream:
+            _wire_check(step)
 
             # ── 统一文字流：思考文字和最终答案同字体同样式直接流入内容区 ───
             # thought_block_start / thought_block_done / thought_summary 不再创建

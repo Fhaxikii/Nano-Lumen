@@ -5,6 +5,7 @@
   `pending` 退出时撤销；`reply_callback` 只包装事件声明过的动作。
 - 后端发出的事件字典里不含可调用对象：不出现 `on_*` 键，也没有 lambda 值。
 - 界面侧不再从事件里取 `on_*` 回调。
+- 运行时检查（core/runtime/wire.py）：找出事件里不是 JSON 兼容类型的值，同一问题只记一次。
 
 用法：
   py -3.10 tests\\cases\\t_confirm_replies.py
@@ -134,6 +135,40 @@ def t_ui_does_not_read_callbacks() -> None:
     check(src.count("reply_callback") >= 5, "app.py 用 reply_callback 包装回复", str(src.count("reply_callback")))
 
 
+def t_wire() -> None:
+    print("\n▶ 运行时可序列化检查")
+    import asyncio
+    from core.runtime import wire as W
+
+    ok_ev = {"event": "x", "a": 1, "b": [1.5, None, True, "s"], "c": {"d": ("t",)}}
+    check(W.non_serializable_paths(ok_ev) == [], "JSON 兼容的事件没有问题")
+
+    loop = asyncio.new_event_loop()
+    fut = loop.create_future()
+    bad_ev = {"event": "y", "task": fut, "cards": [{"f": print}], "m": {1: "k"},
+              "p": pathlib.Path("x")}
+    bad = W.non_serializable_paths(bad_ev)
+    loop.close()
+    want = {"task: Future", "cards[0].f: builtin_function_or_method", "m.1: key int"}
+    check(want <= set(bad) and any(b.startswith("p: ") and "Path" in b for b in bad) and len(bad) == 4,
+          "定位到 Future / 函数 / 非字符串键 / Path", str(bad))
+
+    msgs: list[str] = []
+    from loguru import logger
+    hid = logger.add(lambda m: msgs.append(str(m)), level="WARNING")
+    try:
+        W.warn_if_not_serializable({"event": "z_unique", "f": print})
+        W.warn_if_not_serializable({"event": "z_unique", "f": print})
+    finally:
+        logger.remove(hid)
+    hits = [m for m in msgs if "z_unique" in m]
+    check(len(hits) == 1, "同一事件同一位置只记一次 WARNING", str(len(hits)))
+
+    src = S.module_text("app")
+    check(src.count("_wire_check(") >= 3, "界面的两个事件入口都做了检查（定义 + 2 处调用）",
+          str(src.count("_wire_check(")))
+
+
 if __name__ == "__main__":
     print("=" * 74)
     print("确认回复登记表与事件可序列化")
@@ -141,6 +176,7 @@ if __name__ == "__main__":
     t_registry()
     t_events_have_no_callables()
     t_ui_does_not_read_callbacks()
+    t_wire()
 
     _ok = sum(1 for r in _results if r[0])
     print("")
