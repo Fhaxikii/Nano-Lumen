@@ -158,6 +158,131 @@ class TurnMixin:
         used_model = "UNKNOWN"
         event_queue = asyncio.Queue()
 
+        async for _ev in self._turn_begin(image_parts):
+            yield _ev
+
+        async def realtime_callback(m_name: str):
+            nonlocal used_model
+            used_model = m_name
+            await event_queue.put({"event": "thinking", "log": f"模型已就绪，正在驱动 [{m_name}] 分析意图...", "status": "CORE_THINKING", "model": m_name, "current_skill": current_running_skill})
+
+        yield {"event": "thinking", "log": "正在进行 LLM 语义路由...", "status": "CORE_THINKING", "model": "CONNECTING", "current_skill": None, "rag_hit": False, "full_file_hit": False}
+
+        regular_skills = self._turn_tool_plan()
+        self._turn_reset_runtime()
+
+        base_guide = self._build_base_guide(regular_skills)
+
+        # 清掉超时的待审 Skill / 待确认动作
+        self._expire_stale_pending()
+
+        # OS 定位失败后的简短纠正 → 把纠正并进 query，落到主 ReAct 循环续接。
+        # 双循环合一后不再有独立 OS 循环，os_execute 始终在主循环里，模型看着
+        # 对话历史（含上次定位失败）+ 用户纠正，自然重试，无需特殊路由。
+        _os_followup = self._detect_os_locate_followup(query)
+        if _os_followup:
+            self._last_os_locate_failure = None
+            logger.info(f"[Router] OS 定位失败后的简短纠正 → 合并 query 落主循环: {query}")
+            query = (
+                f"{_os_followup['original_query']}"
+                f"（用户纠正/补充：{query}）"
+            )
+            # 不 return，继续走主 ReAct 循环（含 os_execute）
+
+        # Skill 报错后的简短回应 → 直接走修复通道。
+        # 短确认词（好的/可以/修一下）+ 显式修复动词 + 工具报错状态三条件同时满足才触发。
+        _error_followup = self._detect_skill_error_followup(query)
+        if _error_followup:
+            _error_fix_target, _error_content = _error_followup
+            self.memory.add_message("user", query)
+            logger.info(f"[Router] 检测到 Skill 报错后的简短回应 → 走修复通道: {_error_fix_target}")
+            _got_skill_preview = False
+            async for step in self._generate_skill_update(
+                query, _error_fix_target, base_guide, realtime_callback,
+                error_context=_error_content
+            ):
+                if step.get("event") == "skill_preview":
+                    _got_skill_preview = True
+                yield step
+            # 只有成功产出 skill_preview 才标记消费，失败时保留可重试
+            if _got_skill_preview:
+                if getattr(self, "_last_skill_error", None) and not self._last_skill_error.get("consumed"):
+                    self._last_skill_error["consumed"] = True
+            return
+
+        self.memory.add_message("user", query)
+
+        # ⭐ 用户发的图 → Nano 自存一份，引用落进刚写的这条 user 消息。
+        #
+        # ⚠️⚠️ **位置有两个硬约束，两个都踩过：**
+        #   ① 必须在 `_last_user_msg.content = _parts`（把 content 换成带 base64
+        #      的 list）**之前** —— 否则 `attach_user_images` 里的 `update_message`
+        #      会把整张图的 base64 写进权威账本。
+        #   ② 🔴 **必须在 `_image_note_request_block()` 之前** ——
+        #      原来它排在 system_guide 组装之后，于是那一刻 `ui_images` 还是空的，
+        #      `has_unsummarized_image()` 恒 False，**那段「顺手记一份摘要」的提示
+        #      永远不会出现**。实测实测：图答对了，`image_summary` 却是 None。
+        #      ⚠️ 而它**一声不响** —— 没有报错、没有告警，只是摘要永远不生成。
+        #      📌 原来的测试钉住了约束 ①，然后在约束 ② 上栽了 ——
+        #         **一条顺序断言只保护它写下的那个顺序。**（已补断言）
+        # 📌 收口在 memory 那一侧，不在这里拆 base64：将来加粘贴通道 / 拖拽 /
+        #    Skill 产图，都不用再想起这件事。
+        if image_parts:
+            self.memory.attach_user_images(image_parts)
+            # ⚠️ 顺序要紧：**先** attach（登记 handle / 落盘），**再**决定
+            #    pixels 发不发给主模型 —— 回看能力挂在 handle 上，
+            #    绝不能因为"这个主模型看不了图"而丢掉它。
+            if _main_model_is_blind():
+                yield {"event": "thinking", "log": "正在用视觉模型识图...",
+                       "status": "CORE_THINKING", "current_skill": None,
+                       "rag_hit": False, "full_file_hit": False}
+                image_parts = await self._seed_image_summary_via_vision(image_parts, query)
+
+        self._turn_after_user_message()
+
+        # 🔴 **这里刻意不带 `model`**（2026-08-14 实测）：此刻 `used_model` 还是
+        #    `"UNKNOWN"` —— 真实模型名要等 provider 回报、由 `realtime_callback` 填。
+        #    带上去的结果就是监控卡「当前模型」在发送途中闪成 UNKNOWN，回复后才恢复。
+        # 📌 **一个「我还不知道」被渲染成一个具体值，比不显示更糟** ——
+        #    同监控卡那条（量不到显示 `--` 不是 0%）。
+        #    ⚠️ 消费端也加了守卫（`app.py` 收到 UNKNOWN 一律忽略），因为带 model 的
+        #    yield 点有几十处，漏一个就复现 —— 📌 **防御要放在收口处，不是每个发出点。**
+        yield {"event": "thinking", "log": "正在初始化寻址...", "status": "CORE_THINKING", "current_skill": None, "rag_hit": False, "full_file_hit": False}
+
+        system_guide = self._build_turn_system_guide(base_guide)
+
+        self._attach_turn_inputs(temp_file_hint, image_parts)
+
+        try:
+            async for _react_ev in self._run_react_loop(
+                tools_manifest=list(self._core_manifest),   # 核心常驻 + load_tools；其余按需加载
+                system_guide=system_guide,
+                base_guide=base_guide,
+                realtime_callback=realtime_callback,
+                event_queue=event_queue,
+            ):
+                yield _react_ev
+        except RuntimeError as fatal_err:
+            if "API 调用链路全线熔断" in str(fatal_err):
+                self._clean_damaged_memory()
+                yield {"event": "sys_error", "content": "🚨【熔断】总线API全线枯竭！",
+                       "status": "CRITICAL_SYSTEM_HALT", "model": "TOTAL_CRASH",
+                       "skills_active": False, "log": "CRITICAL: 底层 API 链路彻底枯竭",
+                       "current_skill": None}
+                return
+            raise fatal_err
+        except Exception as core_err:
+            logger.critical(f"[ReAct] 主循环异常: {core_err}\n{traceback.format_exc()}")
+            self._clean_damaged_memory()
+            yield self._get_generic_error_payload(core_err, current_running_skill)
+            return
+        finally:
+            await self._after_turn()
+
+        logger.debug(f"[ReAct] 常规路径完成")
+
+    async def _turn_begin(self, image_parts):
+        """一轮开始时接续上一轮的状态：本轮图片标志、上一轮可交载体（仍在前台的自动转入后台）、记账打点、命中标志清零。"""
         # ⭐⭐⭐ 「这一轮有图、还没记下来」—— **本轮标志，不看 memory。**
         #
         # 🔴 实测连栽两次，两次都是**顺序**问题，而且两次的顺序还不一样：
@@ -259,13 +384,8 @@ class TurnMixin:
         self._rag_hit_this_turn = False
         self._full_file_hit_this_turn = False  # Phase 2
 
-        async def realtime_callback(m_name: str):
-            nonlocal used_model
-            used_model = m_name
-            await event_queue.put({"event": "thinking", "log": f"模型已就绪，正在驱动 [{m_name}] 分析意图...", "status": "CORE_THINKING", "model": m_name, "current_skill": current_running_skill})
-
-        yield {"event": "thinking", "log": "正在进行 LLM 语义路由...", "status": "CORE_THINKING", "model": "CONNECTING", "current_skill": None, "rag_hit": False, "full_file_hit": False}
-
+    def _turn_tool_plan(self) -> list:
+        """本轮工具计划：按目录与健康门控定出核心常驻 / 延迟加载两组，写入 `_tool_pool` / `_core_manifest` / `_core_stable_n` / `_deferred_awareness_text`。返回本轮可用工具的 manifest 列表。"""
         # OS 双循环合一：os_execute 始终注入主 ReAct 循环（include_os=True）。
         # OS 不再是被前置分类器硬路由到 _handle_os_task 的"特殊任务"，而是和查知识库、
         # 调 Skill 同级的无差别内置能力。这样 wait_for / render_visual / os_execute 等
@@ -358,7 +478,10 @@ class TurnMixin:
             )
         except Exception:
             pass
-        base_guide = self._system_guide_template.format(skills=', '.join(self._skill_names(regular_skills)))
+        return regular_skills
+
+    def _turn_reset_runtime(self):
+        """轮级运行时复位：前台窗口基准、活动租约、turn id、工具失败计数、残留 span。"""
         # ⚠️ 这里**曾经**有一行 `self._os_task_busy = False` 的每轮重置。
         # 已删 —— 租约靠 TTL 自愈，不需要"每轮兜底"这种依赖下一轮才生效的止血。
         # 📌 实测证伪过那个前提：「每轮重置把爆炸半径压到一轮」——
@@ -394,6 +517,9 @@ class TurnMixin:
         # 每轮开头只需要 sweep 掉上一轮的残留 span，没有旧字段可重置了。
         _rt_sweep_stale_spans(self, None)
 
+    def _build_base_guide(self, regular_skills) -> str:
+        """稳定前缀（缓存分界之前）：系统指令模板、用户档案、工具感知、插话续接、挂起恢复、固定说明与环境块，末尾是缓存分界标记。"""
+        base_guide = self._system_guide_template.format(skills=', '.join(self._skill_names(regular_skills)))
         # User profile injection
         try:
             import json as _json, pathlib as _pl
@@ -634,72 +760,10 @@ class TurnMixin:
         #    落在哨兵之后会白白打穿 prompt cache。
         #    📌 对照：MCP 清单是**动态**的（状态会变），必须在哨兵之后。
         base_guide = base_guide + self._environment_block() + CACHE_BREAK_MARKER
+        return base_guide
 
-        # 清掉超时的待审 Skill / 待确认动作
-        self._expire_stale_pending()
-
-        # OS 定位失败后的简短纠正 → 把纠正并进 query，落到主 ReAct 循环续接。
-        # 双循环合一后不再有独立 OS 循环，os_execute 始终在主循环里，模型看着
-        # 对话历史（含上次定位失败）+ 用户纠正，自然重试，无需特殊路由。
-        _os_followup = self._detect_os_locate_followup(query)
-        if _os_followup:
-            self._last_os_locate_failure = None
-            logger.info(f"[Router] OS 定位失败后的简短纠正 → 合并 query 落主循环: {query}")
-            query = (
-                f"{_os_followup['original_query']}"
-                f"（用户纠正/补充：{query}）"
-            )
-            # 不 return，继续走主 ReAct 循环（含 os_execute）
-
-        # Skill 报错后的简短回应 → 直接走修复通道。
-        # 短确认词（好的/可以/修一下）+ 显式修复动词 + 工具报错状态三条件同时满足才触发。
-        _error_followup = self._detect_skill_error_followup(query)
-        if _error_followup:
-            _error_fix_target, _error_content = _error_followup
-            self.memory.add_message("user", query)
-            logger.info(f"[Router] 检测到 Skill 报错后的简短回应 → 走修复通道: {_error_fix_target}")
-            _got_skill_preview = False
-            async for step in self._generate_skill_update(
-                query, _error_fix_target, base_guide, realtime_callback,
-                error_context=_error_content
-            ):
-                if step.get("event") == "skill_preview":
-                    _got_skill_preview = True
-                yield step
-            # 只有成功产出 skill_preview 才标记消费，失败时保留可重试
-            if _got_skill_preview:
-                if getattr(self, "_last_skill_error", None) and not self._last_skill_error.get("consumed"):
-                    self._last_skill_error["consumed"] = True
-            return
-
-        self.memory.add_message("user", query)
-
-        # ⭐ 用户发的图 → Nano 自存一份，引用落进刚写的这条 user 消息。
-        #
-        # ⚠️⚠️ **位置有两个硬约束，两个都踩过：**
-        #   ① 必须在 `_last_user_msg.content = _parts`（把 content 换成带 base64
-        #      的 list）**之前** —— 否则 `attach_user_images` 里的 `update_message`
-        #      会把整张图的 base64 写进权威账本。
-        #   ② 🔴 **必须在 `_image_note_request_block()` 之前** ——
-        #      原来它排在 system_guide 组装之后，于是那一刻 `ui_images` 还是空的，
-        #      `has_unsummarized_image()` 恒 False，**那段「顺手记一份摘要」的提示
-        #      永远不会出现**。实测实测：图答对了，`image_summary` 却是 None。
-        #      ⚠️ 而它**一声不响** —— 没有报错、没有告警，只是摘要永远不生成。
-        #      📌 原来的测试钉住了约束 ①，然后在约束 ② 上栽了 ——
-        #         **一条顺序断言只保护它写下的那个顺序。**（已补断言）
-        # 📌 收口在 memory 那一侧，不在这里拆 base64：将来加粘贴通道 / 拖拽 /
-        #    Skill 产图，都不用再想起这件事。
-        if image_parts:
-            self.memory.attach_user_images(image_parts)
-            # ⚠️ 顺序要紧：**先** attach（登记 handle / 落盘），**再**决定
-            #    pixels 发不发给主模型 —— 回看能力挂在 handle 上，
-            #    绝不能因为"这个主模型看不了图"而丢掉它。
-            if _main_model_is_blind():
-                yield {"event": "thinking", "log": "正在用视觉模型识图...",
-                       "status": "CORE_THINKING", "current_skill": None,
-                       "rag_hit": False, "full_file_hit": False}
-                image_parts = await self._seed_image_summary_via_vision(image_parts, query)
-
+    def _turn_after_user_message(self):
+        """用户消息写入 memory 之后：引用落盘、插话基线、清终止意图、压缩历史图片与旧文件切片。"""
         # ⭐ [2026-08-22] 引用指向跟着这条消息落盘 —— 见 `attach_reply_quote`。
         # ⚠️ 读的是 `_reply_target_turn`（UI 按发送时移交过来的本轮快照），
         #    退回 `_reply_target` 兼容还没移交的路径 —— 与
@@ -767,15 +831,8 @@ class TurnMixin:
         except Exception as _read_compact_err:
             logger.debug(f"[A2] 文件切片压缩跳过: {_read_compact_err}")
 
-        # 🔴 **这里刻意不带 `model`**（2026-08-14 实测）：此刻 `used_model` 还是
-        #    `"UNKNOWN"` —— 真实模型名要等 provider 回报、由 `realtime_callback` 填。
-        #    带上去的结果就是监控卡「当前模型」在发送途中闪成 UNKNOWN，回复后才恢复。
-        # 📌 **一个「我还不知道」被渲染成一个具体值，比不显示更糟** ——
-        #    同监控卡那条（量不到显示 `--` 不是 0%）。
-        #    ⚠️ 消费端也加了守卫（`app.py` 收到 UNKNOWN 一律忽略），因为带 model 的
-        #    yield 点有几十处，漏一个就复现 —— 📌 **防御要放在收口处，不是每个发出点。**
-        yield {"event": "thinking", "log": "正在初始化寻址...", "status": "CORE_THINKING", "current_skill": None, "rag_hit": False, "full_file_hit": False}
-
+    def _build_turn_system_guide(self, base_guide) -> str:
+        """本轮动态段（缓存分界之后）：未决交互、引用、进行中的事、后台任务、授权、审计失败、会话日志、跨会话摘要、ambient、记忆、窗口形态、语气、能力健康与系统事件、运行作用域、图片记录提示、L3 索引、上下文压力。"""
         system_guide = base_guide
 
         # 未决交互：让模型看见"有个问题挂在那里"。
@@ -904,7 +961,10 @@ class TurnMixin:
                 pass
         except Exception as _sc_err:
             logger.debug(f"[F6] 作用域注入跳过: {_sc_err}")
+        return system_guide
 
+    def _attach_turn_inputs(self, temp_file_hint, image_parts):
+        """把附件提示与本轮图片挂到刚写入 memory 的那条 user 消息上。"""
         # 所有消息都走 ReAct 主循环；闲聊时模型第一轮直接作答、不产生 tool_use。
         # 附件提示与本轮图片不在 memory 的文本里：_run_react_loop 每轮都从 memory 重建上下文，
         # 所以把它们挂到刚写入的那条 user 消息上（此时它就是 storage 的最后一条）。
@@ -919,99 +979,75 @@ class TurnMixin:
                     _parts.extend(image_parts)
                 _last_user_msg.content = _parts
 
+    async def _after_turn(self):
+        """一轮结束后（无论成败）：压缩图片载荷；衰减阶梯开着时依次跑 L0→L1→L2→L3→L4、按权威重建投影并通知 UI。"""
+        # Always compress image payloads after the turn attempt.
+        # This also runs when the API fails before normal completion.
+        # User text remains, and the placeholder preserves that images were sent.
         try:
-            async for _react_ev in self._run_react_loop(
-                tools_manifest=list(self._core_manifest),   # 核心常驻 + load_tools；其余按需加载
-                system_guide=system_guide,
-                base_guide=base_guide,
-                realtime_callback=realtime_callback,
-                event_queue=event_queue,
-            ):
-                yield _react_ev
-        except RuntimeError as fatal_err:
-            if "API 调用链路全线熔断" in str(fatal_err):
-                self._clean_damaged_memory()
-                yield {"event": "sys_error", "content": "🚨【熔断】总线API全线枯竭！",
-                       "status": "CRITICAL_SYSTEM_HALT", "model": "TOTAL_CRASH",
-                       "skills_active": False, "log": "CRITICAL: 底层 API 链路彻底枯竭",
-                       "current_skill": None}
-                return
-            raise fatal_err
-        except Exception as core_err:
-            logger.critical(f"[ReAct] 主循环异常: {core_err}\n{traceback.format_exc()}")
-            self._clean_damaged_memory()
-            yield self._get_generic_error_payload(core_err, current_running_skill)
-            return
-        finally:
-            # Always compress image payloads after the turn attempt.
-            # This also runs when the API fails before normal completion.
-            # User text remains, and the placeholder preserves that images were sent.
-            try:
-                _compressed_imgs = self.memory.compress_image_blocks()
-                if _compressed_imgs:
-                    logger.debug(f"[Memory] compressed {_compressed_imgs} image block(s) after ReAct turn")
-            except Exception as _img_compact_err:
-                logger.debug(f"[Memory] post-turn image compression skipped: {_img_compact_err}")
+            _compressed_imgs = self.memory.compress_image_blocks()
+            if _compressed_imgs:
+                logger.debug(f"[Memory] compressed {_compressed_imgs} image block(s) after ReAct turn")
+        except Exception as _img_compact_err:
+            logger.debug(f"[Memory] post-turn image compression skipped: {_img_compact_err}")
 
-            # ⭐ L0→L1：把老交换的工具结果换成占位符。
-            #
-            # ⚠️⚠️ **默认关闭**（`data/model_config.json` 的 `_settings.ladder_enabled`）。
-            #    这是第一个**真的从模型上下文里拿走东西**的动作，必须由 用户显式打开。
-            #    📌 **引入一个机制和启用一个机制是两件事** —— 一起做，出了问题
-            #       分不清是机制的锅还是接线的锅（同「立架子和搬家具是两件事」）。
-            #
-            # ⚠️ 放在**这一轮结束之后**（和图片压缩同一个 `finally`）：
-            #    衰减只碰 **closed exchange**，而"当前这一轮"到这里才算关闭。
-            #    📌 在轮内降级 = 可能在 tool_result 还没回来时就把它换成占位符。
-            try:
-                from core.models import ladder_enabled as _ladder_on
-                if _ladder_on():
-                    from core.context.decay import run_l0_to_l1 as _run_l1
-                    from core.context.decay_store import DecayStore as _DS
-                    from core.runtime.kernel import get_kernel as _gk
-                    _sid = self.memory.conversation_session_id
-                    if _sid:
-                        _dstore = _DS(_gk().store)
-                        _run_l1(self.memory, _dstore, _sid, self.provider.target_model)
-                        # ⚠️ L1→L2 **过提炼器**（要花钱、要等秒级），所以排在 L0→L1
-                        #    之后：先把免费的那一档降完，可能就不需要走这一档了。
-                        #    📌 **贵的动作永远排在便宜的动作后面** ——
-                        #       不然你会为一件本来不必做的事付钱。
-                        from core.context.decay import run_l1_to_l2 as _run_l2
-                        await _run_l2(self.memory, _dstore, self.provider, _sid,
-                                      self.provider.target_model)
-                        # L2→L3：交接给语义记忆 + 生成索引条目 + 改档。
-                        # ⚠️ 不过 LLM（结论行已经在库里），但它是**唯一用户有感**的箭头。
-                        from core.context.decay import run_l2_to_l3 as _run_l3
-                        _run_l3(self.memory, _dstore, _sid, self.provider.target_model)
-                        # L3→L4：索引条目过期。⚠️ **不删语义记忆** ——
-                        # 📌 遗忘 = 不再自动想起，不等于抹掉。
-                        from core.context.decay import run_l3_to_l4 as _run_l4
-                        _run_l4(self.memory, _dstore, _sid, self.provider.target_model)
-                        # 🔴🔴 **最后把投影按权威重建一次** —— 四档只改
-                        #    `exchange_decay`（权威），**没有一个会去动 `storage`**。
-                        #    不做这一步的后果/抓到的最大那条）：
-                        #
-                        #        exchange_decay 说：这段已经 L2 / 已经移出去了
-                        #        storage（真正发给模型的）说：原文还背在身上
-                        #
-                        #    —— 日志说省了、其实没省；L3 更怪：**要等重启才真的忘掉**。
-                        # ⭐ 用的就是重启那条路径的同一个函数，所以 live 与 hydrate
-                        #    **不可能漂开**（📌 各写一遍的话，它们只在"我两次都想对了"
-                        #    的前提下相等）。
-                        from core.context.decay import rebuild_projection as _reproj
-                        _reproj(self.memory, _dstore, _sid)
-                        # ⚠️ 投影已经服从权威了，**这时候才轮到 UI**。
-                        #    📌 UI 与模型必须看到同一件事：模型侧移出去了而聊天区还显示，
-                        #       用户就会接着问"你刚才说的那个"。
-                        _cb = getattr(self, "_on_decay_applied", None)
-                        if callable(_cb):
-                            try:
-                                _cb()
-                            except Exception as _ui_err:
-                                logger.debug(f"[Decay] 通知 UI 同步失败: {_ui_err}")
-            except Exception as _decay_err:
-                # ⚠️ 治理层的故障**绝不许**把对话搞挂 —— 不降级只是上下文厚一点。
-                logger.warning(f"[Decay] L0→L1 跳过（不影响对话）: {_decay_err}")
-
-        logger.debug(f"[ReAct] 常规路径完成")
+        # ⭐ L0→L1：把老交换的工具结果换成占位符。
+        #
+        # ⚠️⚠️ **默认关闭**（`data/model_config.json` 的 `_settings.ladder_enabled`）。
+        #    这是第一个**真的从模型上下文里拿走东西**的动作，必须由 用户显式打开。
+        #    📌 **引入一个机制和启用一个机制是两件事** —— 一起做，出了问题
+        #       分不清是机制的锅还是接线的锅（同「立架子和搬家具是两件事」）。
+        #
+        # ⚠️ 放在**这一轮结束之后**（和图片压缩同一个 `finally`）：
+        #    衰减只碰 **closed exchange**，而"当前这一轮"到这里才算关闭。
+        #    📌 在轮内降级 = 可能在 tool_result 还没回来时就把它换成占位符。
+        try:
+            from core.models import ladder_enabled as _ladder_on
+            if _ladder_on():
+                from core.context.decay import run_l0_to_l1 as _run_l1
+                from core.context.decay_store import DecayStore as _DS
+                from core.runtime.kernel import get_kernel as _gk
+                _sid = self.memory.conversation_session_id
+                if _sid:
+                    _dstore = _DS(_gk().store)
+                    _run_l1(self.memory, _dstore, _sid, self.provider.target_model)
+                    # ⚠️ L1→L2 **过提炼器**（要花钱、要等秒级），所以排在 L0→L1
+                    #    之后：先把免费的那一档降完，可能就不需要走这一档了。
+                    #    📌 **贵的动作永远排在便宜的动作后面** ——
+                    #       不然你会为一件本来不必做的事付钱。
+                    from core.context.decay import run_l1_to_l2 as _run_l2
+                    await _run_l2(self.memory, _dstore, self.provider, _sid,
+                                  self.provider.target_model)
+                    # L2→L3：交接给语义记忆 + 生成索引条目 + 改档。
+                    # ⚠️ 不过 LLM（结论行已经在库里），但它是**唯一用户有感**的箭头。
+                    from core.context.decay import run_l2_to_l3 as _run_l3
+                    _run_l3(self.memory, _dstore, _sid, self.provider.target_model)
+                    # L3→L4：索引条目过期。⚠️ **不删语义记忆** ——
+                    # 📌 遗忘 = 不再自动想起，不等于抹掉。
+                    from core.context.decay import run_l3_to_l4 as _run_l4
+                    _run_l4(self.memory, _dstore, _sid, self.provider.target_model)
+                    # 🔴🔴 **最后把投影按权威重建一次** —— 四档只改
+                    #    `exchange_decay`（权威），**没有一个会去动 `storage`**。
+                    #    不做这一步的后果/抓到的最大那条）：
+                    #
+                    #        exchange_decay 说：这段已经 L2 / 已经移出去了
+                    #        storage（真正发给模型的）说：原文还背在身上
+                    #
+                    #    —— 日志说省了、其实没省；L3 更怪：**要等重启才真的忘掉**。
+                    # ⭐ 用的就是重启那条路径的同一个函数，所以 live 与 hydrate
+                    #    **不可能漂开**（📌 各写一遍的话，它们只在"我两次都想对了"
+                    #    的前提下相等）。
+                    from core.context.decay import rebuild_projection as _reproj
+                    _reproj(self.memory, _dstore, _sid)
+                    # ⚠️ 投影已经服从权威了，**这时候才轮到 UI**。
+                    #    📌 UI 与模型必须看到同一件事：模型侧移出去了而聊天区还显示，
+                    #       用户就会接着问"你刚才说的那个"。
+                    _cb = getattr(self, "_on_decay_applied", None)
+                    if callable(_cb):
+                        try:
+                            _cb()
+                        except Exception as _ui_err:
+                            logger.debug(f"[Decay] 通知 UI 同步失败: {_ui_err}")
+        except Exception as _decay_err:
+            # ⚠️ 治理层的故障**绝不许**把对话搞挂 —— 不降级只是上下文厚一点。
+            logger.warning(f"[Decay] L0→L1 跳过（不影响对话）: {_decay_err}")

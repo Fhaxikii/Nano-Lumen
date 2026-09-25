@@ -268,27 +268,31 @@ def t_attach_runs_before_content_patch() -> None:
               "而「这一轮有没有图」只有一个答案",
               seg[-120:] if "storage" in seg or "memory" in seg else "")
 
-    # 本轮标志必须在**函数最开头**就落定（早于任何工具清单计算）
-    impl = next((n for n in ast.walk(t2)
-                 if isinstance(n, ast.AsyncFunctionDef) and n.name == "_handle_query_impl"), None)
-    check(impl is not None, "前置条件：找得到 `_handle_query_impl`")
-    if impl is not None:
-        _set = [n.lineno for n in ast.walk(impl)
-                if isinstance(n, ast.Assign) and len(n.targets) == 1
-                and isinstance(n.targets[0], ast.Attribute)
-                and n.targets[0].attr == "_turn_image_pending"]
-        _plan = [n.lineno for n in ast.walk(impl)
-                 if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                 and n.func.attr in ("debug", "info", "warning")
-                 and "TOKEN-PLAN" in (ast.get_source_segment(src2, n) or "")]
-        check(bool(_set), "本轮标志确实在 `_handle_query_impl` 里落定", f"L{_set}")
-        check(bool(_plan), "⚠️ [L5] 前置：找得到核心工具清单那一步（TOKEN-PLAN）", f"L{_plan}")
-        if _set and _plan:
-            check(min(_set) < min(_plan),
-                  "⭐⭐⭐ 标志落定排在**核心工具清单计算之前** —— "
-                  "🔴 反过来时 `note_image` 会被算进 deferred，"
-                  "模型只能 load_tools 去捞、下一轮又没了",
-                  f"flag@L{min(_set)} < plan@L{min(_plan)}")
+    # 本轮标志必须在**一轮最开头**就落定（早于任何工具清单计算）。
+    # 标志在 `_turn_begin` 里落定，核心工具清单在 `_turn_tool_plan` 里算，
+    # `_handle_query_impl` 按顺序调用两者。
+    def _fn(name):
+        return next(n for n in ast.walk(t2)
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name)
+    begin, plan, impl = _fn("_turn_begin"), _fn("_turn_tool_plan"), _fn("_handle_query_impl")
+    _set = [n.lineno for n in ast.walk(begin)
+            if isinstance(n, ast.Assign) and len(n.targets) == 1
+            and isinstance(n.targets[0], ast.Attribute)
+            and n.targets[0].attr == "_turn_image_pending"]
+    _plan = [n.lineno for n in ast.walk(plan)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+             and n.func.attr in ("debug", "info", "warning")
+             and "TOKEN-PLAN" in (ast.get_source_segment(src2, n) or "")]
+    check(bool(_set), "本轮标志确实在 `_turn_begin` 里落定", f"L{_set}")
+    check(bool(_plan), "⚠️ [L5] 前置：`_turn_tool_plan` 里找得到核心工具清单那一步（TOKEN-PLAN）", f"L{_plan}")
+    _calls = {n.func.attr: n.lineno for n in ast.walk(impl)
+              if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+              and n.func.attr in ("_turn_begin", "_turn_tool_plan")}
+    check(len(_calls) == 2 and _calls["_turn_begin"] < _calls["_turn_tool_plan"],
+          "⭐⭐⭐ 标志落定排在**核心工具清单计算之前** —— "
+          "🔴 反过来时 `note_image` 会被算进 deferred，"
+          "模型只能 load_tools 去捞、下一轮又没了",
+          str(_calls))
 
     # 🔴 第四次栽在 `storage[-1]` 上（2026-08-13）：`note_image` **真的调了**，
     #    但 `set_image_summary` 读 `storage[-1]` —— ReAct 循环里那已经是 `tool_calls`，

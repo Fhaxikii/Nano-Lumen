@@ -76,21 +76,19 @@ def t_fastpath_gone() -> None:
 
 def t_single_entry() -> None:
     print("\n[2] Skill 创建只剩一个入口")
-    src = inspect.getsource(Orchestrator._handle_query_impl)
-    tree = ast.parse(__import__("textwrap").dedent(src))
+    # 一轮的入口拆成了 `_handle_query_impl` 与它调用的若干方法，所以在整个包里查
+    tree = ast.parse(module_text("core.orchestrator"))
+    all_calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
     calls = [
-        n for n in ast.walk(tree)
-        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-        and n.func.attr == "_run_skill_exploration"
+        n for n in all_calls
+        if isinstance(n.func, ast.Attribute) and n.func.attr == "_run_skill_exploration"
     ]
     check(not calls,
-          "⭐ `_handle_query_impl` 里不再直接调 `_run_skill_exploration`",
+          "⭐ 没有任何地方再调 `_run_skill_exploration`",
           f"还剩 {len(calls)} 处")
 
-    # 前置条件：证明这个函数体确实被解析到了，否则空结果会假通过
-    check(len(src.splitlines()) > 200,
-          "前置条件：确实解析到了 `_handle_query_impl` 的函数体",
-          f"{len(src.splitlines())} 行")
+    # 前置条件：证明确实解析到了调用，否则空结果会假通过
+    check(len(all_calls) >= 1, "前置条件：确实解析到了调用节点", f"{len(all_calls)} 个")
 
     # 元工具那条入口必须还在 —— 删了快路径又没有元工具就等于砍掉功能。
     # ⚠️ 换锚点：cutover 之后 ReAct 的 exit 分支里**没有工具名**了

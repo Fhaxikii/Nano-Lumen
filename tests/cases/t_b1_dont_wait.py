@@ -553,10 +553,11 @@ def t_cmd71_carrier_outlives_the_turn() -> None:
     print("\n[cmd71-1] 🔴 可交载体必须活过一轮")
     orc = module_text("core.orchestrator")
     tree = ast.parse(orc)
+    # 轮开始的状态接续在 `_turn_begin` 里（由 `_handle_query_impl` 第一个调用）
     fn = next((n for n in ast.walk(tree)
                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-               and n.name == "_handle_query_impl"), None)
-    check(fn is not None, "前置：找到 `_handle_query_impl`")
+               and n.name == "_turn_begin"), None)
+    check(fn is not None, "前置：找到 `_turn_begin`")
     if fn is None:
         return
     body = ast.unparse(fn)
