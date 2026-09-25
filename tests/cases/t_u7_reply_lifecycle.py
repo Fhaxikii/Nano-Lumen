@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
-from tests._src import module_text  # noqa: E402
+from tests._src import class_and_bases, module_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -79,18 +79,13 @@ def _func(tree, src, name, owner=None):
     📌 **一条断言如果靠「碰巧是第一个」定位目标，它的正确性就取决于
        别人有没有在它前面加东西。** 加 `owner` 之后它定位的是真正要查的那个。
     """
-    for n in ast.walk(tree):
-        if owner is not None:
-            if not (isinstance(n, ast.ClassDef) and n.name == owner):
-                continue
-            for sub in n.body:
-                if (isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef))
-                        and sub.name == name):
-                    return sub, (ast.get_source_segment(src, sub) or "")
-            continue
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
-            return n, (ast.get_source_segment(src, n) or "")
-    return None, ""
+    scopes = [tree] if owner is None else class_and_bases(tree, owner)
+    for scope in scopes:
+        nodes = ast.walk(scope) if owner is None else scope.body
+        for n in nodes:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
+                return n, (ast.get_source_segment(src, n) or "")
+    raise LookupError(f"def {name} not found" + (f" in {owner}" if owner else ""))
 
 
 def t_reset_in_finally() -> None:

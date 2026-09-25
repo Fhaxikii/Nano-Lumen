@@ -59,7 +59,7 @@ def _fn(name):
     for n in ast.walk(TREE):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
             return n
-    return None
+    raise LookupError(f"def {name} not found")
 
 
 FN = _fn("_generate_skill_with_writer")

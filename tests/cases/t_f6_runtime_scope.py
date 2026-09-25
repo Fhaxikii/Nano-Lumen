@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护
-from tests._src import module_text  # noqa: E402
+from tests._src import class_and_bases, module_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -75,18 +75,18 @@ def _strip(node, src: str) -> str:
 
 
 def _fn_code(tree, src, name, owner=None):
-    """按名字取函数源码（注释与 docstring 均已剥掉）。见 `_strip`。"""
-    for n in ast.walk(tree):
-        if owner is not None:
-            if not (isinstance(n, ast.ClassDef) and n.name == owner):
-                continue
-            for s in n.body:
-                if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and s.name == name:
-                    return _strip(s, src)
-            continue
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
-            return _strip(n, src)
-    return ""
+    """按名字取函数源码（注释与 docstring 均已剥掉）。见 `_strip`。
+
+    给出 `owner` 时在该类及其基类（mixin）里找。找不到抛 `LookupError`，不返回空串：
+    空串会让「X 不在代码里」这类断言恒真。
+    """
+    scopes = [tree] if owner is None else class_and_bases(tree, owner)
+    for scope in scopes:
+        nodes = ast.walk(scope) if owner is None else scope.body
+        for n in nodes:
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
+                return _strip(n, src)
+    raise LookupError(f"def {name} not found" + (f" in {owner}" if owner else ""))
 
 
 # ══════════════════════════════════════════════════════════════════════════

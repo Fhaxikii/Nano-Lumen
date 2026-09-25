@@ -63,7 +63,7 @@ def module_tree(dotted: str) -> ast.Module:
     return ast.parse(module_text(dotted))
 
 
-def _class_and_bases(tree: ast.Module, owner: str) -> list[ast.ClassDef]:
+def class_and_bases(tree: ast.Module, owner: str) -> list[ast.ClassDef]:
     """`owner` 类，加上它在同一模块 / 包里能找到定义的全部基类（递归）。
 
     方法可以由基类（mixin）提供：「挂在 Orchestrator 上的方法」包括继承来的。
@@ -94,7 +94,7 @@ def _class_and_bases(tree: ast.Module, owner: str) -> list[ast.ClassDef]:
 def find_def(dotted: str, name: str, owner: Optional[str] = None) -> ast.AST:
     """按名字找函数 / 方法定义；`owner` 给出时只在该类及其基类里找。"""
     tree = module_tree(dotted)
-    scopes = [tree] if owner is None else _class_and_bases(tree, owner)
+    scopes = [tree] if owner is None else class_and_bases(tree, owner)
     if owner is not None and not scopes:
         raise LookupError(f"class {owner!r} not found in {dotted}")
     hits = []

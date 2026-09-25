@@ -63,7 +63,7 @@ def _func_src(src: str, name: str) -> str:
     for n in _ast.walk(_ast.parse(src)):
         if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and n.name == name:
             return chr(10).join(src.splitlines()[n.lineno - 1:n.end_lineno])
-    return ""
+    raise LookupError(f"def {name} not found")
 
 
 def t_cancel_has_a_ui_caller() -> None:

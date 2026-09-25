@@ -60,7 +60,7 @@ def _func(name):
     for n in ast.walk(TREE):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
             return n
-    return None
+    raise LookupError(f"def {name} not found")
 
 
 def _exit_branch(loop):

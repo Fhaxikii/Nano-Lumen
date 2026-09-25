@@ -73,7 +73,7 @@ def _fn(name):
     for n in ast.walk(TREE):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
             return ast.get_source_segment(APP, n) or ""
-    return ""
+    raise LookupError(f"def {name} not found")
 
 
 def _code_of(name: str) -> str:

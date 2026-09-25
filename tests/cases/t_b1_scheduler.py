@@ -60,7 +60,7 @@ def _fn(src: str, name: str):
     for n in ast.walk(ast.parse(src)):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
             return n
-    return None
+    raise LookupError(f"def {name} not found")
 
 
 # ══════════════════════════════════════════════════════════════════════════

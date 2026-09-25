@@ -89,6 +89,28 @@ def t_no_path_reads_in_tests() -> None:
     check(not hits, "没有 (ROOT / \"x.py\").read_text / Path(\"x.py\").read_text", ", ".join(hits[:8]))
 
 
+def t_no_silent_lookup_helpers() -> None:
+    print("\n▶ 用例里自写的「按名字找定义」辅助函数，找不到时不返回空值")
+    import ast
+    hits = []
+    for f in sorted((ROOT / "tests" / "cases").glob("t_*.py")):
+        tree = ast.parse(f.read_text(encoding="utf-8-sig"))
+        for fn in tree.body:
+            if not isinstance(fn, ast.FunctionDef) or fn.name.startswith("t_"):
+                continue
+            src = ast.unparse(fn)
+            if not (("ast.walk" in src or "iter_child_nodes" in src or ".body" in src)
+                    and "FunctionDef" in src and ".name ==" in src):
+                continue
+            last = fn.body[-1]
+            if isinstance(last, ast.Return):
+                v = last.value
+                vals = v.elts if isinstance(v, ast.Tuple) else [v]
+                if all(x is None or (isinstance(x, ast.Constant) and x.value in ("", None)) for x in vals):
+                    hits.append(f"{f.name}:{fn.name}")
+    check(not hits, "找不到时抛错（返回空值会让「X 不在代码里」恒真）", ", ".join(hits))
+
+
 def t_patch_global() -> None:
     print("\n▶ 替换包内模块级名字：所有持有它的模块一起换")
     import ast
@@ -130,6 +152,7 @@ if __name__ == "__main__":
     t_module_text()
     t_find_def()
     t_no_path_reads_in_tests()
+    t_no_silent_lookup_helpers()
     t_patch_global()
 
     _ok = sum(1 for r in _results if r[0])
