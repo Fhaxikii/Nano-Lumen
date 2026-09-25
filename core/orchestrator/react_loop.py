@@ -213,7 +213,7 @@ class ReactLoopMixin:
         #    **不能**用 `_core_manifest + _pending_loaded_manifests` 重算 ——
         #    那个方向刚好反了：`_pending_loaded_manifests` 是**中转缓冲区**，
         #    本批执行完就 append 进 `tools_manifest` 然后**立刻清空**
-        #    （`orchestrator.py` 那段"按需加载：把本批 load_tools 匹配到的 schema
+        #    （本文件 `_run_react_loop` 里那段"按需加载：把本批 load_tools 匹配到的 schema
         #    并入 tools_manifest"）。于是下一步模型真正拿到 `CORE + 刚 load 的`，
         #    而那个缓冲区已经空了 —— 拿它当判据会**把刚刚合法 load 成功的工具拦掉**。
         #

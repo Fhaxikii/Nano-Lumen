@@ -28,7 +28,7 @@ Nano Runtime Kernel + Thin Task Spine。
 
 ═══ 接线现状 ═══
 
-本层已经是生产路径的一部分：`app.py` / `core/orchestrator.py` / `memory/manager.py` /
+本层已经是生产路径的一部分：`app.py` / `core/orchestrator/` / `memory/manager.py` /
 `core/mcp_client.py` / `core/registry.py` / `core/os_layer/*` 等十余处在真引用它。
 
 每个旧字段搬过来时都按三步迁移：**旧字段权威 → 内核权威 → 删旧**，中间用 shadow

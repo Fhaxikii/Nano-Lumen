@@ -105,7 +105,7 @@ class Preload(str, Enum):
        那一支带 `logger.warning` 把它转去 `_emit_skill_preview_from_decision`），
        但三个 `_build_skills_info` 调用点**全部**传 `include_write=False` ——
        它的 schema 只在 SkillWriter 那一步被**直接**递给 provider
-       （`orchestrator.py` 的两处 `[_WRITE_SKILL_MANIFEST]`），从不进主决策工具池。
+       （`core/orchestrator/skill_writer.py` 的两处 `[_WRITE_SKILL_MANIFEST]`），从不进主决策工具池。
 
        🔴 **为什么必须补这一档，而不是让它落进 DEFERRED**：DEFERRED 会进感知块、
           也能被 `load_tools` 拉出来 —— 于是模型可以**故意**在主循环调 `WriteSkill`，

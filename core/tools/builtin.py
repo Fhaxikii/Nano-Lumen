@@ -35,7 +35,7 @@
      （它们通过 manifest 的 enum 自动进检索文档，`load_tools(query="delete_file")` 照样命中）。
 
 5. 🔴🔴 **最要紧的一条：`_BUILTIN_TOOLS_AWARENESS` 这张表【零使用点】——它是死表。**
-   全项目搜下来，生产代码里只有它的**定义**（`orchestrator.py:1470`），没有任何读取。
+   全项目搜下来，生产代码里只有它的**定义**，没有任何读取。
    ⭐ 于是那 20 条**人工写的、质量不错的**一句话描述，**从来没有进过模型的上下文**；
    模型实际看到的一直是 `_build_deferred_awareness` 拿 **manifest description 做 `[:28]`**
    截出来的残句。
@@ -50,9 +50,8 @@
 
 ═══ 为什么用工厂函数而不是模块级常量 ═══
 
-`orchestrator.py` 将来要 import 本层，而这些 manifest 常量在 `orchestrator.py` 里 ——
-直接 import 会**循环**。所以由调用方把 manifest 传进来：本文件只声明「除 schema 之外的一切」。
-📌 一个模块不该为了拿几个字面量就把自己焊死在调用方身上。
+manifest（schema）由调用方传进来（`core/tools/manifests.py` 的 `BUILTIN_MANIFESTS`）：
+本文件只声明「除 schema 之外的一切」，两边按工具名合起来；缺哪个工具的 manifest 会直接抛错。
 """
 from __future__ import annotations
 
