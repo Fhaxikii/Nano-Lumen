@@ -25,10 +25,12 @@ from core.orchestrator._runtime import (  # noqa: F401
     _strip_skill_boilerplate,
     current_agent_label,
 )
-from core.orchestrator.orchestrator import (  # noqa: F401
-    Orchestrator,
+from core.orchestrator._types import (  # noqa: F401
     ToolExecution,
     ToolOutcome,
+)
+from core.orchestrator.orchestrator import (  # noqa: F401
+    Orchestrator,
     _SKILL_PROTOCOL,
     _UI_TERMINAL_EVENTS,
     _ambient_parse_title,
