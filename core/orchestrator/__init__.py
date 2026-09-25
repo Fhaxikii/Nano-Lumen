@@ -32,6 +32,8 @@ from core.orchestrator._types import (  # noqa: F401
 from core.orchestrator.orchestrator import (  # noqa: F401
     Orchestrator,
     _SKILL_PROTOCOL,
-    _UI_TERMINAL_EVENTS,
     _ambient_parse_title,
+)
+from core.orchestrator.react_loop import (  # noqa: F401
+    _UI_TERMINAL_EVENTS,
 )
