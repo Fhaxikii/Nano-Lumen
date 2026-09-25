@@ -5,7 +5,7 @@
 
     坑一 只能改写不能删 tool_result   ✅ 真的存在 → 做了（唯一真正要做的）
     坑二 scratchpad 载体没定          ❌ `AgentDecision.discarded_text` 已在（顺手做的）
-    坑三  MAX_FILE_TOOL_CHAIN 卡住迭代  ❌ 常量还在，但**全仓零使用点**，拦不住任何东西
+    坑三  MAX_FILE_TOOL_CHAIN 卡住迭代  ❌ 常量全仓零使用点，拦不住任何东西（已删除）
     坑四  meta 先解析全文所以贵         ❌ 它不是贵，是**零调用方**
 
 📌 而三个「消失」的方式各不相同，值得分开记：
