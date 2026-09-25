@@ -489,14 +489,16 @@ class ScreenMixin:
                 y0b, y1b = sorted((float(box[1]), float(box[3])))
                 cx = _ox + int((x0b + x1b) / 2 * _w)
                 cy = _oy + int((y0b + y1b) / 2 * _h)
-                lines.append(f"  - {it.get('name') or '?'}: x={cx}, y={cy}")
+                lines.append(f"  - {it.get('name') or '?'}")
+                logger.debug(f"[Look-Diag] {it.get('name')!r} 约在 ({cx},{cy})")
             if not lines:
                 logger.warning("[Look-Diag] targets 有内容但一个 box 都没解析出来")
                 return ""
-            logger.info(f"[Look-Diag] 换算后屏幕坐标（区域 {_w}x{_h} @ "
-                        f"{_ox},{_oy}）：{lines}")
-            return ("\n\n[Screen coordinates from this look — click them directly with "
-                    "computer_use click(x=…, y=…); do NOT look again just to find them]\n"
+            # 只给名字、不给坐标：这里的坐标来自概览图上的框，实测会偏（D17），
+            # 点击要走定位（UIA / 视觉）拿准确位置。
+            return ("\n\n[Elements seen in this look - click one with computer_use "
+                    "click(target='<name>'); for apps with a control tree, prefer the exact "
+                    "name or id from read_window_tree. Do not look again just to find them]\n"
                     + "\n".join(lines))
         except Exception:
             return ""
@@ -669,6 +671,18 @@ class ScreenMixin:
             "Do not operate the screen again. Tell the user that authorization is needed to continue, or suggest completing it manually."
         )
 
+    async def _handle_end_screen_task(self, args: dict, aid: str, *,
+                                      event_queue, **_ctx) -> str:
+        """`end_screen_task`：结束 GUI 任务（收回 Temp Auto、关 GUI 会话、恢复窗口）。只能退出。"""
+        had_task = self._gui_task_active()
+        was_mini = self._window_mode_now() == "mini"
+        self._gui_task_end("end_screen_task")
+        if was_mini:
+            await event_queue.put({"event": "window_mode", "mode": "full"})
+        if had_task:
+            return "The screen-operation task has ended: Temp Auto is revoked and Nano's window is restored."
+        return "There was no screen-operation task running; nothing changed."
+
     # ── GUI 任务与窗口形态 ────────────────────────────────────────────
 
     def _window_mode_now(self) -> str:
@@ -697,9 +711,15 @@ class ScreenMixin:
         except Exception as e:
             logger.warning(f"[Window] 开始 GUI 任务失败: {e}")
         self._gui_task_touch()
+        self._arm_emergency_stop()
 
     def _gui_task_end(self, reason: str) -> None:
-        """结束 GUI 任务：收回临时免确认授权、关 GUI 会话；窗口形态记为 full。幂等。"""
+        """结束 GUI 任务：收回临时免确认授权、关 GUI 会话、注销急停热键；窗口形态记为 full。幂等。"""
+        try:
+            from core.os_layer import executor_action as _ea
+            _ea.disarm_global_hotkey()
+        except Exception:
+            pass
         try:
             from core.runtime import oslease as _ol
             if self._gui_task_active():
@@ -731,8 +751,8 @@ class ScreenMixin:
         self._gui_last_activity = time.monotonic()
 
     async def _gui_task_track_turn(self, events):
-        """包住一轮 ReAct 的事件流：记录「轮进行中 / 本轮是否以挂起结束」，
-        用户按停止时结束 GUI 任务。GUI 任务本身不随轮结束。"""
+        """包住一轮 ReAct 的事件流：记录「轮进行中 / 本轮是否以挂起结束」。
+        GUI 任务不随轮结束，也不随终止按钮结束（只有急停结束它）。"""
         suspended = False
         self._turn_running = True
         try:
@@ -741,8 +761,6 @@ class ScreenMixin:
                     kind = ev.get("event")
                     if kind == "suspend_waiting":
                         suspended = True
-                    elif kind == "turn_interrupted" and ev.get("stopped"):
-                        self._gui_task_end("user stopped the turn")
                 yield ev
         finally:
             self._turn_running = False
@@ -779,6 +797,34 @@ class ScreenMixin:
             return bool(_wc.list_live(_gk()))
         except Exception:
             return False
+
+    def _arm_emergency_stop(self) -> None:
+        """GUI 任务期间注册 Ctrl+` 急停热键。按下 = 中止正在执行的动作 + 终止本轮 + 结束 GUI 任务。"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        try:
+            from core.os_layer import executor_action as _ea
+
+            def _on_hotkey():
+                if loop is not None:
+                    loop.call_soon_threadsafe(self._on_emergency_stop)
+                else:
+                    self._on_emergency_stop()
+
+            _ea.arm_global_hotkey(_on_hotkey)
+        except Exception as e:
+            logger.warning(f"[Window] 急停热键注册失败: {e}")
+
+    def _on_emergency_stop(self) -> None:
+        """急停：终止本轮（在下一个动作边界停下），并结束 GUI 任务（收回授权；界面随后恢复窗口）。"""
+        logger.warning("[Window] 急停：终止本轮并结束 GUI 任务")
+        try:
+            self.request_stop("emergency stop (Ctrl+`)")
+        except Exception as e:
+            logger.error(f"[Window] 急停终止本轮失败: {e}")
+        self._gui_task_end("emergency stop")
 
     def _install_gui_task_idle_tick(self) -> None:
         """把空闲兜底登记为 runtime reconcile 的周期步骤（同名登记会覆盖，可重复调用）。"""

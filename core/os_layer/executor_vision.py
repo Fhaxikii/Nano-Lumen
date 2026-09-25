@@ -336,7 +336,13 @@ class VisionLocator:
                     # 模式，不再允许 name 出现在句子中间任意位置就算数。
                     nl = name.lower()
                     _hit = False
-                    if name:
+                    # AutomationId 精确相等也算命中：它不随界面语言变（中文计算器的「加」
+                    # 按钮 id 是 plusButton），模型可以用 read_window_tree 里看到的 id 当 target。
+                    _aid = (getattr(ctrl, "AutomationId", "") or "").strip().lower()
+                    _aid_hit = bool(_aid) and _aid == target_lower
+                    if _aid_hit:
+                        _hit = True
+                    elif name:
                         if target_lower in nl:
                             _hit = True
                         elif len(nl) >= 2 and nl in target_lower:
@@ -356,8 +362,9 @@ class VisionLocator:
                                     cy = (rect.top + rect.bottom) // 2
                                     matches.append({
                                         "x": cx, "y": cy,
-                                        "confidence": 0.95 if name.lower() == target_lower else 0.85,
-                                        "label": name, "source": "uia",
+                                        "confidence": (0.97 if _aid_hit else
+                                                       0.95 if name.lower() == target_lower else 0.85),
+                                        "label": name or _aid, "source": "uia",
                                         "control_type": ctype,
                                     })
                             except Exception:

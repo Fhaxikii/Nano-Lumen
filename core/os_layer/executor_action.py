@@ -8,13 +8,12 @@ type_text / hotkey / scroll。
 决策1（A方案）：click 类接受语义 target，内部调 VisionLocator 定位后再点击。
               模型永远不传像素坐标。
 
-决策3（双保险急停）：
-  主：keyboard 库全局监听 ESC（每个动作前检查中断标志）
-  兜底：pyautogui failsafe（鼠标甩到屏幕左上角 (0,0) 触发 FailSafeException）
-  ——failsafe 不依赖键盘监听，全屏/管理员程序也拦不住鼠标，是最后防线。
-
-急停只在 OS 动作执行期间挂监听（start_listening/stop_listening），
-普通对话不挂，避免 ESC 与其他程序冲突。
+急停（两条）：
+  主：全局热键 Ctrl+`。热键由 GUI 任务持有（`arm_global_hotkey` / `disarm_global_hotkey`，
+      见 orchestrator 的 ScreenMixin）：整个 GUI 任务期间都有效，任务外不监听。
+      按下时置全局中止标志（正在执行的动作在下一个检查点中止），并回调上层终止本轮、结束任务。
+  兜底：鼠标甩到屏幕左上角 (0,0)（pyautogui failsafe / 手动检查），只在动作执行时检查。
+每个动作开始时清掉本执行器自己的标志（`start_listening`）；全局标志只在新的 GUI 任务开始时清。
 """
 from __future__ import annotations
 import asyncio
@@ -24,8 +23,61 @@ from typing import Any, Dict, Optional
 from loguru import logger
 
 
+# 全局急停：由 GUI 任务持有的 Ctrl+` 热键触发，所有执行器共享。
+_GLOBAL_STOP = threading.Event()
+_hotkey_handle = None
+_hotkey_lock = threading.Lock()
+
+
+def arm_global_hotkey(on_trigger=None) -> bool:
+    """注册 Ctrl+` 全局热键（重复调用只保留一个）。按下时置全局中止标志并调用 `on_trigger()`
+    （在 keyboard 库的线程里调用）。返回是否注册成功。"""
+    global _hotkey_handle
+    _GLOBAL_STOP.clear()
+    with _hotkey_lock:
+        if _hotkey_handle is not None:
+            return True
+        try:
+            import keyboard
+
+            def _fire():
+                _GLOBAL_STOP.set()
+                logger.warning("[OS-Estop] 急停触发（Ctrl+`）")
+                if on_trigger is not None:
+                    try:
+                        on_trigger()
+                    except Exception as e:
+                        logger.error(f"[OS-Estop] 急停回调失败: {e}")
+
+            _hotkey_handle = keyboard.add_hotkey("ctrl+`", _fire)
+            logger.debug("[OS-Estop] Ctrl+` 急停热键已注册（GUI 任务期间有效）")
+            return True
+        except Exception as e:
+            logger.warning(f"[OS-Estop] Ctrl+` 急停热键注册失败（甩角兜底仍有效）: {e}")
+            return False
+
+
+def disarm_global_hotkey() -> None:
+    """注销 Ctrl+` 热键。全局中止标志保留到下一次注册时再清（让正在执行的动作能看到它）。"""
+    global _hotkey_handle
+    with _hotkey_lock:
+        if _hotkey_handle is None:
+            return
+        try:
+            import keyboard
+            keyboard.remove_hotkey(_hotkey_handle)
+        except Exception:
+            pass
+        _hotkey_handle = None
+        logger.debug("[OS-Estop] Ctrl+` 急停热键已注销")
+
+
+def global_hotkey_armed() -> bool:
+    return _hotkey_handle is not None
+
+
 class EmergencyStop:
-    """急停双保险管理器。"""
+    """急停状态：本执行器的中止标志 + 全局急停标志。"""
 
     def __init__(self):
         self._stopped = threading.Event()
@@ -33,41 +85,20 @@ class EmergencyStop:
         self._kb_hook = None
 
     def start_listening(self):
-        """开始监听急停热键 Ctrl+`（OS 动作序列开始时调用）。
-
-        决策3：用 Ctrl+` 组合键（不是 ESC——ESC 很多程序自己占用，易误触；
-        Ctrl+` 几乎无主流软件占用，一只手可按）。失败时 failsafe 仍兜底。
-        """
+        """一个鼠标键盘动作开始：清掉本执行器的中止标志（全局急停标志不清）。"""
         self._stopped.clear()
         self._listener_active = True
-        try:
-            import keyboard
-            # add_hotkey 监听组合键（on_press_key 只能单键）
-            self._kb_hook = keyboard.add_hotkey("ctrl+`", lambda: self.trigger("Ctrl+` hotkey"))
-            logger.info("[OS-Estop] Ctrl+` 全局急停监听已启动")
-        except ImportError:
-            logger.warning("[OS-Estop] keyboard 库未安装，Ctrl+` 监听不可用（failsafe 仍生效）")
-        except Exception as e:
-            logger.warning(f"[OS-Estop] Ctrl+` 监听启动失败: {e}（failsafe 仍生效）")
 
     def stop_listening(self):
-        """停止监听（OS 动作序列结束时调用）。"""
+        """一个鼠标键盘动作结束。"""
         self._listener_active = False
-        if self._kb_hook is not None:
-            try:
-                import keyboard
-                keyboard.remove_hotkey(self._kb_hook)
-            except Exception:
-                pass
-            self._kb_hook = None
-        logger.info("[OS-Estop] Ctrl+` 急停监听已停止")
 
     def trigger(self, source: str = ""):
         self._stopped.set()
         logger.warning(f"[OS-Estop] 急停触发（来源: {source}）")
 
     def is_stopped(self) -> bool:
-        return self._stopped.is_set()
+        return self._stopped.is_set() or _GLOBAL_STOP.is_set()
 
     def reset(self):
         self._stopped.clear()

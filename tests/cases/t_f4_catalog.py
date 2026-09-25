@@ -646,6 +646,9 @@ def t_equivalence_with_legacy():
         "manage_mcp",
         # ⭐ 同批：接入一个新 MCP（与管理分开，理由见 manifest 注释）
         "connect_mcp",
+        # 2026-09-25 新增的 CORE：结束 GUI 任务的保底出口（收回 Temp Auto、恢复窗口）。
+        #    必须常驻：set_window_mode 需要 load_tools，出口要随时可用；无参数，schema 很便宜。
+        "end_screen_task",
     }
     check(post_cutover.issubset(set(defs)),
           "⚠️ 前置：豁免名单里的工具确实存在（名字写错会让豁免静默生效）",
@@ -843,9 +846,11 @@ def t_cutover_wiring():
     #    ⚠️ 照上面那条纪律**逐个具名**，不用规则自动豁免。
     # ⭐ 2026-08-26：`resolve_ambient_referent` 是新增的 **CORE** 工具。
     #    ⚠️ 照上面那条纪律**逐个具名**，不用规则自动豁免。
+    # 2026-09-25：`end_screen_task` 是新增的 CORE 工具（结束 GUI 任务的保底出口，
+    #    set_window_mode 需要 load_tools，它必须随时可用）。
     want = ((_SNAP_CORE | {"load_tools", "search_files", "edit_file",
                            "os_execute", "load_full_file", "get_file_path",
-                           "peek_file", "resolve_ambient_referent"})
+                           "peek_file", "resolve_ambient_referent", "end_screen_task"})
             - {"answer_open_interaction"})
     check(core == want,
           "⭐⭐ core 常驻集与 cutover 前一致 —— "
@@ -915,6 +920,8 @@ def t_cutover_wiring():
         #    要解决的事（WebSearch 给不出版本 / 包名 / 安装方式 / 维护状态）。
         #    📌 **一条更好的路，如果模型看不见它，等于没有这条路。**
         "search_mcp_registry",
+        # 2026-09-25 新增：结束 GUI 任务的常驻保底出口（收回 Temp Auto、恢复窗口）。
+        "end_screen_task",
     }
     check(adv == want_adv,
           "⭐⭐⭐ 主决策工具清单与 cutover 前 `_build_skills_info(...)` 的产物逐项一致 —— "

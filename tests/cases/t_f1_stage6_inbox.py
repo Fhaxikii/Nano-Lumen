@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import def_text as S_def_text
 from tests._src import module_text  # noqa: E402
 
 from loguru import logger
@@ -966,11 +967,12 @@ def t_stop_button() -> None:
     check("turn_tokens_fmt" in seg and "已终止" in seg,
           "⭐ 终止**要收尾**（写统计、停转圈、显示「已终止」）—— "
           "因为**没有下一段**；而插话时刻意不收尾")
-    check("[System record: the user pressed Stop" in seg,
-          "⭐⭐ **终止这个事实传给了模型**。这条来自实测 Claude Code 时看到的"
-          "**反面教材**：被用户手动终止时模型**什么都没收到**，任务就是不存在了。"
-          "📌 状态变化必须让需要知道的人知道 —— 这里是模型")
-    check("running unless I cancel" in seg,
+    _stop_ev_src = S_def_text("core.orchestrator", "_interject_stop_event", owner="Orchestrator")
+    check("[System record: the user pressed Stop" in _stop_ev_src
+          and "[System record: the user pressed Stop" not in seg,
+          "⭐⭐ **终止这个事实传给了模型**——由后端在真正停下时写进历史"
+          "（界面点击即收尾，那时后端可能还没停下，所以不由界面写）")
+    check("running unless I cancel" in _stop_ev_src,
           "⭐ 并且明说**已经启动的后台工作还在跑，除非它自己去取消** —— "
           "📌 中断的作用域是「这一轮的决策与输出」，不是「这一轮启动过的一切」")
     check("不清队列" in app,
@@ -1041,7 +1043,7 @@ def t_stop_button() -> None:
     check("_run_bg_task" not in _stopseg and "notify_background_done" not in _stopseg,
           "⚠️ 也没有去动后台任务的完成通路")
     # ⭐ 而且必须**明确告诉模型**它们还活着（否则它以为都停了）
-    check("still" in _stopseg and "running unless I cancel" in _stopseg,
+    check("still" in _stop_ev_src and "running unless I cancel" in _stop_ev_src,
           "⭐⭐ 并且**明说它们还在跑、除非它自己去取消** —— "
           "⚠️ 只是「没杀掉」不够：模型若以为都停了，就不会去取消该取消的。"
           "📌 状态变化必须让需要知道的人知道")

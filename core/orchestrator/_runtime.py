@@ -357,10 +357,12 @@ def _rt_authorization_state(orch) -> str:
         from core.os_layer import dsl as _dsl_a
         _perms = _dsl_a.load_permissions()
         _off = [k for k in _dsl_a.PERMISSION_LABELS if not _perms.get(k, False)]
-        _auto = _dsl_a.auto_authorization_on()
+        _auto = _dsl_a.user_auto_mode_on()
+        from core.runtime import oslease as _ol_a
+        _temp = bool(_ol_a.temp_auto_authorized())
     except Exception:
         return ""
-    if not _off and not _auto:
+    if not _off and not _auto and not _temp:
         return ""
     _lines = ["[Authorization state - facts about this computer right now]"]
     if _off:
@@ -397,6 +399,12 @@ def _rt_authorization_state(orch) -> str:
             "asked to confirm each action - authorization is your own call. "
             "Do not tell the user you are 'waiting for their approval'; you are not. "
             "Judge each action as if you were the one accountable for it."
+        )
+    if _temp:
+        _lines.append(
+            "- Temp Auto is ON: the user approved the current screen-operation task once, so "
+            "actions are not confirmed one by one until that task ends (set_window_mode('full') "
+            "or end_screen_task). It is not the user's general setting and ends with the task."
         )
     return "\n".join(_lines)
 

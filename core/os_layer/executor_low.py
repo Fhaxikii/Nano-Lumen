@@ -86,6 +86,10 @@ def foreground_identity() -> Optional[Dict[str, Any]]:
         return None
 
 
+# read_window_tree 最多返回的节点数（有名字或 AutomationId 的控件）。
+_WINDOW_TREE_MAX_NODES = 300
+
+
 def get_target_window():
     """返回 Z-order 最靠前、且不是 Nano 自己的窗口对象；找不到返回 None。
 
@@ -354,27 +358,52 @@ class LowLevelExecutor:
         except ImportError:
             return _missing("uiautomation")
         try:
-            max_depth = int(params.get("max_depth", 3))
-            ctrl = auto.GetForegroundControl()
+            max_depth = int(params.get("max_depth", 8))
+            # 读目标窗口（排除 Nano 自己），不直接读前台：用户刚在 Nano 里发完消息时，
+            # 前台几乎总是 Nano 自己。没有目标窗口时退回前台。
+            ctrl = None
+            win = get_target_window()
+            if win is not None:
+                ctrl = auto.ControlFromHandle(win._hWnd)
             if not ctrl:
-                return {"ok": False, "data": {}, "summary": "", "error": "no foreground control"}
+                ctrl = auto.GetForegroundControl()
+            if not ctrl:
+                return {"ok": False, "data": {}, "summary": "", "error": "no target window"}
+            budget = [_WINDOW_TREE_MAX_NODES]
 
             def walk(c, depth):
-                if depth > max_depth:
+                if depth > max_depth or budget[0] <= 0:
                     return None
-                node = {"name": c.Name, "type": c.ControlTypeName, "children": []}
+                name = (c.Name or "").strip()
+                aid = (getattr(c, "AutomationId", "") or "").strip()
+                kids = []
                 try:
                     for child in c.GetChildren():
                         sub = walk(child, depth + 1)
                         if sub:
-                            node["children"].append(sub)
+                            kids.append(sub)
                 except Exception:
                     pass
+                # 没有名字、没有 AutomationId 的容器不单独占一层：把子节点提上来
+                if not name and not aid:
+                    return kids[0] if len(kids) == 1 else ({"type": c.ControlTypeName, "children": kids} if kids else None)
+                budget[0] -= 1
+                node = {"type": c.ControlTypeName}
+                if name:
+                    node["name"] = name
+                if aid:
+                    node["id"] = aid
+                if kids:
+                    node["children"] = kids
                 return node
 
             tree = walk(ctrl, 0)
-            return {"ok": True, "data": {"tree": tree},
-                    "summary": f"read foreground window control tree (depth <= {max_depth})", "error": ""}
+            title = (getattr(ctrl, "Name", "") or "").strip()
+            return {"ok": True, "data": {"window": title, "tree": tree},
+                    "summary": (f"read control tree of {title!r} (depth <= {max_depth}"
+                                + (", truncated" if budget[0] <= 0 else "") + "). "
+                                "Click controls by their exact name or id as target."),
+                    "error": ""}
         except Exception as e:
             logger.error(f"[OS-Low] read_window_tree 失败: {e}")
             return {"ok": False, "data": {}, "summary": "", "error": str(e)}

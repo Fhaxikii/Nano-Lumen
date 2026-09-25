@@ -604,6 +604,10 @@ class ViewSession:
         # 等待 pill
         "is_waiting_pill": False,
         "waiting_for_carrier": False,
+        # 终止按钮：点击即置（界面立即收尾，见 `_stoppable_stream`）
+        "stop_clicked": False,
+        "stop_evt": None,           # asyncio.Event，由 `_stoppable_stream` 创建
+        "ui_stopped": False,        # 界面已收尾，之后到达的事件不再显示
     }
 
     __slots__ = tuple(_FIELDS) + ("_extra",)
@@ -3610,8 +3614,13 @@ class WebUI:
         _rs["_status_timer_task"] = _timer_task
 
         _stream = event_source if event_source is not None else self.agent.handle_query(query, image_parts=_image_parts, temp_file_hint=temp_file_hint)
-        async for step in _stream:
+        async for step in self._stoppable_stream(_stream, _rs):
             _wire_check(step)
+            # 用户已按终止、界面已收尾：后端剩下的事件照常消费（让它在动作边界停下、
+            # 期间一直持有 pipeline_lock），但不再画到界面上；等待回复的确认一律回「取消」。
+            if _rs.get("ui_stopped"):
+                self._discard_after_stop(step)
+                continue
 
             # ── 统一文字流：思考文字和最终答案同字体同样式直接流入内容区 ───
             # thought_block_start / thought_block_done / thought_summary 不再创建
@@ -4641,20 +4650,13 @@ class WebUI:
                     #    📌 状态变化必须让需要知道的人知道 —— 这里是模型。
                     #    ⚠️ 走 memory 而不是动态段：它是**已经发生的事实**，
                     #       该留在对话历史里，不是每轮重复注入的提示。
-                    try:
-                        self.agent.memory.add_system_note(
-                            "assistant",
-                            "[System record: the user pressed Stop, so I stopped at "
-                            "the next safe boundary. Nothing further was executed. "
-                            "Any background work I had already started is still "
-                            "running unless I cancel it.")
-                    except Exception as _e_sr:
-                        logger.warning(f"[Stop] 写终止事实失败: {_e_sr}")
+                    # 终止的事实由后端在真正停下时写进历史（react_loop._interject_stop_event）。
                     # ⚠️ 终止**不清队列** —— 用户排着的消息不该被这次终止吃掉。
                     #    📌 「停止当前这一轮」和「丢掉我说过的话」是两件事。
                     self._turn_interrupted = True
+                    _rs["ui_stopped"] = True
                     self._refresh_send_btn()
-                    return
+                    continue
 
                 # ⚠️ **插话：不收尾元信息行** —— 这一段被撤回了，但整个回应期还没结束，
                 #    队列里那条马上会接上来，token 统计要等**整段**完了才写。
@@ -5499,15 +5501,40 @@ class WebUI:
             ui.notify(self._AUTO_ON_NOTICE, type='warning')
 
     def _refresh_auto_chip(self):
-        """刷新输入框下方 Auto chip 的样式（开=高亮琥珀，关=灰）。"""
+        """刷新输入框下方 Auto chip：Ask permission 灰、Auto 琥珀；GUI 任务的临时授权存在时
+        强制显示 Temp Auto（蓝，不可展开），授权消失后变回用户选的那个。
+
+        临时授权读授权租约（真实信号），由 1 秒 tick 调用；状态没变时不重画。
+        """
         chip = self._auto_chip
         if not chip:
             return
+        _temp = _rt_auto_authorized()
+        _state = "temp" if _temp else ("auto" if self._global_auto else "ask")
+        if getattr(self, "_auto_chip_state", None) == _state:
+            return
+        self._auto_chip_state = _state
+        # q-menu 默认点父元素就弹出：Temp Auto 期间关掉这个行为（并收起已打开的菜单）。
+        _menu = getattr(self, '_auto_menu', None)
+        if _menu is not None:
+            try:
+                if _temp:
+                    _menu.props('no-parent-event')
+                    _menu.close()
+                else:
+                    _menu.props(remove='no-parent-event')
+            except Exception:
+                pass
         try:
             _lbl = getattr(self, '_auto_label', None)
             if _lbl:
-                _lbl.set_text('Auto' if self._global_auto else 'Ask permission')
-            if self._global_auto:
+                _lbl.set_text({'temp': 'Temp Auto', 'auto': 'Auto', 'ask': 'Ask permission'}[_state])
+            if _temp:
+                chip.style('display:flex; align-items:center; gap:4px; cursor:default; '
+                           'font-size:var(--nano-fs-sm); padding:2px 10px; border-radius:999px; '
+                           'background:rgba(var(--nano-info-rgb),0.12); color:var(--nano-info); '
+                           'border:1px solid rgba(var(--nano-info-rgb),0.25); font-weight:500;')
+            elif self._global_auto:
                 chip.style('display:flex; align-items:center; gap:4px; cursor:pointer; '
                            'font-size:var(--nano-fs-sm); padding:2px 10px; border-radius:999px; '
                            'background:rgba(var(--nano-warn-rgb),0.12); color:var(--nano-warn); '
@@ -5529,7 +5556,12 @@ class WebUI:
             ui.notify(self._AUTO_ON_NOTICE, type='warning')
 
     def _open_auto_menu(self):
-        """打开左下 Auto 下拉：Ask permission / Auto mode，当前项高亮（不用对钩）。"""
+        """打开左下 Auto 下拉：Ask permission / Auto mode，当前项高亮（不用对钩）。
+
+        Temp Auto 期间不展开（临时授权随 GUI 任务结束，不能在这里改）。
+        """
+        if _rt_auto_authorized():
+            return
         box = getattr(self, '_auto_menu_box', None)
         menu = getattr(self, '_auto_menu', None)
         if box is None or menu is None:
@@ -5625,11 +5657,83 @@ class WebUI:
     #       它就不是停止能力。**
 
     def _turn_running(self) -> bool:
-        """现在有没有一轮在跑。⚠️ 用 `pipeline_lock` —— 它就是那个事实的权威。"""
+        """（对用户而言）现在有没有一轮在跑：持有 `pipeline_lock` 且用户没有按过终止。
+
+        按过终止后后端可能还在收尾（仍持有锁），但对用户这一轮已经结束：按钮变回发送，
+        新消息进队列，等后端停下后接着处理。
+        """
         try:
-            return self.pipeline_lock.locked()
+            _rs_now = getattr(self, "_resp_state", None) or {}
+            return self.pipeline_lock.locked() and not _rs_now.get("stop_clicked")
         except Exception:
             return False
+
+    async def _stoppable_stream(self, stream, rs: dict):
+        """包住后端事件流：用户按终止时立刻插入一个界面侧的终止事件，之后继续转发后端事件。
+
+        后端生成器在一个独立 task 里完整迭代（它用到 ContextVar，不能拆到多个 task 里逐步推进），
+        事件经队列转发；这里在「下一个事件」和「终止按钮」之间先到先处理。
+        """
+        stop_evt = rs.get("stop_evt")
+        if stop_evt is None:
+            stop_evt = asyncio.Event()
+            rs["stop_evt"] = stop_evt
+        if rs.get("stop_clicked"):
+            stop_evt.set()
+        q: asyncio.Queue = asyncio.Queue()
+        _end = object()
+
+        async def _pump():
+            try:
+                async for ev in stream:
+                    await q.put(ev)
+            except Exception as e:          # 交给消费方按原样抛出
+                await q.put(e)
+            finally:
+                await q.put(_end)
+
+        pump = asyncio.create_task(_pump())
+        stop_w = asyncio.ensure_future(stop_evt.wait())
+        stop_sent = False
+        try:
+            while True:
+                getter = asyncio.ensure_future(q.get())
+                if not stop_sent:
+                    done, _ = await asyncio.wait({getter, stop_w},
+                                                 return_when=asyncio.FIRST_COMPLETED)
+                    if stop_w in done:
+                        stop_sent = True
+                        logger.info("[Stop] 界面立即收尾（后端将在下一个动作边界停下）")
+                        yield {"event": "turn_interrupted", "stopped": True,
+                               "where": "stop button", "round": 0, "status": "SYS_IDLE",
+                               "log": "用户终止", "current_skill": None}
+                ev = await getter
+                if ev is _end:
+                    return
+                if isinstance(ev, Exception):
+                    raise ev
+                yield ev
+        except asyncio.CancelledError:
+            # 消费方被取消：连同后端这一轮一起取消（与直接迭代时的行为一致）。
+            pump.cancel()
+            raise
+        finally:
+            # 消费方提前退出（如插话分支 return）时不取消 pump：后端这一轮自己跑完收尾。
+            stop_w.cancel()
+
+    def _discard_after_stop(self, step: dict) -> None:
+        """终止后到达的后端事件：不显示；等待回复的确认 / 选择卡一律回「取消」。"""
+        try:
+            from core.runtime.replies import resolve
+            for it in [step] + list(step.get("cards") or []):
+                rid = it.get("reply_id")
+                acts = it.get("actions") or []
+                for a in ("cancel", "reject", "dismiss"):
+                    if rid and a in acts:
+                        resolve(rid, a)
+                        break
+        except Exception as e:
+            logger.debug(f"[Stop] 终止后回绝待确认事件失败: {e}")
 
     def _refresh_send_btn(self) -> None:
         """按当前真实状态重画那颗按钮。
@@ -5683,23 +5787,22 @@ class WebUI:
         self.start_pipeline_task()
 
     def _request_stop(self):
-        """确定性终止：**不过模型**，在最近的动作边界停下。"""
+        """终止：后端在最近的动作边界停下；界面立刻收尾（不等后端）。
+
+        界面立即显示已终止、按钮变回发送（`stop_clicked` 让 `_turn_running` 为假）；
+        后端剩下的事件由 `_stoppable_stream` 继续消费、不再显示。
+        """
         try:
             self.agent.request_stop("用户点了终止按钮")
         except Exception as e:
             logger.error(f"[Stop] 请求终止失败: {e}")
             return
-        # ⚠️ 立刻给一点反馈 —— 真正停下要等到下一个动作边界（可能是几百毫秒，
-        #    也可能要等一个不可阻断的动作跑完）。
-        #    📌 早先那条判据在这里复现：**「已提出」和「已生效」是两件事**，
-        #       接管状态条当初也是因为混了这两件事才让用户觉得它在骗人。
-        try:
-            _rs = getattr(self, "_resp_state", None) or {}
-            if _rs.get("status_lbl"):
-                with self._ui_scope():
-                    _rs["status_lbl"].set_text("正在停下…")
-        except Exception:
-            pass
+        _rs_now = getattr(self, "_resp_state", None)
+        if _rs_now is not None:
+            _rs_now["stop_clicked"] = True
+            _evt = _rs_now.get("stop_evt")
+            if _evt is not None:
+                _evt.set()
         self._refresh_send_btn()
 
     def _handoff_response_epoch(self, predecessor: dict, successor: dict) -> None:
@@ -15341,6 +15444,11 @@ class WebUI:
             # GUI 任务结束后窗口仍是 mini 时恢复（按 GUI 会话租约判断，丢一跳只是晚一秒）。
             if gui._mini_active:
                 asyncio.create_task(gui._sync_window_with_gui_task())
+            # Temp Auto 芯片跟随临时授权租约（状态没变时不重画）。
+            try:
+                gui._refresh_auto_chip()
+            except Exception as e:
+                logger.debug(f"[Auto] 芯片刷新失败（忽略本跳）: {e}")
         ui.timer(1, _takeover_bar_tick)
 
         # 重启恢复：把上次会话遗留的 active 挂起在聊天区补一条提示，

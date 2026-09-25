@@ -268,10 +268,13 @@ def t_state_is_injected_as_fact() -> None:
     import core.orchestrator as O
 
     # ① 出厂态（全开 + 非 auto）→ **一个字都不说**
-    _saved_lp, _saved_auto = dsl.load_permissions, dsl.auto_authorization_on
+    from core.runtime import oslease as _ol
+    _saved_lp, _saved_auto = dsl.load_permissions, dsl.user_auto_mode_on
+    _saved_temp = _ol.temp_auto_authorized
     try:
         dsl.load_permissions = lambda *a, **k: dict(ALL_ON)
-        dsl.auto_authorization_on = lambda *a, **k: False
+        dsl.user_auto_mode_on = lambda *a, **k: False
+        _ol.temp_auto_authorized = lambda *a, **k: False
         check(O._rt_authorization_state(None) == "",
               "⭐⭐ 出厂态**返回空串** —— 📌 一段每轮都在的注入会被模型学会忽略，"
               "恰好毁掉「响亮」这件事本身（同 [F5] 压力段那条纪律）")
@@ -288,7 +291,7 @@ def t_state_is_injected_as_fact() -> None:
 
         # ③ auto 开着 → 说清"没人会被问"
         dsl.load_permissions = lambda *a, **k: dict(ALL_ON)
-        dsl.auto_authorization_on = lambda *a, **k: True
+        dsl.user_auto_mode_on = lambda *a, **k: True
         _t2 = O._rt_authorization_state(None)
         check("Auto is ON" in _t2 and "waiting for their approval" in _t2,
               "⭐⭐ auto 开着时告诉它**不会被逐个询问**，且别说「我在等你批准」 —— "
@@ -297,9 +300,20 @@ def t_state_is_injected_as_fact() -> None:
         check("turned OFF" not in _t2,
               "⭐ 而此时**不提能力**（全开）—— 📌 两件事分开说，"
               "混成一句模型就会互相解释")
+        check("Temp Auto" not in _t2, "用户自己选的 Auto 不说成 Temp Auto")
+
+        # ④ GUI 任务的临时授权 → 单独一行 Temp Auto，不冒充用户的 Auto
+        dsl.user_auto_mode_on = lambda *a, **k: False
+        _ol.temp_auto_authorized = lambda *a, **k: True
+        _t3 = O._rt_authorization_state(None)
+        check("Temp Auto is ON" in _t3 and "Auto is ON: for" not in _t3,
+              "临时授权单独说成 Temp Auto，与用户选的 Ask / Auto 分开", _t3[:80])
+        check("end_screen_task" in _t3 and "ends with the task" in _t3,
+              "说清它随任务结束、怎么结束")
     finally:
         dsl.load_permissions = _saved_lp
-        dsl.auto_authorization_on = _saved_auto
+        dsl.user_auto_mode_on = _saved_auto
+        _ol.temp_auto_authorized = _saved_temp
 
 
 def t_injection_names_the_affected_tools() -> None:

@@ -455,22 +455,26 @@ def auto_authorization_on(config_path: Optional[pathlib.Path] = None) -> bool:
        📌 auto 豁免的是「要不要逐个问」，不是「能不能做」。
     ⚠️ fail-safe 方向是 **False**（照常弹确认）。
     """
-    _on = False
-    if config_path is None:
-        config_path = os_state_path()
-    try:
-        if config_path.exists():
-            _on = bool(json.loads(config_path.read_text(encoding="utf-8"))
-                       .get("auto_mode", False))
-    except Exception as e:
-        logger.warning(f"[OS-DSL] 读 auto_mode 失败，按未开启处理: {e}")
-    if _on:
+    if user_auto_mode_on(config_path):
         return True
     try:
         from core.runtime import oslease as _ol
         return bool(_ol.temp_auto_authorized())
     except Exception:
         return False
+
+
+def user_auto_mode_on(config_path: Optional[pathlib.Path] = None) -> bool:
+    """用户自己选的是不是 Auto（`os_state.json` 的 `auto_mode`；不含 GUI 任务的临时授权）。"""
+    if config_path is None:
+        config_path = os_state_path()
+    try:
+        if config_path.exists():
+            return bool(json.loads(config_path.read_text(encoding="utf-8"))
+                        .get("auto_mode", False))
+    except Exception as e:
+        logger.warning(f"[OS-DSL] 读 auto_mode 失败，按未开启处理: {e}")
+    return False
 
 
 def required_permissions(action: str, effective_risk: int = 0) -> frozenset:

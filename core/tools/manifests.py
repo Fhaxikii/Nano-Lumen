@@ -914,6 +914,17 @@ _RENDER_VISUAL_MANIFEST = {
 
 
 # ── 执行时自缩窗工具声明 ────────────────────────────────────────────────
+# 常驻的保底出口：随时可用（set_window_mode 需要 load_tools），只能结束、不能开始。
+_END_SCREEN_TASK_MANIFEST = {
+    "name": "end_screen_task",
+    "description": (
+        "End the current screen-operation task: revokes Temp Auto and restores Nano's "
+        "window. Exit only - it cannot start a task. Same effect as set_window_mode('full')."
+    ),
+    "parameters": {"type": "object", "properties": {}},
+}
+
+
 _SET_WINDOW_MODE_MANIFEST = {
     "name": "set_window_mode",
     "description": (
@@ -2045,8 +2056,12 @@ _COMPUTER_USE_MANIFEST = {
         "file, and there is no reason to try. To actually SEE the screen, use "
         "look_at_screen.\n"
         # ⭐ 「用语义 target，不要坐标」这句跟着 click 一起搬过来 —— 它只对这里成立。
-        "Click screen elements with params={target:'semantic description'} — never "
-        "coordinates; the system locates the element and visually confirms it.\n"
+        "Click with params={target:'...'} - never invent coordinates; the system locates the "
+        "element. For normal desktop apps, first read the window with os_execute "
+        "read_window_tree and use a control's exact name or id from it as target - the app "
+        "may use another language than you (a Chinese calculator's plus button is named '加', "
+        "id 'plusButton'). Describe an element visually only when the app has no usable "
+        "control tree (games, canvases, images).\n"
         "type_text enters at the current focus; click the field first if it must be focused.\n"
         # ⚠️⚠️ 两条绑定关系，**强度不同，必须分开说**。
         #    📌 写成同一种强度，模型要么该缩小时不缩，要么为了走流程白缩一次。
@@ -2131,6 +2146,7 @@ BUILTIN_MANIFESTS = {m["name"]: m for m in (
     _UPDATE_TASK_STEP_MANIFEST,
     _RENDER_VISUAL_MANIFEST,
     _SET_WINDOW_MODE_MANIFEST,
+    _END_SCREEN_TASK_MANIFEST,
     _LOOK_AT_SCREEN_MANIFEST,
     _VIEW_PAST_IMAGE_MANIFEST,
     _EDIT_FILE_MANIFEST,

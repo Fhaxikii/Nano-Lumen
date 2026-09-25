@@ -1284,8 +1284,19 @@ class ToolDispatchMixin:
         #    找不到声明的（幻觉名字）落串行 —— 与改造前的兜底同向。
         _cat = self._get_tool_catalog()
         _rtv = self._tool_runtime_view()
+        # 同一批里的屏幕动作按顺序执行；任一步失败，本批剩下的 computer_use 不再执行
+        # （后面的步骤是按失败那一步成功的前提排的，例如点输入框失败后不能接着打字）。
+        _screen_step_failed = False
         for call in executable_calls:
             _d = _cat.get(call.name)
+            if call.name == "computer_use" and _screen_step_failed:
+                results_by_key[_key(call)] = ToolExecution(
+                    call=call,
+                    result_text=("NOT executed: an earlier computer_use step in this batch failed, "
+                                 "so the remaining screen steps were skipped. Re-plan from the "
+                                 "current screen."),
+                    ok=False, error="skipped after an earlier screen step failed")
+                continue
             if _d is not None and _d.scheduling is Scheduling.PARALLEL:
                 parallel_segment.append(call)
             else:
@@ -1296,6 +1307,8 @@ class ToolDispatchMixin:
                     event_queue=event_queue, active_tool_names=active_tool_names,
                 )
                 results_by_key[_key(ex.call)] = ex
+                if call.name == "computer_use" and not ex.ok:
+                    _screen_step_failed = True
 
         await flush_parallel()
 

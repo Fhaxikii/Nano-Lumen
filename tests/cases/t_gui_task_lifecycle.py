@@ -3,7 +3,8 @@
 
 - GUI 任务 = GUI 会话租约 + 临时免确认授权，由后端开始 / 结束；窗口形态（mini / full）只是呈现。
 - 开始：set_window_mode('mini') 且用户授权（先开会话再授权）。
-- 结束：set_window_mode('full')、用户停止本轮、急停、重置对话、空闲兜底；**不随轮结束**。
+- 结束：set_window_mode('full')、急停（整个任务期间监听 Ctrl+`）、重置对话、空闲兜底；
+  **不随轮结束，也不随终止按钮 / 插话结束**。
 - 用户手动放大：只改窗口形态，任务与授权保留，下一个工具结果附一次说明；
   之后再缩回 mini 不重新授权。
 - 界面：mini 窗开关不碰租约；GUI 任务结束而窗口仍是 mini 时由 1 秒 tick 恢复。
@@ -26,6 +27,28 @@ from tests import _src as S  # noqa: E402
 
 from loguru import logger  # noqa: E402
 logger.remove()
+
+import types as _types  # noqa: E402
+
+
+class _FakeKeyboard:
+    """替身 keyboard 模块：不装真实的全局键盘钩子（测试不碰真实桌面）。"""
+    def __init__(self):
+        self.hotkeys: dict = {}
+        self._n = 0
+
+    def add_hotkey(self, combo, cb):
+        self._n += 1
+        self.hotkeys[self._n] = (combo, cb)
+        return self._n
+
+    def remove_hotkey(self, handle):
+        self.hotkeys.pop(handle, None)
+
+
+FAKE_KB = _FakeKeyboard()
+sys.modules["keyboard"] = _types.SimpleNamespace(add_hotkey=FAKE_KB.add_hotkey,
+                                                 remove_hotkey=FAKE_KB.remove_hotkey)
 
 from core.runtime.clock import FakeClock  # noqa: E402
 from core.runtime.kernel import reset_kernel_for_tests  # noqa: E402
@@ -169,7 +192,8 @@ def t_turns_and_stops(tmp: pathlib.Path) -> None:
     asyncio.run(drain([{"event": "turn_interrupted", "stopped": False}]))
     check(_active(k) == (True, True), "插话中断不结束任务")
     asyncio.run(drain([{"event": "turn_interrupted", "stopped": True}]))
-    check(_active(k) == (False, False), "用户停止本轮：结束 GUI 任务")
+    check(_active(k) == (True, True), "终止按钮也不结束任务（只有急停结束）")
+    o._gui_task_end("cleanup")
 
     seen = []
 
@@ -210,6 +234,121 @@ def t_idle(tmp: pathlib.Path) -> None:
     t1 = o._gui_last_activity
     check(o._gui_task_idle_check(now=t1 + idle - 5) is False, "屏幕活动重新起算")
     o._gui_task_end("cleanup")
+
+
+def t_emergency_stop(tmp: pathlib.Path) -> None:
+    print(chr(10) + "▶ 急停（Ctrl+`）在整个 GUI 任务期间有效")
+    from core.os_layer import executor_action as EA
+    k = make_kernel(tmp / "f")
+    o = make_orch()
+    stops = []
+    o.request_stop = lambda source="": stops.append(source)
+    FAKE_KB.hotkeys.clear()
+    check(not EA.global_hotkey_armed(), "任务外不监听")
+    o._gui_task_begin("test")
+    check(EA.global_hotkey_armed() and len(FAKE_KB.hotkeys) == 1
+          and list(FAKE_KB.hotkeys.values())[0][0] == "ctrl+`", "GUI 任务开始：注册 Ctrl+` 热键")
+    o._gui_task_touch()
+    check(EA.global_hotkey_armed(), "两个动作之间（思考 / 等 API）热键仍在")
+    est = EA.EmergencyStop()
+    est.start_listening()
+    check(not est.is_stopped(), "按下之前动作不中止")
+    _, cb = list(FAKE_KB.hotkeys.values())[0]
+    cb()                                   # 模拟按下 Ctrl+`（不在事件循环里：直接回调）
+    check(est.is_stopped(), "按下：正在执行的动作看到中止标志")
+    check(len(stops) == 1 and "emergency" in stops[0], "按下：终止本轮", str(stops))
+    check(_active(k) == (False, False) and o._window_mode_now() == "full", "按下：结束 GUI 任务（收回授权）")
+    check(not EA.global_hotkey_armed() and not FAKE_KB.hotkeys, "任务结束：热键注销")
+    est2 = EA.EmergencyStop()
+    check(est2.is_stopped(), "中止标志保留到下一次任务开始（让还在执行的动作能看到）")
+    o._gui_task_begin("again")
+    check(not est2.is_stopped(), "新的 GUI 任务开始时清掉中止标志")
+    o._gui_task_end("cleanup")
+    check(not FAKE_KB.hotkeys, "正常结束也注销热键")
+
+
+def t_batch_and_end_tool(tmp: pathlib.Path) -> None:
+    print(chr(10) + "▶ 一次回复连发多步 computer_use；失败即停；end_screen_task")
+    from core.orchestrator._types import ToolExecution
+    from core.schema import ToolCall
+    k = make_kernel(tmp / "g")
+    o = make_orch()
+    ran = []
+    fail_on = {"c2"}
+
+    async def fake_one(call, **_kw):
+        ran.append(call.tool_use_id)
+        return ToolExecution(call=call, result_text="ok", ok=call.tool_use_id not in fail_on)
+
+    o._execute_one_tool_call = fake_one
+    o._get_tool_catalog = lambda: {}
+    o._tool_runtime_view = lambda: None
+    calls = [ToolCall(name="computer_use", args={}, tool_use_id=f"c{i}", index=i) for i in (1, 2, 3, 4)]
+    res = asyncio.run(o._execute_tool_batch(calls, used_model="m", base_guide="", system_guide="",
+                                             realtime_callback=None, event_queue=_Q()))
+    check(ran == ["c1", "c2"], "第 2 步失败后，第 3、4 步不执行", str(ran))
+    check([r.call.tool_use_id for r in res] == ["c1", "c2", "c3", "c4"]
+          and not res[2].ok and "skipped" in res[2].error and "Re-plan" in res[2].result_text,
+          "被跳过的步骤也有结果（tool_use / tool_result 一一对应），并说明要重新规划")
+    ran.clear()
+    fail_on.clear()
+    asyncio.run(o._execute_tool_batch(calls, used_model="m", base_guide="", system_guide="",
+                                       realtime_callback=None, event_queue=_Q()))
+    check(ran == ["c1", "c2", "c3", "c4"], "全部成功时按顺序全部执行")
+    from core.orchestrator.react_loop import _OS_CAPABILITY_PROMPT as _P
+    check("send those computer_use calls together in one reply - up to 4" in _P
+          and "the rest of that batch are skipped" in _P,
+          "系统提示允许一次看清后连发多步（上限 4，失败即停）")
+
+    o2 = make_orch()
+    o2._gui_task_begin("test")
+    o2._set_window_mode("mini")
+    q = _Q()
+    txt = asyncio.run(o2._handle_end_screen_task({}, "aid", event_queue=q))
+    check(_active(k) == (False, False) and "revoked" in txt
+          and any(e.get("event") == "window_mode" and e.get("mode") == "full" for e in q.items),
+          "end_screen_task：收回 Temp Auto、恢复窗口")
+    txt2 = asyncio.run(o2._handle_end_screen_task({}, "aid", event_queue=_Q()))
+    check("no screen-operation task" in txt2, "没有任务时什么都不做")
+    from core.tools import manifests as M
+    from core.tools.builtin import build_builtin_definitions
+    defs = {d.name: d for d in build_builtin_definitions(M.BUILTIN_MANIFESTS)}
+    d = defs.get("end_screen_task")
+    check(d is not None and str(d.preload).endswith("CORE"), "end_screen_task 常驻（不进 load_tools）",
+          str(getattr(d, "preload", None)))
+    check(len(M._END_SCREEN_TASK_MANIFEST["description"]) < 250 and not M._END_SCREEN_TASK_MANIFEST["parameters"]["properties"],
+          "说明简短、没有参数（只能退出）")
+
+
+def t_locate_wording() -> None:
+    print(chr(10) + "▶ 定位口径（D17 / D18）")
+    from core.tools import manifests as M
+    cu = M.BUILTIN_MANIFESTS["computer_use"]["description"]
+    check("read_window_tree" in cu and "plusButton" in cu and "'加'" in cu,
+          "computer_use 说明：先读控件树，用真实名字 / id 当 target（界面语言可能不同）")
+    scr = S.def_text("core.orchestrator", "_format_look_targets", owner="Orchestrator") \
+        if "_format_look_targets" in S.module_text("core.orchestrator") else ""
+    src = S.module_text("core.orchestrator")
+    check("click them directly with" not in src and "click(target='<name>')" in src,
+          "look_at_screen 只列目标名字，不再给「直接点这些坐标」")
+    vis = S.def_text("core.os_layer.executor_vision", "_locate_uia", owner="VisionLocator")
+    check("AutomationId" in vis and "_aid_hit" in vis, "UIA 定位认 AutomationId")
+    low = S.def_text("core.os_layer.executor_low", "_read_window_tree_sync", owner="LowLevelExecutor")
+    check("get_target_window()" in low and '"id"' in low and "_WINDOW_TREE_MAX_NODES" in low,
+          "read_window_tree 读目标窗口（排除 Nano 自己）、带 id、有节点上限")
+    del scr
+
+
+def t_chip_wiring() -> None:
+    print(chr(10) + "▶ Temp Auto 芯片")
+    chip = S.def_text("app", "_refresh_auto_chip", owner="WebUI")
+    check("_rt_auto_authorized()" in chip and "'Temp Auto'" in chip and "--nano-info" in chip,
+          "临时授权存在时显示 Temp Auto（读授权租约，换颜色）")
+    check("no-parent-event" in chip and "_auto_chip_state" in chip,
+          "Temp Auto 期间点击不展开；状态没变时不重画")
+    menu = S.def_text("app", "_open_auto_menu", owner="WebUI")
+    check("if _rt_auto_authorized():" in menu, "菜单入口在 Temp Auto 期间直接返回")
+    check("gui._refresh_auto_chip()" in S.module_text("app"), "1 秒 tick 刷新芯片")
 
 
 def t_screen_action_gate(tmp: pathlib.Path) -> None:
@@ -257,7 +396,8 @@ def t_wiring() -> None:
     osrc = S.module_text("core.orchestrator")
     check("self._gui_task_end(\"conversation reset\")" in S.def_text("core.orchestrator", "reset_conversation", owner="Orchestrator"),
           "重置对话结束 GUI 任务")
-    check(osrc.count("self._gui_task_end(\"emergency stop\")") == 2, "急停（os_execute 与 os_skill 两条路）结束 GUI 任务")
+    check(osrc.count("self._gui_task_end(\"emergency stop\")") == 3,
+          "急停结束 GUI 任务：热键回调 + 动作返回 aborted 的两条路（os_execute / os_skill）")
     check("_gui_task_track_turn(self._run_react_loop(" in S.def_text("core.orchestrator", "_handle_query_impl", owner="Orchestrator"),
           "普通轮经过 _gui_task_track_turn")
     check(osrc.count("_gui_task_track_turn(self._run_react_loop(") == 2, "唤醒轮也经过 _gui_task_track_turn")
@@ -293,7 +433,11 @@ if __name__ == "__main__":
         t_turns_and_stops(tmp)
         t_idle(tmp)
         t_screen_action_gate(tmp)
+        t_emergency_stop(tmp)
+        t_batch_and_end_tool(tmp)
     t_wiring()
+    t_locate_wording()
+    t_chip_wiring()
 
     _ok = sum(1 for r in _results if r[0])
     print("")

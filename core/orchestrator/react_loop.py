@@ -62,8 +62,12 @@ _OS_CAPABILITY_PROMPT = (
     "and minimizing/closing/switching windows.\n"
     "Reach for os_execute first: a command or a file write is faster and far more reliable "
     "than driving the screen. Use computer_use when there is genuinely no other way.\n"
-    "Call one action at a time, observe the result, then decide the next step. "
+    "Normally call one action at a time, observe the result, then decide the next step. "
     "They may be combined with other tools.\n"
+    "Exception for computer_use: when one look already settled several steps (several "
+    "buttons to press, a field to click and then text to type), send those computer_use "
+    "calls together in one reply - up to 4. They run in order; if one fails, the rest "
+    "of that batch are skipped so you can re-plan.\n"
 
     # ⚠️⚠️ **两条绑定关系，强度不同 —— 拆开说**。
     #    🔴 旧文把 click / typing / screenshot / app launch / window switching
@@ -499,6 +503,17 @@ class ReactLoopMixin:
         if stopped:
             logger.info(f"[Stop] 第{round_idx + 1}轮在「{where}」被用户终止 —— "
                         f"本轮不写历史、不执行工具，且**不接着跑**")
+            # 终止的事实由后端在真正停下时写进历史（界面在点击时就已显示终止，
+            # 不能由界面写：那时后端可能还没停下）。
+            try:
+                self.memory.add_system_note(
+                    "assistant",
+                    "[System record: the user pressed Stop, so I stopped at "
+                    "the next safe boundary. Nothing further was executed. "
+                    "Any background work I had already started is still "
+                    "running unless I cancel it.")
+            except Exception as _e_sr:
+                logger.warning(f"[Stop] 写终止事实失败: {_e_sr}")
         else:
             logger.info(f"[Interject] 第{round_idx + 1}轮在「{where}」被用户插话中断 —— "
                         f"本轮不写历史、不执行工具，交给下一轮带着两条消息重新决策")
