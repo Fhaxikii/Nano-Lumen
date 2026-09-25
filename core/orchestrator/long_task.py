@@ -16,6 +16,10 @@ from core.tools.manifests import _DONT_WAIT_MANIFEST
 class LongTaskMixin:
     """长任务：交还、挂起恢复、等待 / 回看 / 停止后台任务、任务边界。"""
 
+    # ⭐⭐⭐ 等待的读写都直接进入 `waitcond`。
+    # 切读期的 Authority 门面与观测期的 shadow 映射已经完成使命：继续保留会让后来调用方
+    # 误以为仍有两套身份/两套账。历史 `legacy_susp_id` 只是一列反查数据，不是权威。
+
     # ⭐⭐⭐ **长任务交还控制权的阈值（秒）** —— 与任务类型无关。
     #
     # 历史：它 8s → 90s（2026-08-09 上午，已定），当时还叫「MCP 自动后台化阈值」。
