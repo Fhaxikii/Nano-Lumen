@@ -1087,36 +1087,6 @@ def t_no_second_authority():
 #    **那正是 事故的原样复现。**
 # 📌 上一节给作用域 handler 开了"可以按名字分支"的豁免，这一节就是那个豁免的对价。
 
-def _names_dispatched_in(fn_src: str) -> set:
-    """从一段函数源码里解析出它按名字分发的工具名。
-
-    只认 `<x>.name == "s"` / `<x> == "s"` / `... in (...)` 这几种形状 ——
-    **不用文本匹配**，那会被注释和 docstring 打中。
-    """
-    import ast as _a
-    import textwrap
-    tree = _a.parse(textwrap.dedent(fn_src))
-    found = set()
-    for node in _a.walk(tree):
-        if not isinstance(node, _a.Compare):
-            continue
-        left = node.left
-        ok = ((isinstance(left, _a.Name) and left.id in ("name", "tool_name"))
-              or (isinstance(left, _a.Attribute) and left.attr == "name"))
-        if not ok:
-            continue
-        for op, comp in zip(node.ops, node.comparators):
-            if not isinstance(op, (_a.Eq, _a.In)):
-                continue                   # NotIn（越界判定）不是分发
-            if isinstance(comp, _a.Constant) and isinstance(comp.value, str):
-                found.add(comp.value)
-            elif isinstance(comp, (_a.Tuple, _a.List, _a.Set)):
-                for e in comp.elts:
-                    if isinstance(e, _a.Constant) and isinstance(e.value, str):
-                        found.add(e.value)
-    return found
-
-
 def t_scope_handler_covers_bindings():
     """[14] ⭐⭐ 作用域不变量的**退役留痕**（2026-08-13）。
 

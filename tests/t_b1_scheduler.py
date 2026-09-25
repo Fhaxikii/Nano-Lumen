@@ -56,14 +56,6 @@ SCHED = module_text("core.runtime.scheduler")
 BASE_T = 1_000_000.0
 
 
-def _kernel(t=BASE_T):
-    from core.runtime.store import RuntimeStore
-    from core.runtime.clock import FakeClock
-    from core.runtime.kernel import reset_kernel_for_tests
-    db = pathlib.Path(tempfile.mkdtemp(prefix="nanob1_")) / "t.db"
-    return reset_kernel_for_tests(store=RuntimeStore(db), clock=FakeClock(t))
-
-
 def _fn(src: str, name: str):
     for n in ast.walk(ast.parse(src)):
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:

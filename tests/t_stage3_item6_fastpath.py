@@ -123,11 +123,6 @@ def t_single_entry() -> None:
 # 3｜感知行：判断成本高的工具不许被截断
 # ══════════════════════════════════════════════════════════════════════════
 
-class _Bare(Orchestrator):
-    def __init__(self):    # 不跑真实 __init__（会拉 RAG / provider）
-        pass
-
-
 def t_awareness_not_truncated() -> None:
     print("\n[3] ⭐ create_new_skill 的感知行不再被截断到 28 字符")
     # ⚠️ 换锚点：`_build_deferred_awareness` 和它的 `[:28]` 已随 cutover 删除，

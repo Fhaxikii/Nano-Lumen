@@ -67,14 +67,6 @@ def make_kernel(tmp: pathlib.Path):
     return reset_kernel_for_tests(store=RuntimeStore(tmp / "rt.db"), clock=clock), clock
 
 
-def _obs(k):
-    with k.store.read() as conn:
-        return [(r["path_tag"], r["diverged"], r["detail"] or "")
-                for r in conn.execute(
-                    "SELECT path_tag, diverged, detail FROM shadow_observations "
-                    "WHERE stage=? ORDER BY id", (L.SHADOW_STAGE,)).fetchall()]
-
-
 def _nano_holds(k, reason: str = "gui"):
     """Nano 正在做一段 GUI 任务：**GUI 模式开着** + 它此刻握着鼠标。
 

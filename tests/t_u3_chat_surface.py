@@ -54,31 +54,6 @@ APP = module_text("app")
 ORCH = module_text("core.orchestrator")
 
 
-def _code_only(src: str) -> str:
-    """只留**会被执行的代码**，剥掉注释与字符串字面量。
-
-    🔴 本套件在这上面栽了**四次**：断言直接在源码文本里搜关键词，
-       命中的却是**修复处那段解释性注释**（注释里当然要提旧写法）。
-       最近一次：`_reveal_in_explorer` 的 docstring 里逐字写着旧写法
-       `Popen(["explorer", ...])` 和 `shell=True`，于是「确认已经不用了」
-       这两条断言永远红。
-    📌 **按「字符串出现过」核，不算核。**
-    ⚠️ 而它的危险在于表现形式：**假红看起来和「功能没做」一模一样** ——
-       顺手放宽断言的话，真正的缺口会跟着一起放掉。
-    """
-    import io
-    import tokenize
-    out = []
-    try:
-        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
-            if tok.type in (tokenize.COMMENT, tokenize.STRING):
-                continue
-            out.append(tok.string)
-    except Exception:
-        return src
-    return " ".join(out)
-
-
 def esc(txt: str) -> str:
     """把中文拼成源码里那串 unicode 转义（JS 塞在 Python 源码里用的就是这个形式）。
 

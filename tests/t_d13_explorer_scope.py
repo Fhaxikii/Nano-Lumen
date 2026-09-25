@@ -1,21 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Skill Explorer 执行作用域污染 + 工具契约不一致。
+"""Skill 探索的作用域污染与相关诊断。
 
-═══ 这套件里最重要的一条断言 ═══
-
-**manifest ⊆ dispatcher。** 事故当天的清点结果是：
-
-    探索阶段 manifest      = 12 个工具
-    真正有 handler 的      =  6 个
-    **无 handler 的**      =  6 个（全部是 permanent Skill）
-
-模型调那 6 个里的任何一个，都会掉进"链尾未处理的 call"→ 强制总结 → 死路，
-**而且不需要任何上下文污染**。那次的需求恰好是"日期 + DNS"，
-`GetSystemTime` / `GetDNSList` 就明晃晃摆在它的工具清单里。
-
-所以 用 **AST 解析 `_run_skill_exploration` 的真实分发链**，与
-`_EXPLORATION_DISPATCH_TOOLS` 逐项比对。任一侧改了另一侧没跟，这条就红。
-这是全套里唯一能让这类 bug **结构上不可能复发**的断言（：这种检查必须用 AST）。
+- [1] 探索作用域「manifest ⊆ dispatcher」不变量：探索子循环已整体拆除，本组只确认
+  相关方法已不存在（原来守的是什么、为什么退役，见该函数 docstring；终态由
+  `t_f4_catalog` 的「没有任何工具带 EXPLORATION binding」守着）。
+- [3] 两个诱导源头：load_tools 的返回文案 + 继承来的按需加载广告。
+- [4] 按需加载广告确实从 guide 里剥掉了。
+- [7] provider：空文本要能诊断，tool_use 要能上报。
 
 用法：
   py -3.10 tests\t_d13_explorer_scope.py
@@ -24,7 +15,6 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import inspect
 import os
 import pathlib
 import shutil
@@ -41,29 +31,9 @@ from tests._src import module_text  # noqa: E402
 from loguru import logger
 logger.remove()
 
-import core.orchestrator as orch_mod
 from core.orchestrator import Orchestrator
-from core.tools import ToolScope as _TS
-from core.tools.builtin import build_builtin_definitions as _bbd
 
 
-def _expl_defs() -> dict:
-    """内置声明表（按名字索引）。之后这就是探索作用域的**唯一**权威。"""
-    from core.tools.manifests import BUILTIN_MANIFESTS
-    _mans = dict(BUILTIN_MANIFESTS)
-    return {d.name: d for d in _bbd(_mans)}
-
-
-def _expl_declared() -> set:
-    """有 EXPLORATION binding 的工具 —— 取代旧的 `_EXPLORATION_DISPATCH_TOOLS`。
-
-    ⭐⭐ 这不是"把常量换个地方存"：改造前那张 frozenset 与真实分发链是**两份事实**，
-       本文件 的存在意义就是把它们钉在一起。现在**只有一份** ——
-       「有没有 EXPLORATION binding」既决定它进不进 manifest、也决定谁执行它。
-    📌 于是 要守的东西缩小成了另一半：**binding 说"我处理"，那个函数里
-       就必须真有分支**（否则又是：看得见、一调掉进未处理的 call）。
-    """
-    return {n for n, d in _expl_defs().items() if _TS.EXPLORATION in d.bindings}
 from core.schema import AgentDecision
 from core.runtime.clock import FakeClock
 from core.runtime.kernel import reset_kernel_for_tests
@@ -172,39 +142,6 @@ def close_all_stores() -> None:
 # 1｜⭐ manifest ⊆ dispatcher 不变量（AST）
 # ══════════════════════════════════════════════════════════════════════════
 
-def _dispatch_names_from_ast() -> set[str]:
-    """从 `_run_skill_exploration` 的源码里解析出它真正分发的工具名。
-
-    只认 `<某个 decision>.name == "x"` 与 `<某个 decision>.name in (...)` 两种形状，
-    因为分发链就是这么写的。**不用文本匹配** —— 那会被注释和 docstring 打中。
-    """
-    import textwrap
-    # ⚠️ 必须用 textwrap.dedent，不要手写切片。手写 `l[8:]` 会把 docstring 的
-    # 相对缩进一起削掉，导致 ast.parse 抛 IndentationError（第一版就是这么挂的）。
-    src = textwrap.dedent(inspect.getsource(Orchestrator._run_skill_exploration))
-    tree = ast.parse(src)
-    found: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Compare):
-            continue
-        left = node.left
-        if not (isinstance(left, ast.Attribute) and left.attr == "name"):
-            continue
-        base = left.value
-        if not (isinstance(base, ast.Name) and "decision" in base.id):
-            continue
-        for op, comp in zip(node.ops, node.comparators):
-            if not isinstance(op, (ast.Eq, ast.In)):
-                continue          # NotIn（越界判定）不是分发，跳过
-            if isinstance(comp, ast.Constant) and isinstance(comp.value, str):
-                found.add(comp.value)
-            elif isinstance(comp, (ast.Tuple, ast.List, ast.Set)):
-                for e in comp.elts:
-                    if isinstance(e, ast.Constant) and isinstance(e.value, str):
-                        found.add(e.value)
-    return found
-
-
 def t_manifest_dispatch_invariant(tmp: pathlib.Path) -> None:
     """[1] ⏸ **已退役**（2026-08-13）：探索子循环整体拆除，本组失去对象。
 
@@ -250,12 +187,6 @@ def t_manifest_dispatch_invariant(tmp: pathlib.Path) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# 2｜专用 builder 把无 handler 的工具踢出去
-# ══════════════════════════════════════════════════════════════════════════
-
-
-
-# ══════════════════════════════════════════════════════════════════════════
 # 3｜作用域污染的两个源头
 # ══════════════════════════════════════════════════════════════════════════
 
@@ -297,7 +228,8 @@ def _prompt_text(module: str) -> str:
 
 def t_scope_pollution(tmp: pathlib.Path) -> None:
     print("\n[3] 两个诱导源头：load_tools 的返回文案 + 继承来的按需加载广告")
-    prompts = _prompt_text("core.orchestrator")
+    # 模型读到的文字分两处：orchestrator 里的提示词 + core/tools/manifests.py 里的工具说明
+    prompts = _prompt_text("core.orchestrator") + "\n" + _prompt_text("core.tools.manifests")
     src = module_text("core.orchestrator")
 
     # 前置条件：证明取样面真的有内容
