@@ -1,5 +1,5 @@
 # core/orchestrator/react_loop.py
-"""Orchestrator 的这一部分：ReAct 主循环：决策流、循环本体、停止与插话、最终答复流。"""
+"""ReAct 主循环：决策流、循环本体、停止与插话、最终答复流。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 import time

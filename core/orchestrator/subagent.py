@@ -1,5 +1,5 @@
 # core/orchestrator/subagent.py
-"""Orchestrator 的这一部分：子代理：派出、并发限制、运行循环与记录。"""
+"""子代理：派出、并发限制、运行循环与记录。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 

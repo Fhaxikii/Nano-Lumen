@@ -1,5 +1,5 @@
 # core/orchestrator/tool_dispatch.py
-"""Orchestrator 的这一部分：工具目录与工具执行：单个 / 批量执行、load_tools、失败描述、出口决策。"""
+"""工具目录与工具执行：单个 / 批量执行、load_tools、失败描述、出口决策。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 import time

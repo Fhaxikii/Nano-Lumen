@@ -1,5 +1,5 @@
 # core/orchestrator/file_tools.py
-"""Orchestrator 的这一部分：文件与知识库工具：试读、分段读取、搜索、编辑、知识库检索与 ambient 指代解析。"""
+"""文件与知识库工具：试读、分段读取、搜索、编辑、知识库检索与 ambient 指代解析。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 

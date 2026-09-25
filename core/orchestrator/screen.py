@@ -1,5 +1,5 @@
 # core/orchestrator/screen.py
-"""Orchestrator 的这一部分：看屏幕与视觉：截图、视觉模型问答、图片记录与回看、窗口模式。"""
+"""看屏幕与视觉：截图、视觉模型问答、图片记录与回看、窗口模式。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 import re

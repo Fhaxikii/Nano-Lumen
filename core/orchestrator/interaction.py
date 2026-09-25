@@ -1,5 +1,5 @@
 # core/orchestrator/interaction.py
-"""Orchestrator 的这一部分：回答待办交互、请用户选择、回复指向的移交。"""
+"""回答待办交互、请用户选择、回复指向的移交。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 from typing import Any

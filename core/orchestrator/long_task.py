@@ -1,5 +1,5 @@
 # core/orchestrator/long_task.py
-"""Orchestrator 的这一部分：长任务：交还、挂起恢复、等待 / 回看 / 停止后台任务、任务边界。"""
+"""长任务：交还、挂起恢复、等待 / 回看 / 停止后台任务、任务边界。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 import traceback

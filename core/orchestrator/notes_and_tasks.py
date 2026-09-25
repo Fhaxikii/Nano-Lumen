@@ -1,5 +1,5 @@
 # core/orchestrator/notes_and_tasks.py
-"""Orchestrator 的这一部分：回忆、用户笔记、任务清单与可视化工具，以及会话结束记录。"""
+"""回忆、用户笔记、任务清单与可视化工具，以及会话结束记录。（`Orchestrator` 的 mixin）"""
 
 from loguru import logger
 

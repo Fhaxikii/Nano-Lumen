@@ -1,5 +1,5 @@
 # core/orchestrator/os_skill.py
-"""Orchestrator 的这一部分：OS Skill 的计划执行（DSL 步骤、重规划、兜底答复）与 canary 自检。"""
+"""OS Skill 的计划执行（DSL 步骤、重规划、兜底答复）与 canary 自检。（`Orchestrator` 的 mixin）"""
 
 import os
 

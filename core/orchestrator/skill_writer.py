@@ -1,5 +1,5 @@
 # core/orchestrator/skill_writer.py
-"""Orchestrator 的这一部分：Skill 生成：SkillSpec、代码编写、预览与创建出口。"""
+"""Skill 生成：SkillSpec、代码编写、预览与创建出口。（`Orchestrator` 的 mixin）"""
 
 import hashlib
 import os

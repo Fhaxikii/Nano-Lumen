@@ -1,5 +1,5 @@
 # core/orchestrator/prompt_context.py
-"""Orchestrator 的这一部分：系统提示与每轮注入块：环境、工具感知、记忆、交互、ambient、会话日志等。"""
+"""系统提示与每轮注入块：环境、工具感知、记忆、交互、ambient、会话日志等。（`Orchestrator` 的 mixin）"""
 
 import os
 import time

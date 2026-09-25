@@ -1,5 +1,5 @@
 # core/orchestrator/skill_lifecycle.py
-"""Orchestrator 的这一部分：待审 Skill 的保存 / 部署 / 取消，以及管理、更新已有 Skill 的决策。"""
+"""待审 Skill 的保存 / 部署 / 取消，以及管理、更新已有 Skill 的决策。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 import os

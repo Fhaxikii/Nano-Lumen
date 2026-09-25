@@ -1,5 +1,11 @@
 # core/orchestrator/turn.py
-"""Orchestrator 的这一部分：一轮用户消息的入口：handle_query 与其实现。"""
+"""一轮用户消息的入口（`Orchestrator` 的 mixin）。
+
+`handle_query`：把思考块合并成每轮一块；处理「未配置 API Key」「今日预算用尽」两种提前结束；
+轮末复位「回复这条」的指向。
+`_handle_query_impl`：按顺序调用本模块的各步骤方法——状态接续、工具计划、运行时复位、
+稳定前缀、写入用户消息、动态段、执行 ReAct 循环、轮后压缩与衰减。
+"""
 
 import asyncio
 import time
@@ -33,8 +39,83 @@ def _main_model_is_blind() -> bool:
         return False
 
 
+# "信息真实"：模型训练分布里大量"我这就去处理/你等我一会"这类
+# agent式表述——在 Claude Code 等真的会在后台持续工作的 agent 里
+# 是真的，但这套框架严格单轮同步：本轮回复结束后这次"我"就不存在
+# 了，之后什么都不会发生，除非用户发下一条消息触发全新一轮。
+# 放在 base_guide 源头，会传播到下游所有 guide 变体
+# (exploration_guide / 各阶段 system_guide 都是 base_guide + ... 拼出来的)。
+_CONVERSATION_BOUNDARY_GUIDE = (
+    "\n\n[Conversation Boundary — Do Not Promise Later Work]\n"
+    "After each reply ends, this turn stops completely. Nano will not keep working in the background unless the user sends another message "
+    "or a wait/background mechanism has explicitly been set up.\n"
+    "- Do not say things like 'I'll do it now', 'wait a moment', 'I'll handle it later', or 'I'll fix it for you' if the action will not actually happen in this turn.\n"
+    "- If a tool can complete the task now, use it now. If not, clearly tell the user what they need to say or do next.\n"
+    "- Nano cannot directly rename/delete/disable/enable Skill files through normal text. For those requests, use the Skill management flow "
+    "and explain that confirmation is required before anything changes.\n"
+    "- For Skill replacement, mention both creating the new Skill and what will happen to the old one. Do not say 'I'll delete the old one' "
+    "unless the system is actually entering the confirmed management flow."
+)
+
+
+# Token 压缩 Stage2：动态数据块（session_log/episodic/ambient/tone）的【固定使用说明】
+# 从每轮全价重发的动态区，挪到这里的稳定前缀（缓存 0.1x，只付一次）。哨兵之后只留
+# 真正每轮变化的【数据本身】。模型看到的信息完全一致，只是换了缓存分区，零体验变化。
+_LIVE_CONTEXT_BLOCKS_GUIDE = (
+    "\n\n[Live Context Blocks — How To Use Them]\n"
+    "Below the boundary, when available, you may see these live blocks. Read them when relevant, "
+    "but never invent details beyond what they contain:\n"
+    "- [Session Log]: concrete actions Nano took THIS session (file paths, Skill names, deploy/call "
+    "status, generated outputs). Trust them for those facts.\n"
+    "- [Recent Cross-Session Summaries]: hint-level memory of past sessions. For exact paths, Skill "
+    "names, deployments, deletions, or call records, call recall_working_memory instead of relying on the summary.\n"
+    # ⭐⭐ **把「不许调工具」的范围收回到它本来该管的那一件事上。**
+    #
+    # 🔴 原文一句话罩住了两种完全不同的请求：
+    #      「我刚才在干嘛」        → 这个块**就是**答案，再调工具纯属浪费（原意）
+    #      「把我刚才那个文件读了」 → 这个块**给不出**答案，它只有名字没有句柄
+    #    而禁令是无差别的 ⇒ 第二种请求被一起挡住，模型要么拿窗口标题里的
+    #    相对文件名去硬试，要么直接回一句「我看不到路径」。
+    # 📌 **一条按「话题」划的禁令，挡住的是「意图」** —— 两句话都在说
+    #    「刚才那个」，但一句要的是叙述，另一句要的是能喂给工具的参数。
+    #
+    # ⚠️ **刻意【不】在这里指向 `resolve_ambient_referent`** —— 那个工具还不存在。
+    #    📌 同 `os_execute` 描述里那条教训：**schema 说有、运行说没有，
+    #       是最难查的一类失败 —— 模型会反复尝试，而每次都合法地失败。**
+    #    ⇒ 2026-08-26 落地，出口已接上（`resolve_ambient_referent`）。
+    #
+    # ⭐⭐ 注入的是**互动感版**（时间 + 名字），完整路径/URL 留在 trail 里
+    #    按需取 —— 这一行是**每轮无条件注入**的，每多一个字都乘以轮数。
+    #    📌 三层各管一件事：**采集要全**（丢了就永远丢了）、
+    #       **注入要省**（每轮都付钱）、**拉取按条**（不是按范围：
+    #       语义匹配发生在已经在上下文里的那一版上）。
+    "- [Ambient]: what the user was doing right before switching to Nano (app, window title, activity "
+    "rhythm, idle, background audio). Use it to resolve references like 'this', 'that', or 'what I was just "
+    "doing'. If the user asks what they were just doing, answer directly from this block — do NOT call tools "
+    "or memory for that, the answer is already here, and do not ask back. That rule covers only telling them "
+    "what they were doing. Acting on one of those things is different: the block gives names, not handles - a "
+    "window title is not a file path. An entry marked with a small triangle can be turned into a real file "
+    "path, URL or folder by calling resolve_ambient_referent with the timestamp printed on that same entry; "
+    "entries without the mark hold nothing beyond what you already see. Never invent a path for something you "
+    "only saw the name of. Weave it in naturally only when "
+    "helpful; do not recite app names as a checklist, do not mention it every reply, do not over-explain or "
+    "sound like surveillance, and add no privacy disclaimers. It reads no private content.\n"
+    "- [Tone]: affects the flavor/style of your wording ONLY — never answer quality, completeness, or "
+    "accuracy. Do not talk about your own mood unless asked. On a serious task, prioritize completing it "
+    "clearly and correctly. If the tone is negative or terse, stay concise and task-focused; never mock, "
+    "blame, guilt-trip, or self-pity.\n"
+    "- [Capability Health]: components that are currently broken or degraded. UNAVAILABLE means the related "
+    "tools are withheld this turn — do not claim you will use them, and if the user asks for that capability, "
+    "say plainly what is wrong. DEGRADED means still usable with reduced quality or coverage — mention it only "
+    "when it actually affects the answer. Never invent a workaround you do not have.\n"
+    "- [Recent System Events]: things that happened inside this process — component failures, recoveries, "
+    "background completions. **They are not things you said or did.** Do not bring them up on your own; use "
+    "them only when the user asks what just happened."
+)
+
+
 class TurnMixin:
-    """一轮用户消息的入口：handle_query 与其实现。"""
+    """一轮用户消息的入口：`handle_query` 与 `_handle_query_impl` 及其各步骤。"""
 
     async def handle_query(self, query: str, image_parts: list | None = None, temp_file_hint: str | None = None):
         """公开入口：统一思考块（per-turn 单块）+ 行动卡片 action_id 透传。
@@ -678,78 +759,9 @@ class TurnMixin:
         except Exception as _se:
             logger.warning(f"[Suspension] 用户唤醒注入失败（跳过）: {_se}")
 
-        # "信息真实"：模型训练分布里大量"我这就去处理/你等我一会"这类
-        # agent式表述——在 Claude Code 等真的会在后台持续工作的 agent 里
-        # 是真的，但这套框架严格单轮同步：本轮回复结束后这次"我"就不存在
-        # 了，之后什么都不会发生，除非用户发下一条消息触发全新一轮。
-        # 放在 base_guide 源头，会传播到下游所有 guide 变体
-        # (exploration_guide / 各阶段 system_guide 都是 base_guide + ... 拼出来的)。
-        base_guide = base_guide + (
-            "\n\n[Conversation Boundary — Do Not Promise Later Work]\n"
-            "After each reply ends, this turn stops completely. Nano will not keep working in the background unless the user sends another message "
-            "or a wait/background mechanism has explicitly been set up.\n"
-            "- Do not say things like 'I'll do it now', 'wait a moment', 'I'll handle it later', or 'I'll fix it for you' if the action will not actually happen in this turn.\n"
-            "- If a tool can complete the task now, use it now. If not, clearly tell the user what they need to say or do next.\n"
-            "- Nano cannot directly rename/delete/disable/enable Skill files through normal text. For those requests, use the Skill management flow "
-            "and explain that confirmation is required before anything changes.\n"
-            "- For Skill replacement, mention both creating the new Skill and what will happen to the old one. Do not say 'I'll delete the old one' "
-            "unless the system is actually entering the confirmed management flow."
-        )
+        base_guide = base_guide + _CONVERSATION_BOUNDARY_GUIDE
 
-        # Token 压缩 Stage2：动态数据块（session_log/episodic/ambient/tone）的【固定使用说明】
-        # 从每轮全价重发的动态区，挪到这里的稳定前缀（缓存 0.1x，只付一次）。哨兵之后只留
-        # 真正每轮变化的【数据本身】。模型看到的信息完全一致，只是换了缓存分区，零体验变化。
-        base_guide = base_guide + (
-            "\n\n[Live Context Blocks — How To Use Them]\n"
-            "Below the boundary, when available, you may see these live blocks. Read them when relevant, "
-            "but never invent details beyond what they contain:\n"
-            "- [Session Log]: concrete actions Nano took THIS session (file paths, Skill names, deploy/call "
-            "status, generated outputs). Trust them for those facts.\n"
-            "- [Recent Cross-Session Summaries]: hint-level memory of past sessions. For exact paths, Skill "
-            "names, deployments, deletions, or call records, call recall_working_memory instead of relying on the summary.\n"
-            # ⭐⭐ **把「不许调工具」的范围收回到它本来该管的那一件事上。**
-            #
-            # 🔴 原文一句话罩住了两种完全不同的请求：
-            #      「我刚才在干嘛」        → 这个块**就是**答案，再调工具纯属浪费（原意）
-            #      「把我刚才那个文件读了」 → 这个块**给不出**答案，它只有名字没有句柄
-            #    而禁令是无差别的 ⇒ 第二种请求被一起挡住，模型要么拿窗口标题里的
-            #    相对文件名去硬试，要么直接回一句「我看不到路径」。
-            # 📌 **一条按「话题」划的禁令，挡住的是「意图」** —— 两句话都在说
-            #    「刚才那个」，但一句要的是叙述，另一句要的是能喂给工具的参数。
-            #
-            # ⚠️ **刻意【不】在这里指向 `resolve_ambient_referent`** —— 那个工具还不存在。
-            #    📌 同 `os_execute` 描述里那条教训：**schema 说有、运行说没有，
-            #       是最难查的一类失败 —— 模型会反复尝试，而每次都合法地失败。**
-            #    ⇒ 2026-08-26 落地，出口已接上（`resolve_ambient_referent`）。
-            #
-            # ⭐⭐ 注入的是**互动感版**（时间 + 名字），完整路径/URL 留在 trail 里
-            #    按需取 —— 这一行是**每轮无条件注入**的，每多一个字都乘以轮数。
-            #    📌 三层各管一件事：**采集要全**（丢了就永远丢了）、
-            #       **注入要省**（每轮都付钱）、**拉取按条**（不是按范围：
-            #       语义匹配发生在已经在上下文里的那一版上）。
-            "- [Ambient]: what the user was doing right before switching to Nano (app, window title, activity "
-            "rhythm, idle, background audio). Use it to resolve references like 'this', 'that', or 'what I was just "
-            "doing'. If the user asks what they were just doing, answer directly from this block — do NOT call tools "
-            "or memory for that, the answer is already here, and do not ask back. That rule covers only telling them "
-            "what they were doing. Acting on one of those things is different: the block gives names, not handles - a "
-            "window title is not a file path. An entry marked with a small triangle can be turned into a real file "
-            "path, URL or folder by calling resolve_ambient_referent with the timestamp printed on that same entry; "
-            "entries without the mark hold nothing beyond what you already see. Never invent a path for something you "
-            "only saw the name of. Weave it in naturally only when "
-            "helpful; do not recite app names as a checklist, do not mention it every reply, do not over-explain or "
-            "sound like surveillance, and add no privacy disclaimers. It reads no private content.\n"
-            "- [Tone]: affects the flavor/style of your wording ONLY — never answer quality, completeness, or "
-            "accuracy. Do not talk about your own mood unless asked. On a serious task, prioritize completing it "
-            "clearly and correctly. If the tone is negative or terse, stay concise and task-focused; never mock, "
-            "blame, guilt-trip, or self-pity.\n"
-            "- [Capability Health]: components that are currently broken or degraded. UNAVAILABLE means the related "
-            "tools are withheld this turn — do not claim you will use them, and if the user asks for that capability, "
-            "say plainly what is wrong. DEGRADED means still usable with reduced quality or coverage — mention it only "
-            "when it actually affects the answer. Never invent a workaround you do not have.\n"
-            "- [Recent System Events]: things that happened inside this process — component failures, recoveries, "
-            "background completions. **They are not things you said or did.** Do not bring them up on your own; use "
-            "them only when the user asks what just happened."
-        )
+        base_guide = base_guide + _LIVE_CONTEXT_BLOCKS_GUIDE
 
         # ── 缓存分界 ──────────────────────────────────────────────────────────
         # 到此为止的 base_guide 是【每轮一致的稳定前缀】（persona / 工具说明 / OS 能力 /

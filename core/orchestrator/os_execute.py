@@ -1,5 +1,5 @@
 # core/orchestrator/os_execute.py
-"""Orchestrator 的这一部分：os_execute（含子代理只读版）与临时代码执行。"""
+"""os_execute（含子代理只读版）与临时代码执行。（`Orchestrator` 的 mixin）"""
 
 import asyncio
 
