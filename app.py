@@ -42,17 +42,23 @@ def _start_backend_services(gui) -> None:
 def _register_native_window_process() -> None:
     """把原生窗口所在的进程登记为 Nano 界面（`core.self_identity`）。
 
-    NiceGUI 的 native 模式用 `multiprocessing.Process(target=_open_window)` 在子进程里
-    打开 pywebview 窗口；按这个 target 从本进程的子进程里找出它。浏览器模式下没有这个
-    子进程，不登记。
+    NiceGUI 的 native 模式在 `ui.run()` 启动服务器之前，用 `multiprocessing.Process` 在子进程里
+    打开 pywebview 窗口，所以启动钩子执行时它已经在 `multiprocessing.active_children()` 里。
+    本进程只有这一处用 multiprocessing（Nano 替用户启动程序走 `os.startfile` / `subprocess`，
+    不在这个列表里），因此登记全部 multiprocessing 子进程。按 target 名识别不可行：
+    `Process.start()` 之后父进程里的 `_target` 已被清掉。
+    浏览器模式下没有这个子进程，不登记。
     """
     try:
         import multiprocessing as _mp
         from core import self_identity as _si
-        for _proc in _mp.active_children():
-            if getattr(getattr(_proc, "_target", None), "__name__", "") == "_open_window":
-                _si.register_window_process(_proc.pid)
-                logger.debug(f"[SelfIdentity] 界面窗口进程 pid={_proc.pid}")
+        _pids = [p.pid for p in _mp.active_children() if p.pid]
+        for _pid in _pids:
+            _si.register_window_process(_pid)
+        if _pids:
+            logger.debug(f"[SelfIdentity] 界面窗口进程 pid={_pids}")
+        else:
+            logger.debug("[SelfIdentity] 没有原生窗口子进程（浏览器模式），不登记")
     except Exception as e:
         logger.warning(f"[SelfIdentity] 登记界面窗口进程失败: {e}")
 

@@ -4,7 +4,7 @@
 - 身份按进程 id / 窗口句柄判断：本进程 + 窗口壳登记的界面进程 / 窗口。
 - 本进程的子进程**不**自动算 Nano 自己（Nano 替用户启动的程序也是它的子进程）。
 - 标题不参与判断：core 里不再有按标题识别自己的代码。
-- app.py 在启动时按 NiceGUI 原生窗口子进程的 target 名登记界面进程。
+- app.py 在启动时把 multiprocessing 子进程（NiceGUI 原生窗口）登记为界面进程。
 
 用法：
   py -3.10 tests\\cases\\t_self_identity.py
@@ -111,27 +111,30 @@ def t_app_registers_native_window() -> None:
           "启动时调用登记")
     from core import self_identity as SI
     SI.reset()
-
-    def _open_window():
-        pass
-
-    def _other():
-        pass
-
-    fake_mp = types.SimpleNamespace(active_children=lambda: [
-        types.SimpleNamespace(_target=_other, pid=111),
-        types.SimpleNamespace(_target=_open_window, pid=222),
-    ])
-    ns: dict = {"logger": types.SimpleNamespace(debug=lambda *a, **k: None, warning=lambda *a, **k: None)}
-    exec(src, ns)
-    import multiprocessing as real
-    sys.modules["multiprocessing"] = fake_mp
+    # 用真实的 multiprocessing 子进程（与 NiceGUI 开窗口的方式相同），不用假对象：
+    # 父进程里 Process 的 `_target` 在 start() 之后会被清掉，假对象复现不了这一点。
+    import multiprocessing as mp
+    import time
+    win_proc = mp.Process(target=time.sleep, args=(30,), daemon=True)
+    win_proc.start()
+    user_app = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
+        ns: dict = {"logger": types.SimpleNamespace(debug=lambda *a, **k: None,
+                                                    warning=lambda *a, **k: None)}
+        exec(src, ns)
         ns["_register_native_window_process"]()
+        check(SI.is_self_pid(win_proc.pid), "multiprocessing 子进程（原生窗口）登记为界面进程",
+              f"{win_proc.pid} in {sorted(SI.self_pids())}")
+        check(not SI.is_self_pid(user_app.pid),
+              "subprocess 启动的程序（Nano 替用户打开的）不登记", str(user_app.pid))
+        import ast as _ast
+        _fn = _ast.parse(src).body[0]
+        _code = chr(10).join(_ast.unparse(s) for s in _fn.body[1:])     # 去掉 docstring
+        check("_target" not in _code, "不按 target 名识别（start() 之后父进程里已读不到）")
     finally:
-        sys.modules["multiprocessing"] = real
-    check(SI.is_self_pid(222) and not SI.is_self_pid(111),
-          "只登记 target 为 _open_window 的子进程", str(sorted(SI.self_pids())))
+        win_proc.kill()
+        user_app.kill()
+        user_app.wait(10)
     SI.reset()
 
 
