@@ -2152,6 +2152,7 @@
 - Tests are run with `python tests/run_all.py` (run_tests.sh removed). Tests that need a real desktop or real models are skipped unless `--live` is given; the run fails if anything under data/ changed.
 - Error cards with repair suggestions are removed from the chat once every capability they report is available again (confirmed by a successful call or a health probe of the capability itself).
 - Test cases moved to tests/cases/; the tests/ folder root holds only the runner and helper modules, with a README.
+- Internal restructuring with no change in behaviour: core/orchestrator.py (about 16,000 lines) is now the core/orchestrator/ package, one module per responsibility. Built-in tool schemas moved to core/tools/manifests.py, Skill code checks to core/skill_check.py, and knowledge-base start-up indexing to core/rag.py; the core no longer imports the UI framework.
 
 
 ### 修复
@@ -2182,5 +2183,6 @@
 - 测试改用 `python tests/run_all.py` 运行（删除 run_tests.sh）。需要真实桌面或真实模型的测试默认跳过，加 `--live` 才运行；运行期间 data/ 下有任何改动即判为失败。
 - 带修复建议的错误卡片在其列出的能力全部恢复可用后自动从聊天区移除（以能力本身的真实调用成功或健康探针确认为准）。
 - 测试用例移至 tests/cases/，tests/ 根目录只放运行器与辅助模块，并附 README。
+- 内部结构调整（行为不变）：core/orchestrator.py（约 1.6 万行）拆为 core/orchestrator/ 包，按职责一个模块一个文件；内置工具的 schema 移至 core/tools/manifests.py，Skill 代码校验移至 core/skill_check.py，知识库启动索引移至 core/rag.py；核心代码不再导入 UI 框架。
 
 ---
