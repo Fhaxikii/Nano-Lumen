@@ -30,6 +30,15 @@ def _wire_check(event) -> None:
         pass
 
 
+def _start_backend_services(gui) -> None:
+    """事件循环启动后开始后端心跳（`core.backend`）。"""
+    try:
+        from core.backend import start_backend_services
+        start_backend_services(gui.agent, getattr(gui, "_intel_engine", None))
+    except Exception as e:
+        logger.error(f"[Backend] 后端心跳启动失败: {e}")
+
+
 def _register_native_window_process() -> None:
     """把原生窗口所在的进程登记为 Nano 界面（`core.self_identity`）。
 
@@ -8167,52 +8176,6 @@ class WebUI:
             _worst = "FAULT" if any(s.status == Status.UNAVAILABLE for s in _orphan) else "DEGRADED"
             self._paint_card(_env_dot, _env_lbl, _worst, f"{len(_orphan)} 项降级")
 
-    async def _capability_probe_tick(self):
-        """跑到点的能力探针，恢复的能力会通过的转移队列通知用户。
-
-        探针本身是同步且廉价的（见 rag.py 里那几个实现），所以直接在这里跑；
-        真要出现慢探针，应该改探针，而不是把这里挪到线程池——
-        慢探针在任何位置都是错的。
-        """
-        try:
-            from core.health import get_health, get_capability_spec
-            recovered = get_health().run_due_probes()
-        except Exception as e:
-            logger.debug(f"[Health] 探针轮询失败（忽略）: {e}")
-            return
-        for cap in recovered:
-            try:
-                spec = get_capability_spec(cap)
-                label = spec.label if spec else cap
-                from core.health import get_system_events
-                get_system_events().add(f"Capability recovered: {label}.")
-                logger.info(f"[Health] 探针恢复：{label}")
-            except Exception:
-                pass
-
-    async def _budget_health_tick(self):
-        """把预算状态同步进 HealthRegistry，并让顶部用量条跟着走。
-
-        存在的理由是 留下的恢复检测死锁：report_ok 只在能力【被使用时】
-        才有机会触发，而闸的作用恰恰是让它不能被使用。预算是这个死锁最干净的
-        样本——硬上限挡住全部模型调用之后，没有任何代码路径会再去重算它。
-        跨过 0 点用量归零，但故障卡片会一直挂着，直到用户重启进程。
-
-        所以这里用一个外部时钟去推，不依赖任何业务路径。
-        """
-        try:
-            from core.usage import sync_budget_health
-            sync_budget_health()
-        except Exception as e:
-            logger.debug(f"[Budget] 状态同步失败（忽略）: {e}")
-            return
-        # 顺手刷新顶部那条用量警示（原来只在发消息/改配置时更新，
-        # 跨天或后台消耗导致的变化看不见）
-        try:
-            self._update_cost_warning()
-        except Exception:
-            pass
-
     async def _startup_present_unsent(self):
         """关软件时还排在队列里的用户消息 —— **呈现，不执行**。
 
@@ -15311,81 +15274,11 @@ class WebUI:
         #       用户还没看到自己那条消息时就先问要不要继续。
         ui.timer(2.5, self._startup_present_unsent, once=True)
         ui.timer(4.0, self._startup_resume_offer, once=True)
-        # ── 预算状态的定期同步 ────────────────────────────────────────
-        # 这是能力恢复探针最简单的一个实例：预算按日重置，重算一次即可。
-        # 没有它的话，跨过 0 点后 HealthRegistry 里的故障卡片不会消失——
-        # 因为 assert_budget_ok 只在【有人真的发起模型调用时】才跑，
-        # 而硬上限恰恰把所有模型调用都挡住了（这就是那个恢复死锁）。
-        # 20 秒一跳：只读两个小 JSON，比 1 秒跳廉价得多，而预算不是毫秒级的东西。
-        ui.timer(20.0, self._budget_health_tick)
-        # ── 能力探针（解开遗留的恢复检测死锁）──────────────────────
-        # 死锁：能力坏了 → 工具被下架 → 没人再用它 → report_ok 永远不触发 → 永不恢复。
-        # 用户把问题修好了（重连网络、装上 Tesseract、换了好的 data/ 目录），Nano 也不知道。
-        # 这个外部时钟不依赖任何业务路径，是唯一能打破闭环的东西。
-        # 15 秒一跳只是"看看有没有到点的"，真正的探针带指数退避（30s→10min 封顶），
-        # 所以长期不可用的能力不会被反复打扰。
-        ui.timer(15.0, self._capability_probe_tick)
+        # 顶部用量警示随预算变化刷新（预算状态本身由后端心跳同步，见 core.backend）。
+        ui.timer(20.0, self._update_cost_warning)
 
-        # asyncio 的异常处理器要等事件循环真的起来才能挂（和 install_hooks 分开的原因）
-        def _install_loop_handler():
-            try:
-                import asyncio as _a
-                from core import crash_journal as _cj
-                _cj.install_asyncio_handler(_a.get_running_loop())
-            except Exception as e:
-                logger.debug(f"[CrashJournal] asyncio handler 未安装: {e}")
-        ui.timer(0.05, _install_loop_handler, once=True)
-
-        # canary 自检定时器——每5分钟探一次"现在要不要跑"，真正要不要跑
-        # （距上次够久 + 当前没有OS任务在执行）由 maybe_run_canary 内部判断，
-        # 这里只是个轻量的"有空就喊一声"触发源，不用纠结这个5分钟间隔本身。
-        async def _maybe_run_canary():
-            try:
-                await self.agent.maybe_run_canary()
-            except Exception as e:
-                logger.warning(f"[Canary] 定时触发异常（不影响主流程）: {e}")
-        ui.timer(300, _maybe_run_canary)
-
-        # 主动开口：感知钩子照常启动；旧 speaker 已停用（新主动智能引擎接管 L0/L1/L2）。
-        # 旧 speaker 会往对话历史插 assistant 消息，曾导致 thinking 块被合并改动而 400 崩溃，
-        # 且它发的是"宠物式"陪伴话——正是这次要替换掉的。下面两个旧 timer 已注释停用。
+        # 感知钩子（键鼠 / 窗口 / 保存）。
         _start_proactive_hooks()
-        # async def _startup_holiday():
-        #     await gui._speaker.check_holiday_on_startup()
-        # ui.timer(1, _startup_holiday, once=True)
-        # async def _maybe_speak():
-        #     try:
-        #         await gui._speaker.maybe_speak()
-        #     except Exception as e:
-        #         logger.warning(f"[Proactive] 轮询异常: {e}")
-        # ui.timer(300, _maybe_speak)
-        # 主动智能 v0：每 60s tick 一次（默认 SHADOW，只记日志不打扰）。
-        # 上线时：把 core/proactive/intel/engine.py 的 SHADOW_MODE 改 False，
-        # 并把上面旧 _speaker 的 check_holiday/_maybe_speak 两个 timer 停掉（新引擎已含 L1 日历）。
-        async def _intel_tick():
-            try:
-                await gui._intel_engine.tick()
-            except Exception as e:
-                logger.warning(f"[Intel] tick 异常: {e}")
-        # shadow 期 20s 一跳，多采样决策面、加速攒数据；上线后可调回 60s。
-        ui.timer(20, _intel_tick)
-        # CPU 采样：每60秒取一次 psutil 均值
-        import psutil as _psutil
-        def _cpu_sample():
-            try:
-                pct = _psutil.cpu_percent(interval=None)
-                _get_activity_buffer().on_cpu_sample(pct)
-            except Exception:
-                pass
-        ui.timer(60, _cpu_sample)
-
-        # Ambient Memory Phase 4：每 ~4 分钟把当前现场追加进持久轨迹（跨会话/重启留存）
-        def _ambient_trail_tick():
-            try:
-                self.agent.record_ambient_trail()
-            except Exception:
-                pass
-        ui.timer(240, _ambient_trail_tick)
 
         # 挂起/等待：定时唤醒轮询。轮询本身只是本地 SQLite 查询（廉价），
         # 真正的 LLM 成本只在某条定时挂起到点、驱动唤醒 turn 时才发生——
@@ -15420,38 +15313,6 @@ class WebUI:
             except Exception as e:
                 logger.debug(f"[Suspension] pill 收尾 tick 异常（忽略）: {e}")
         ui.timer(5, _suspension_tick)
-
-        # ⭐⭐ Runtime Reconciler 的周期 tick（2026-08-07 补接）。
-        #
-        # ⚠️⚠️ **这条以前根本没有人调。** 全项目只调过 `reconcile_on_startup`，
-        # 而 `reconcile_tick` 从早先落地起就没有任何生产调用方 ——
-        # 也就是说**整个 level-triggered 层在真实运行中一直是死的**：
-        #   · 早先给澄清设的 2 小时 TTL（`interaction.expire_tick`）从没生效过；
-        #     真库里能查到好几条早已过期的记录，它们全是被**别的路径**
-        #     （草稿消化 → SUPERSEDED）顺手收掉的 —— 只是运气好掩盖了这个洞。
-        #   · action lease 过期回收（`_reclaim`）同样从没跑过。
-        #   · 早先的兜底回收（不死挂起的最后一道防线）如果不接这条，
-        #     写得再对也永远不会执行。
-        #
-        # 📌 判据：**"level-triggered" 不是一种写法，是一份契约 ——
-        #    它要求有人真的在按周期推它。** 只写收敛逻辑、不接时钟，
-        #    等于把一堆"迟早会自愈"的承诺变成永不兑现。
-        #    ⚠️ 新增任何 `register_tick_step()` 时，先确认这条时钟还在。
-        #
-        # 频率跟挂起轮询对齐（5 秒）：它自称"廉价：几条索引扫描，不加载任何模型"，
-        # 实测每跳只读几张小表。
-        def _runtime_reconcile_tick():
-            try:
-                from core.runtime import get_kernel as _gk
-                from core.runtime import reconcile_tick as _rt_tick
-                rep = _rt_tick(_gk())
-                # 只在真做了事的时候出声，否则 5 秒一条日志会把 cmd 淹掉
-                if rep.did_anything or rep.extra:
-                    logger.info(f"[Runtime] tick：{rep.summary()} extra={rep.extra}")
-            except Exception as e:
-                # 收敛失败不能影响 UI —— 它是修脏状态的，不是必需路径
-                logger.warning(f"[Runtime] reconcile tick 异常（忽略本跳）: {e}")
-        ui.timer(5, _runtime_reconcile_tick)
 
         # ⭐⭐ 接管状态条的驱动源。**1 秒，不复用上面那个 5 秒的 tick。**
         #
@@ -15494,19 +15355,6 @@ class WebUI:
                 await gui._proactive_push(f"（我重启前还挂着在等：{_txt}。需要的话直接跟我说一声就能接着来。）")
         ui.timer(2, _restore_suspensions, once=True)
 
-        # MCP：启动时加载 config + 连接 enabled server。连接在各自 worker task 里
-        # 异步进行，不阻塞启动；连不上的走重连/needs_auth，不影响其它能力。MCP 工具属于
-        # "Nano 自身能力"，连上后自动进主决策 manifest（_build_skills_info 全量注入）。
-        async def _mcp_startup():
-            try:
-                from core.mcp_client import get_mcp_manager
-                _mgr = get_mcp_manager()
-                if _mgr.available:
-                    _mgr.load_config()
-                    await _mgr.connect_enabled()
-            except Exception as e:
-                logger.warning(f"[MCP] 启动初始化失败（跳过）: {e}")
-        ui.timer(1.5, _mcp_startup, once=True)
         # 互联网检索卡片：周期反映当前联网类 MCP 能力（fetch 等连上→ONLINE，关掉→OFFLINE）
         ui.timer(3, self._update_net_status)
 
@@ -16785,6 +16633,7 @@ if __name__ == "__main__":
         _nicegui_app.on_shutdown(_mcp_shutdown)
         _nicegui_app.on_startup(lambda: logger.info("Nano 已启动"))
         _nicegui_app.on_startup(_register_native_window_process)
+        _nicegui_app.on_startup(lambda: _start_backend_services(gui))
 
         gui.render()
 
