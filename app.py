@@ -608,6 +608,7 @@ class ViewSession:
         "stop_clicked": False,
         "stop_evt": None,           # asyncio.Event，由 `_stoppable_stream` 创建
         "ui_stopped": False,        # 界面已收尾，之后到达的事件不再显示
+        "reply_ids": None,          # 本回应期显示过的确认：[(reply_id, actions)]，终止时回「取消」
     }
 
     __slots__ = tuple(_FIELDS) + ("_extra",)
@@ -3616,6 +3617,7 @@ class WebUI:
         _stream = event_source if event_source is not None else self.agent.handle_query(query, image_parts=_image_parts, temp_file_hint=temp_file_hint)
         async for step in self._stoppable_stream(_stream, _rs):
             _wire_check(step)
+            self._note_reply_ids(_rs, step)
             # 用户已按终止、界面已收尾：后端剩下的事件照常消费（让它在动作边界停下、
             # 期间一直持有 pipeline_lock），但不再画到界面上；等待回复的确认一律回「取消」。
             if _rs.get("ui_stopped"):
@@ -5721,6 +5723,18 @@ class WebUI:
             # 消费方提前退出（如插话分支 return）时不取消 pump：后端这一轮自己跑完收尾。
             stop_w.cancel()
 
+    @staticmethod
+    def _note_reply_ids(rs, step: dict) -> None:
+        """记下本回应期显示过的、等待回复的确认（终止时要回「取消」）。"""
+        try:
+            items = [step] + list(step.get("cards") or [])
+            found = [(it.get("reply_id"), list(it.get("actions") or []))
+                     for it in items if it.get("reply_id")]
+            if found:
+                rs["reply_ids"] = list(rs.get("reply_ids") or []) + found
+        except Exception:
+            pass
+
     def _discard_after_stop(self, step: dict) -> None:
         """终止后到达的后端事件：不显示；等待回复的确认 / 选择卡一律回「取消」。"""
         try:
@@ -5803,6 +5817,11 @@ class WebUI:
             _evt = _rs_now.get("stop_evt")
             if _evt is not None:
                 _evt.set()
+            # 本轮还在等回复的确认一律回「取消」，否则后端会在确认上一直等到超时
+            # （期间持有 pipeline_lock，新消息只能排队）。只动本回应期显示过的确认，
+            # 不碰 Subagent 的；已显示的弹窗留着，之后点它只会关掉自己。
+            for _rid, _acts in list(_rs_now.get("reply_ids") or []):
+                self._discard_after_stop({"reply_id": _rid, "actions": _acts})
         self._refresh_send_btn()
 
     def _handoff_response_epoch(self, predecessor: dict, successor: dict) -> None:

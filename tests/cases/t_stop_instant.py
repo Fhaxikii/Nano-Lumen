@@ -4,7 +4,8 @@
 - 用户按终止时，包装后的事件流立刻给出一个界面侧的终止事件，不等后端的下一个事件；
   之后继续转发后端事件，直到后端这一轮结束（期间一直持有 pipeline_lock）。
 - 后端事件流里的异常原样抛给消费方。
-- 终止后到达的、等待回复的确认 / 选择卡自动回「取消」。
+- 终止后到达的、等待回复的确认 / 选择卡自动回「取消」；终止时本轮已显示、仍在等回复的确认也回「取消」
+  （不碰 Subagent 的确认）。
 - 按过终止后 `_turn_running` 为假（按钮变回发送），尽管锁可能还没释放。
 - 终止的事实由后端写进历史，界面不写。
 
@@ -149,6 +150,30 @@ def t_discard() -> None:
         R.discard(r)
 
 
+def t_stop_cancels_pending_confirms() -> None:
+    print("\n▶ 终止时，本轮还在等回复的确认回「取消」")
+    from core.runtime import replies as R
+    note = _load("_note_reply_ids")
+    discard = _load("_discard_after_stop")
+    request_stop = _load("_request_stop")
+    rs = _view_session_cls()()
+    got = []
+    rid = R.register({"confirm": lambda: got.append("confirm"), "cancel": lambda: got.append("cancel")})
+    note(rs, {"event": "execution_confirm", "reply_id": rid, "actions": ["confirm", "cancel"]})
+    note(rs, {"event": "final_text_delta", "delta": "x"})
+    check(rs.get("reply_ids") == [(rid, ["confirm", "cancel"])], "记下了本回应期显示过的确认", str(rs.get("reply_ids")))
+    other = R.register({"confirm": lambda: got.append("sub-confirm"), "cancel": lambda: got.append("sub-cancel")})
+    me = types.SimpleNamespace(agent=types.SimpleNamespace(request_stop=lambda src="": None),
+                               _resp_state=rs, _refresh_send_btn=lambda: None)
+    me._discard_after_stop = lambda step: discard(me, step)
+    request_stop(me)
+    check(got == ["cancel"], "按终止：本轮等待中的确认回「取消」（后端不必等到超时）", str(got))
+    check(R.resolve(other, "cancel") is True and got[-1] == "sub-cancel",
+          "不属于本回应期的确认（如 Subagent 的）不受影响")
+    R.discard(rid)
+    R.discard(other)
+
+
 def t_wiring() -> None:
     print("\n▶ 接线")
     app = S.module_text("app")
@@ -171,6 +196,7 @@ if __name__ == "__main__":
     print("=" * 74)
     t_stream()
     t_discard()
+    t_stop_cancels_pending_confirms()
     t_wiring()
 
     _ok = sum(1 for r in _results if r[0])
