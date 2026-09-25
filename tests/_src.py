@@ -5,8 +5,9 @@
   把包内全部 `.py` 按相对路径排序后拼接返回 —— 模块拆成包之后，基于全文的
   `in` 判断与 `ast.walk` 查找不需要改。
 - `module_tree(...)`：上面文本的 AST。
-- `find_def(module, name, owner=None)`：找函数 / 方法定义。找不到或找到多个同名定义
-  都抛 `LookupError`，**不返回 None**：返回 None 的查找配上 `if fn is not None:`，
+- `find_def(module, name, owner=None)`：找函数 / 方法定义。`owner` 给出时在该类及其
+  在本模块 / 包里定义的基类（mixin）里找。找不到或找到多个同名定义都抛
+  `LookupError`，**不返回 None**：返回 None 的查找配上 `if fn is not None:`，
   函数被改名或挪走时整组断言会被静默跳过。
 - `def_text(...)`：该定义的原文（含注释）。
 
@@ -62,11 +63,38 @@ def module_tree(dotted: str) -> ast.Module:
     return ast.parse(module_text(dotted))
 
 
+def _class_and_bases(tree: ast.Module, owner: str) -> list[ast.ClassDef]:
+    """`owner` 类，加上它在同一模块 / 包里能找到定义的全部基类（递归）。
+
+    方法可以由基类（mixin）提供：「挂在 Orchestrator 上的方法」包括继承来的。
+    基类不在本模块 / 包里（例如 `NamedTuple`）的忽略。
+    """
+    classes: dict[str, list[ast.ClassDef]] = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ClassDef):
+            classes.setdefault(n.name, []).append(n)
+    out: list[ast.ClassDef] = []
+    todo = [owner]
+    seen: set[str] = set()
+    while todo:
+        cname = todo.pop(0)
+        if cname in seen:
+            continue
+        seen.add(cname)
+        for c in classes.get(cname, []):
+            out.append(c)
+            for b in c.bases:
+                bname = b.id if isinstance(b, ast.Name) else (
+                    b.attr if isinstance(b, ast.Attribute) else None)
+                if bname:
+                    todo.append(bname)
+    return out
+
+
 def find_def(dotted: str, name: str, owner: Optional[str] = None) -> ast.AST:
-    """按名字找函数 / 方法定义；`owner` 给出时只在该类里找。"""
+    """按名字找函数 / 方法定义；`owner` 给出时只在该类及其基类里找。"""
     tree = module_tree(dotted)
-    scopes = [tree] if owner is None else [
-        n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == owner]
+    scopes = [tree] if owner is None else _class_and_bases(tree, owner)
     if owner is not None and not scopes:
         raise LookupError(f"class {owner!r} not found in {dotted}")
     hits = []

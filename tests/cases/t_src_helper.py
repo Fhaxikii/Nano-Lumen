@@ -2,7 +2,7 @@
 """测试读取产品源码的 helper（tests/_src.py）。
 
 - 单文件模块与包（目录）都能按模块名读取；包 = 包内全部 `.py` 拼接。
-- 查找定义找不到、或同名定义不止一个时抛错，不返回 None。
+- 查找定义找不到、或同名定义不止一个时抛错，不返回 None；给出 owner 时也在它的基类（mixin）里找。
 - 测试文件不再按路径读产品源码（`(ROOT / "x.py").read_text(...)`、
   `Path("x.py").read_text(...)`）：模块拆成包之后按路径读会失效，而按模块名读不会。
 
@@ -61,6 +61,13 @@ def t_find_def() -> None:
     m = S.find_def("core.runtime", "__init__", owner="RuntimeKernel")
     check(m.name == "__init__", "给出 owner 后只在该类里找")
     check(_raises(S.find_def, "core.runtime", "x", owner="NoSuchClass") == "LookupError", "类不存在：抛错")
+    # 方法由基类（mixin）提供时，按主类查也要找得到
+    mcp = S.find_def("core.orchestrator", "_handle_connect_mcp_decision", owner="Orchestrator")
+    check(mcp.name == "_handle_connect_mcp_decision", "owner 是主类时，沿基类（mixin）找到方法")
+    check(S.find_def("core.orchestrator", "_handle_connect_mcp_decision", owner="McpMixin") is mcp,
+          "直接按 mixin 查是同一个定义")
+    check(_raises(S.find_def, "core.orchestrator", "_no_such_method", owner="Orchestrator") == "LookupError",
+          "沿基类也找不到：抛错")
     txt = S.def_text("core.runtime", "acquire_activity")
     check(txt.startswith("def acquire_activity") and "#" in txt, "def_text 返回原文（含注释）")
 
