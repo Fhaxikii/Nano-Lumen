@@ -48,6 +48,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
 from tests._src import module_text  # noqa: E402
+from tests._patch import patch_global  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -79,7 +80,7 @@ MARK = "explicitly marked this message as answering"
 
 
 def _render(live: list[Rec], reply_iid: str | None) -> str:
-    om._rt_live_interactions = lambda o: live
+    patch_global("core.orchestrator", "_rt_live_interactions", lambda o: live)
     stub = types.SimpleNamespace(
         _reply_target={"iid": reply_iid, "q": "x"} if reply_iid else None)
     return om.Orchestrator._build_open_interactions_injection(stub)
@@ -179,7 +180,7 @@ def t_handoff_survives_send() -> None:
     live = [Rec(AUD, _it.Kind.SKILL_AUDIT, "Review pending draft LocalIPExtractor.", 300.0)]
 
     # ── 真实时序：UI 按发送 → 移交 → orchestrator 建 prompt ───────────────
-    om._rt_live_interactions = lambda o: live
+    patch_global("core.orchestrator", "_rt_live_interactions", lambda o: live)
     stub = types.SimpleNamespace(_reply_target={"iid": AUD, "q": "x"},
                                  _reply_target_turn=None)
     handed = om.Orchestrator.hand_off_reply_target(stub)

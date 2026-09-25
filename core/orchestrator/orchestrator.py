@@ -1,4 +1,4 @@
-# core/orchestrator.py
+# core/orchestrator/orchestrator.py
 from typing import Optional, Any, NamedTuple
 from dataclasses import dataclass, field
 from core.schema import AgentDecision, ChatMessage, ToolCall, ToolResultBlock
@@ -22,8 +22,6 @@ from core.i18n import language_clause as _language_clause
 from core.provider import _DISPATCH_LAYER, CACHE_BREAK_MARKER, CLAUDE_MODEL_MAP, CLAUDE_MODELS, GEMINI_MODELS, GEMINI_MODEL_MAP
 from core.memory_store import get_memory_store, EntryType
 # 统一工具目录 —— 「一个工具是什么」的唯一权威。
-# ⚠️ 只 import 类型与目录本身；**内置声明表 `core.tools.builtin` 仍然懒 import**
-#    （它要拿本模块里的 `_XXX_MANIFEST` 字面量，模块级 import 会成环）。
 from core.tools import (
     Flow, Preload, Scheduling, ToolCatalog, ToolOrigin, ToolScope,
 )

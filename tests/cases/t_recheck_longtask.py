@@ -47,6 +47,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401
 from tests._src import module_text  # noqa: E402
+from tests._patch import patch_global  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -288,15 +289,13 @@ async def _exercise_real_resume(rec, trigger: str) -> tuple[list, _WakeMemory]:
 
     agent._run_react_loop = types.MethodType(_fake_react, agent)
 
-    old_release = O._rt_lease_release
-    old_sweep = O._rt_sweep_stale_spans
-    O._rt_lease_release = lambda _agent: None
-    O._rt_sweep_stale_spans = lambda _agent, _old: None
+    undo_release = patch_global("core.orchestrator", "_rt_lease_release", lambda _agent: None)
+    undo_sweep = patch_global("core.orchestrator", "_rt_sweep_stale_spans", lambda _agent, _old: None)
     try:
         events = [event async for event in agent.resume_suspension(rec.wait_id, trigger)]
     finally:
-        O._rt_lease_release = old_release
-        O._rt_sweep_stale_spans = old_sweep
+        undo_release()
+        undo_sweep()
     return events, memory
 
 

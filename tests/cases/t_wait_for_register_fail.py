@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 import _console  # noqa: F401,E402
 
 import core.orchestrator as orch  # noqa: E402
+from tests._patch import patch_global  # noqa: E402
 
 _passed = 0
 _failed: list[str] = []
@@ -70,12 +71,11 @@ class _Orch:
 def _run(args, *, open_returns):
     """驱动真实 handler；`_rt_wait_open` 被替换成可控替身。"""
     q = _Q()
-    real = orch._rt_wait_open
-    orch._rt_wait_open = lambda **kw: open_returns
+    undo = patch_global("core.orchestrator", "_rt_wait_open", lambda **kw: open_returns)
     try:
         out = asyncio.run(_Orch()._handle_wait_for(args, "aid_1", event_queue=q))
     finally:
-        orch._rt_wait_open = real
+        undo()
     return out, q.events
 
 

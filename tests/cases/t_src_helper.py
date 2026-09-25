@@ -82,6 +82,40 @@ def t_no_path_reads_in_tests() -> None:
     check(not hits, "没有 (ROOT / \"x.py\").read_text / Path(\"x.py\").read_text", ", ".join(hits[:8]))
 
 
+def t_patch_global() -> None:
+    print("\n▶ 替换包内模块级名字：所有持有它的模块一起换")
+    import ast
+    from tests._patch import patch_global
+    import core.orchestrator as O
+    import core.orchestrator.orchestrator as M
+    real = O._rt_wait_open
+    marker = object()
+    undo = patch_global("core.orchestrator", "_rt_wait_open", marker)
+    check(O._rt_wait_open is marker and M._rt_wait_open is marker,
+          "包顶层与实际调用方所在的子模块都换掉了")
+    undo()
+    check(O._rt_wait_open is real and M._rt_wait_open is real, "还原")
+    check(_raises(patch_global, "core.orchestrator", "_no_such_name", 1) == "LookupError",
+          "名字不存在：抛错，不悄悄什么都不换")
+
+    # 用例里不许直接给 core.orchestrator 的模块属性赋值（调用方在子模块里查名字，会落空）
+    hits = []
+    for f in sorted((ROOT / "tests" / "cases").glob("t_*.py")):
+        t = ast.parse(f.read_text(encoding="utf-8-sig"))
+        aliases = set()
+        for n in ast.walk(t):
+            if isinstance(n, ast.Import):
+                aliases |= {a.asname for a in n.names if a.name == "core.orchestrator" and a.asname}
+            elif isinstance(n, ast.ImportFrom) and n.module == "core":
+                aliases |= {a.asname or a.name for a in n.names if a.name == "orchestrator"}
+        for n in ast.walk(t):
+            tgts = n.targets if isinstance(n, ast.Assign) else ([n.target] if isinstance(n, ast.AugAssign) else [])
+            for tg in tgts:
+                if isinstance(tg, ast.Attribute) and isinstance(tg.value, ast.Name) and tg.value.id in aliases:
+                    hits.append(f"{f.name}:{n.lineno}")
+    check(not hits, "用例不直接给 core.orchestrator 的模块属性赋值（用 patch_global）", ", ".join(hits[:5]))
+
+
 if __name__ == "__main__":
     print("=" * 74)
     print("测试源码 helper")
@@ -89,6 +123,7 @@ if __name__ == "__main__":
     t_module_text()
     t_find_def()
     t_no_path_reads_in_tests()
+    t_patch_global()
 
     _ok = sum(1 for r in _results if r[0])
     print("")

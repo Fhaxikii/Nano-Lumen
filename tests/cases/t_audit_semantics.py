@@ -51,6 +51,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
 from tests._src import module_text  # noqa: E402
+from tests._patch import patch_global  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -74,7 +75,7 @@ class Rec:
 
 
 def _render(live):
-    om._rt_live_interactions = lambda o: live
+    patch_global("core.orchestrator", "_rt_live_interactions", lambda o: live)
     return om.Orchestrator._build_open_interactions_injection(
         types.SimpleNamespace(_reply_target=None))
 
