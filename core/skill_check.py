@@ -10,22 +10,31 @@ from loguru import logger
 
 from core.code_scan import detect_side_effects
 
-# 不可被本地 Skill 覆盖的保留工具名（一并做了）
-# Phase 2 新增 load_full_file 和 list_knowledge_files
-_RESERVED_TOOL_NAMES = {
-    "WriteSkill",
 
-    "query_local_knowledge",
-    "load_full_file",           # Phase 2 新增
-    "list_knowledge_files",     # Phase 2 新增
-    "get_file_path",            # Phase 4 新增
-    "recall_working_memory",    # 新增
-    "task_boundary",            # 任务边界
-    "set_next_checkin",         # 回看设计
-    "write_user_note",          # 新增
-    "os_execute",               # OS层新增
-    "update_existing_skill",    # 路由重构新增
-}
+def _reserved_tool_names() -> set[str]:
+    """本地 Skill 不能占用的名字 = 全部内置工具名。
+
+    工具目录按名字登记，Skill 与内置工具重名时 Skill 会被隔离（模型看不见它），
+    而 UI 上它照样显示已安装。所以要在审计时就拦下，名单从内置工具清单派生，
+    不手抄（手抄的名单曾只覆盖 40 个内置工具中的 11 个）。
+    """
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    return set(BUILTIN_MANIFESTS)
+
+
+def _manifest_name_literal(tree) -> str | None:
+    """`get_manifest` 返回的字典字面量里顶层 `name` 的值；看不清（间接返回等）时为 None。"""
+    import ast as _ast
+    for fn in _ast.walk(tree):
+        if isinstance(fn, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and fn.name == "get_manifest":
+            for n in _ast.walk(fn):
+                if isinstance(n, _ast.Return) and isinstance(n.value, _ast.Dict):
+                    for k, v in zip(n.value.keys, n.value.values):
+                        if isinstance(k, _ast.Constant) and k.value == "name" \
+                                and isinstance(v, _ast.Constant) and isinstance(v.value, str):
+                            return v.value
+            return None
+    return None
 
 
 def validate_skill_code(code: str, spec_side_effects: list | None = None) -> tuple[bool, list[str]]:
@@ -121,9 +130,13 @@ def validate_skill_code(code: str, spec_side_effects: list | None = None) -> tup
         # 没有自定义 __init__:BaseSkill 自动处理,跳过检查
 
     # ── 保留工具名冲突检测 ────────────────────────────────────────────
+    _reserved = _reserved_tool_names()
     for cls_name in class_names:
-        if cls_name in _RESERVED_TOOL_NAMES:
+        if cls_name in _reserved:
             errors.append(f"类名 {cls_name} 与系统保留工具名冲突，禁止使用")
+    _mname = _manifest_name_literal(tree)
+    if _mname and _mname in _reserved and _mname not in class_names:
+        errors.append(f"get_manifest() 的 name「{_mname}」与系统保留工具名冲突，禁止使用")
 
     # ── AST 副作用一致性校验 ──────────────────────────────────────────
     # 检测代码里的真实副作用 API,与 SkillSpec 声明对比

@@ -154,12 +154,35 @@ def t_protocol_documents_it() -> None:
           "并说清后果：Skill 装上了但模型看不见它")
 
 
+def t_reserved_names() -> None:
+    print("\n[5] 与内置工具重名在审计时就拦下（工具目录按名字登记，重名的 Skill 会被隔离）")
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _name = "search_files"
+    check(_name in BUILTIN_MANIFESTS, "前置：用来测试的名字确实是内置工具", _name)
+
+    def _reserved_errs(code: str):
+        return [e for e in validate_skill_code(code)[1] if "保留工具名" in e]
+
+    _by_manifest = _TPL % _GOOD.replace('"name": "X"', f'"name": "{_name}"')
+    check(bool(_reserved_errs(_by_manifest)),
+          "⭐⭐ manifest 的 name 与内置工具重名 → 拒绝（目录按 manifest 的 name 登记）")
+    _by_class = (_TPL % _GOOD.replace('"name": "X"', f'"name": "{_name}"')).replace(
+        "class X(", f"class {_name}(")
+    check(bool(_reserved_errs(_by_class)), "⭐ 类名与内置工具重名 → 拒绝")
+    check(len(_reserved_errs(_by_class)) == 1, "类名和 name 都撞时只报一次")
+    check(not _reserved_errs(_TPL % _GOOD), "反向：正常名字不受影响")
+    _missing = [n for n in BUILTIN_MANIFESTS
+                if not _reserved_errs(_TPL % _GOOD.replace('"name": "X"', f'"name": "{n}"'))]
+    check(not _missing, "⭐⭐ 每一个内置工具名都受保护（名单从内置清单派生，不手抄）",
+          str(_missing[:5]))
+
+
 def main() -> int:
     print("=" * 74)
     print("[D14] get_manifest() 外层形状")
     print("=" * 74)
     for fn in (t_shapes, t_registry_agreement, t_indirect_return_passes,
-               t_protocol_documents_it):
+               t_protocol_documents_it, t_reserved_names):
         try:
             fn()
         except Exception as e:
