@@ -94,6 +94,10 @@ _OS_CAPABILITY_PROMPT = (
     "Waiting for external changes: if progress depends on something Nano cannot complete now, such as login, download completion, or another person's reply, "
     "use wait_for instead of blocking or pretending to wait in the same turn."
 )
+# 注：这里【曾经】还有一条 "Soft abort" 规则（用户说不想让 Nano 动电脑 → 模型发
+# request_replan(USER_ABORT) → 置进程级软急停标志）。软急停整套已删除，
+# 原因见 core/os_layer/safety.py 模块头。用户要停手，靠甩鼠标 failsafe 或 Ctrl+`
+# 热键，两者都是瞬发的物理手段，比让模型判断可靠得多。
 
 
 class ReactLoopMixin:
