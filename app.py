@@ -973,6 +973,9 @@ class WebUI:
         # 📌 **一个"事后才发生"的事实，不能用"事前的那个事件"去刷新** ——
         #    要么等它自己说一声，要么就永远慢一拍。这里选前者。
         self.agent._on_decay_applied = self._sync_evicted_after_turn
+        # 看屏幕前 Nano 要把自己最小化让开；core 不直接依赖 UI 框架，由这里交给它取主窗口的方法。
+        from nicegui import app as _napp_for_agent
+        self.agent._native_window = lambda: _napp_for_agent.native.main_window
         self._speaker = ProactiveSpeaker(self.provider, self._proactive_push)
         # 主动智能 v0：默认 SHADOW（只决策记日志、不真说话），与旧 speaker 并存零冲突。
         # 复核 data/proactive_shadow.jsonl 后，把 engine.SHADOW_MODE 改 False 即上线，

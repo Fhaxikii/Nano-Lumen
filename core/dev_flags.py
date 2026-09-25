@@ -23,7 +23,9 @@ from typing import Any
 
 from loguru import logger
 
-DEV_FLAGS_PATH = pathlib.Path(__file__).parent.parent / "config" / "dev_flags.json"
+from core.paths import ROOT as _ROOT  # noqa: E402
+
+DEV_FLAGS_PATH = _ROOT / "config" / "dev_flags.json"
 
 _lock = threading.Lock()
 _cache: dict[str, Any] | None = None

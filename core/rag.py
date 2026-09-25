@@ -56,7 +56,8 @@ from core import rag_models as _rag_models
 # 模型文件的定位与下载不依赖任何环境变量，见 core/rag_models.py。
 try:
     from dotenv import load_dotenv as _load_dotenv
-    _load_dotenv(dotenv_path=pathlib.Path(__file__).parent.parent / ".env")
+    from core.paths import ROOT as _ROOT
+    _load_dotenv(dotenv_path=_ROOT / ".env")
 except Exception:
     pass
 

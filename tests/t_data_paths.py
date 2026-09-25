@@ -5,6 +5,8 @@
 - 测试进程运行在临时数据目录里，随仓库分发的数据文件已复制进去。
 - 产品代码不许再自己拼 `data/` 路径（除 core/paths.py 外）：新写的硬编码路径会绕过隔离，
   测试又会开始写真实用户数据。
+- core 里需要项目根的地方一律用 `core.paths.ROOT`，不各自用 `__file__` 往上数层级
+  （文件挪位置后层数会悄悄错，例如 orchestrator 变成包）。
 - 每个测试文件都必须在导入任何产品模块之前导入 `tests._console`（它先导入沙盒），
   否则模块级路径常量会在沙盒生效前按真实目录算好。
 
@@ -79,6 +81,27 @@ def t_no_hardcoded_data_paths() -> None:
     check(len(files) > 50, "确实扫描到了产品代码（扫描器没有失效）", f"n={len(files)}")
 
 
+_FILE_ROOT = re.compile(r'''Path\(\s*__file__\s*\)|dirname\(\s*(?:os\.path\.abspath\()?\s*__file__''')
+
+
+def t_root_only_from_paths() -> None:
+    print("\n▶ core 里的项目根只来自 core.paths.ROOT")
+    files = sorted((ROOT / "core").rglob("*.py"))
+    hits = []
+    for f in files:
+        if f.name == "paths.py" and f.parent.name == "core":
+            continue
+        for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if line.strip().startswith("#"):
+                continue
+            if _FILE_ROOT.search(line):
+                hits.append(f"{f.relative_to(ROOT)}:{i}")
+    check(not hits, "core 里没有模块用 __file__ 自己往上数层级推项目根", ", ".join(hits[:8]))
+    check(len(files) > 30, "确实扫描到了 core（扫描器没有失效）", f"n={len(files)}")
+    from tests._src import module_text
+    check(_FILE_ROOT.search(module_text("core.paths")) is not None, "前置：正则能认出 core/paths.py 里那一处")
+
+
 _PRODUCT_IMPORT = re.compile(r'^(?:from|import)\s+(core|app|memory|skills|nano_koala)\b', re.M)
 _CONSOLE_IMPORT = re.compile(r'^import\s+(?:tests\.)?_console\b', re.M)
 
@@ -104,6 +127,7 @@ if __name__ == "__main__":
     t_paths()
     t_sandbox()
     t_no_hardcoded_data_paths()
+    t_root_only_from_paths()
     t_every_test_boots_sandbox_first()
 
     _ok = sum(1 for r in _results if r[0])

@@ -44,7 +44,7 @@ except Exception as _e:  # pragma: no cover - SDK 未装时优雅降级
     logger.warning(f"[MCP] 官方 mcp SDK 不可用，MCP 能力关闭：{_e}")
 
 # 项目根 / 配置路径
-_ROOT = Path(__file__).resolve().parent.parent
+from core.paths import ROOT as _ROOT  # noqa: E402
 CONFIG_PATH = _ROOT / "config" / "mcp_servers.json"
 
 # 工具名前缀：mcp__<server>__<tool>（对齐生态/Claude Code 命名，保证全局唯一、可反解）

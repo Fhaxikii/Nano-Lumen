@@ -1921,6 +1921,9 @@ class Orchestrator:
         # 📌 **一个裸 bool 表达不了「谁持有、持有多久、过期算谁的」，所以它防不住任何一种泄漏。**
         self._canary = None  # lazy init，见 maybe_run_canary
         self._push_callback = None  # async (content: str) -> None，由 app.py 注入
+        # () -> Nano 主窗口对象（有 minimize / restore），由 app.py 注入；core 不直接依赖 UI 框架。
+        # 看屏幕前用它把自己最小化让开；没有注入时（测试、无界面运行）不让开。
+        self._native_window = None
 
         # 本会话是否已经提示过"当前模型不适合写 Skill，建议切换"
         self._model_switch_suggested_this_session: bool = False
@@ -2302,12 +2305,10 @@ class Orchestrator:
     #
     # ⚠️ 这里是**程序目录**，不是工作目录（用户特意点名）：
     #       cwd    取决于用户从哪儿启动（双击 / 快捷方式 / 命令行各不相同）
-    #       __file__ 是这个 .py 文件的真实位置 —— **装在哪就是哪**
+    #       项目根（`core.paths.ROOT`）由代码文件位置推出 —— **装在哪就是哪**
     #    ⇒ 「每个人存放路径不一样」恰恰不构成问题：它不依赖 cwd、注册表或启动方式。
-    # ⚠️ `core/mcp_client.py` 顶部有同源的一份 `_ROOT`。将来若要建 `core/paths.py`
-    #    统一出处，这两处一起收 —— 本次不扩范围。
     # 🔴 若将来打包成 exe（PyInstaller），`__file__` 会指向临时解压目录 `_MEIPASS`，
-    #    **不会报错，只会静默指错**。到那天必须在这里加 `sys.frozen` 分支。
+    #    **不会报错，只会静默指错**。到那天必须在 `core/paths.py` 加 `sys.frozen` 分支。
     _ENV_BLOCK: str = ""          # 一次会话内不变 ⇒ 只算一次（注册表读取不该每轮跑）
 
     @classmethod
@@ -2316,7 +2317,8 @@ class Orchestrator:
             return cls._ENV_BLOCK
         import sys as _sys, platform as _pf
         try:
-            _root = str(pathlib.Path(__file__).resolve().parent.parent)
+            from core.paths import ROOT as _ROOT
+            _root = str(_ROOT)
         except Exception:
             _root = "(unknown)"
         cls._ENV_BLOCK = (
@@ -5709,7 +5711,8 @@ class Orchestrator:
                 provider=self.provider, screenshot_dir=audit.screenshot_dir,
                 model_override=None,
             )
-            cfg_path = pathlib.Path(__file__).parent.parent / "config" / "os_config.json"
+            from core.paths import ROOT as _ROOT
+            cfg_path = _ROOT / "config" / "os_config.json"
             canary_cfg = {}
             try:
                 if cfg_path.exists():
@@ -7222,10 +7225,10 @@ class Orchestrator:
         _win = None
         if not include_self:
             try:
-                from nicegui import app as _napp
-                _win = _napp.native.main_window
-                _win.minimize()
-                await asyncio.sleep(0.45)
+                _win = self._native_window() if self._native_window else None
+                if _win is not None:
+                    _win.minimize()
+                    await asyncio.sleep(0.45)
             except Exception:
                 _win = None
         try:

@@ -142,7 +142,7 @@ class SkillRegistry:
             next_manifests: List[Dict[str, Any]] = []
 
             # 扫持久 Skill
-            root_path = pathlib.Path(__file__).parent.parent
+            root_path = self._root_path()
             for folder in ["skills"]:
                 skills_dir = root_path / folder
                 if not skills_dir.exists():
@@ -320,7 +320,8 @@ class SkillRegistry:
     # ── Skill 生命周期管理 ───────────────────────────────────────────────
 
     def _root_path(self) -> pathlib.Path:
-        return pathlib.Path(__file__).parent.parent
+        from core.paths import ROOT
+        return ROOT
 
     def _skills_dir(self) -> pathlib.Path:
         path = self._root_path() / "skills"

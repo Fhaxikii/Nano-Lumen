@@ -399,7 +399,8 @@ def compute_effective_risk(action: str,
 def load_upgrade_rules(config_path: Optional[pathlib.Path] = None) -> List[Dict[str, Any]]:
     """从 config/os_config.json 读 _DYNAMIC_UPGRADE_RULES，缺失则用内置默认。"""
     if config_path is None:
-        config_path = pathlib.Path(__file__).parent.parent.parent / "config" / "os_config.json"
+        from core.paths import ROOT as _ROOT
+        config_path = _ROOT / "config" / "os_config.json"
     try:
         if config_path.exists():
             data = json.loads(config_path.read_text(encoding="utf-8"))
