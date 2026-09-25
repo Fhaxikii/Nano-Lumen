@@ -116,7 +116,7 @@ def t_patch_global() -> None:
     import ast
     from tests._patch import patch_global
     import core.orchestrator as O
-    import core.orchestrator.orchestrator as M
+    import core.orchestrator.long_task as M     # 调用 _rt_wait_open 的模块之一
     real = O._rt_wait_open
     marker = object()
     undo = patch_global("core.orchestrator", "_rt_wait_open", marker)
