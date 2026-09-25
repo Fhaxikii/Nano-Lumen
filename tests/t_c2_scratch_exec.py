@@ -335,9 +335,9 @@ def t_one_scanner_one_vocabulary() -> None:
     cs = module_text("core.code_scan")
     # 🔴 两份扫描器分叉时不会报错，表现是「Skill 审计拦得住的，临时通道放过去了」
     check(orch.count("full_name == \"open\"") == 0,
-          "⭐⭐ 扫描实现已从 orchestrator 移走（那里只剩一行转发）")
-    check("from core.code_scan import detect_side_effects" in orch,
-          "⭐ Skill 审计那条路也调**同一份**")
+          "⭐⭐ 扫描实现不在 orchestrator 里")
+    check("from core.code_scan import detect_side_effects" in module_text("core.skill_check"),
+          "⭐ Skill 审计那条路（core/skill_check.py）也调**同一份**")
     check(cs.count("def detect_side_effects") == 1, "实现只有一份")
     # 词表同理
     check(orch.count('"file_write":    "写入文件到磁盘"') == 0,

@@ -31,7 +31,7 @@ class SkillRegistry:
         🔴 更要紧的是它造成的**形状不一致**：同一个文件里，
              这里（解析）**接受** function_declarations 包壳
              下面（校验）对 OpenAI 包壳打 🔴 error
-             `Orchestrator._check_manifest_shape` 在审计期**两种都拒**
+             `core.skill_check.check_manifest_shape` 在审计期**两种都拒**
            ⇒ 一个宽松的解析器贴着一个严格的校验器：
              用 Gemini 包壳写的 Skill 能被读出名字、能进清单，
              却会在审计那一步被拒 —— 而两处给的信号完全相反。

@@ -3,14 +3,14 @@
 
 ═══ 为什么它在这里，而不是留在 orchestrator 里 ═══
 
-它原本是 `Orchestrator._detect_ast_side_effects`（给 Skill 审计用）。
+它原本是 Orchestrator 上给 Skill 审计用的静态方法。
 临时执行通道要问的是**同一个问题**：「这段代码会不会碰外界」。
 
 📌 **判据只能有一处。** 两份扫描器迟早会分叉 —— 而分叉的表现不是报错，
    是「Skill 审计拦得住的东西，临时通道放过去了」（或者反过来），
    **而且没有任何东西会告诉我们它们已经不一致了**。
 ⇒ 所以搬到这个不依赖任何东西的底层模块，两条路都调它。
-   `Orchestrator._detect_ast_side_effects` 现在是一行转发，保持调用方不变。
+   Skill 审计（`core/skill_check.py`）与临时执行通道都直接调它。
 
 ═══ ⚠️ 它是什么，不是什么 ═══
 

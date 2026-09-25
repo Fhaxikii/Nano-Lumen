@@ -35,6 +35,7 @@ from loguru import logger
 logger.remove()
 
 from core.orchestrator import Orchestrator, _SKILL_PROTOCOL
+from core.skill_check import validate_skill_code
 from core.registry import SkillRegistry
 
 _results: list[tuple[bool, str, str]] = []
@@ -65,7 +66,7 @@ _NONAME = '{"desc": "d", "params": {}}'
 
 
 def _errs(manifest_src: str):
-    ok, errs = Orchestrator.validate_skill_code(_TPL % manifest_src)
+    ok, errs = validate_skill_code(_TPL % manifest_src)
     return ok, [e for e in errs if "manifest" in e]
 
 
@@ -137,7 +138,7 @@ def t_indirect_return_passes() -> None:
     ok, e = _errs("self._build_manifest()")
     check(ok and not e, "间接返回 → 放行（静态看不到字典字面量）")
     # 纪律：确认"放行"不是因为整段代码压根没过校验
-    ok2, all_errs = Orchestrator.validate_skill_code(_TPL % "self._build_manifest()")
+    ok2, all_errs = validate_skill_code(_TPL % "self._build_manifest()")
     check(ok2, "前置条件：这段代码其余部分是合规的，放行不是因为别的错误",
           str(all_errs[:1]))
 

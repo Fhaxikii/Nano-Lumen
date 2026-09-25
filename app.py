@@ -3332,7 +3332,8 @@ class WebUI:
             apply_btn.props(remove='disabled')
 
     def _validate_skill_code(self, code: str, label_el) -> bool:
-        ok, errors = self.agent.validate_skill_code(code)
+        from core.skill_check import validate_skill_code
+        ok, errors = validate_skill_code(code)
         if not ok:
             label_el.set_text("⚠ " + "  ·  ".join(errors))
             label_el.style('color:var(--nano-danger)')
