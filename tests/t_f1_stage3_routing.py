@@ -81,7 +81,8 @@ class _FakeRegistry:
 
 
 def make_orch(db_dir: pathlib.Path, t: float = BASE_T):
-    orch_mod._rag_init_started = True
+    import core.rag as _rag
+    _rag._background_index_started = True   # 跳过知识库后台索引（会去加载 bge-m3）
     clock = FakeClock(t)
     st = RuntimeStore(db_dir / "rt.db")
     _stores.append(st)
@@ -167,7 +168,7 @@ def t_field_removed(tmp: pathlib.Path) -> None:
     # 只要求「找得到」：具体次数随代码增删变化，不是这条要守的东西。
     other = [n.attr for n in ast.walk(tree)
              if isinstance(n, ast.Attribute) and n.attr == "_pending_skill"]
-    check(len(other) >= 1,"前置条件：AST 能在同一文件里找到 _pending_skill（分析有效）",
+    check(len(other) >= 1, "前置条件：AST 能在同一文件里找到 _pending_skill（分析有效）",
           f"命中 {len(other)} 次")
 
     # ⚠️ 同样只能用 AST。这三个名字在留档注释里被**故意**提到了

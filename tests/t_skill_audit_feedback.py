@@ -102,7 +102,8 @@ class _FakeRegistry:
 
 
 def make_orch(db_dir: pathlib.Path) -> Orchestrator:
-    orch_mod._rag_init_started = True
+    import core.rag as _rag
+    _rag._background_index_started = True   # 跳过知识库后台索引（会去加载 bge-m3）
     st = RuntimeStore(db_dir / "rt.db")
     _stores.append(st)
     reset_kernel_for_tests(store=st, clock=FakeClock(1_800_000_000.0))

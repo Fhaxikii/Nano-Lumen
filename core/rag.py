@@ -65,7 +65,7 @@ except Exception:
 # 懒加载单例的初始化锁（2026-08-03 实测抓到的竞态，见 _get_collection 注释）
 # ══════════════════════════════════════════════════════════════════════════
 # 这三个全局都是"裸 if is None 就构造"的懒加载单例，而它们至少被两类线程并发访问：
-#   · rag-init 后台线程（Orchestrator._init_rag_async → index_documents）
+#   · rag-init 后台线程（start_background_index → index_documents）
 #   · UI 线程（启动时刷新知识库列表 / 用户查询）
 # 三者构造的都是重型原生栈（chromadb 的 Rust bindings、torch/sentence-transformers），
 # 并发构造会让后进来的线程看到半初始化对象。必须串行化。
@@ -459,7 +459,7 @@ def _bm25_search(query: str, top_k: int, source: str = "both") -> List[Dict[str,
       - "both"         : 全部返回（原有行为）
 
     懒加载：如果当前进程的 _bm25_index 为 None（可能是 NiceGUI worker 进程
-    没经过 _init_rag_async 路径），自动触发一次构建。
+    没经过 start_background_index 路径），自动触发一次构建。
     """
     global _bm25_index, _bm25_corpus
     if _bm25_index is None or not _bm25_corpus:
@@ -876,7 +876,7 @@ def _schedule_reindex_after_heal(backup_path: str) -> None:
     """自愈重建后触发一次全量索引（后台线程，不阻塞调用方）。
 
     为什么要单独调度：自愈可能发生在【任何】打开向量库的时刻。
-    - 若发生在启动索引里（`_init_rag_async` → `index_documents`），调用方拿到空库后
+    - 若发生在启动索引里（`start_background_index` → `index_documents`），调用方拿到空库后
       会自己把所有文件重新索引一遍，这里其实不必再做；
     - 但若发生在一次普通查询里（用户搜东西时才第一次打开库），**没有任何人会去重建索引**，
       用户会得到一个永远搜不到东西的空库。
@@ -3578,7 +3578,7 @@ def cleanup_stale_temp_files():
     """一次性清理磁盘上残留的临时文件(历史 bug 遗留)。
 
     调用场景：
-    1. 应用启动时自动调一次（orchestrator._init_rag_async 里调用）
+    1. 应用启动时自动调一次（start_background_index 里调用）
     2. 用户手动在 Python 终端调用排查问题
 
     之所以需要这个函数：旧版 clear_temp_knowledge 只清 chroma collection，
@@ -3603,6 +3603,82 @@ def cleanup_stale_temp_files():
     except Exception as e:
         logger.warning(f"[RAG] cleanup_stale_temp_files 失败: {e}")
         return 0
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 启动时的后台索引：进程内只跑一次
+# ══════════════════════════════════════════════════════════════════════════
+# NiceGUI 会多次实例化 Orchestrator；每次都起索引线程会让多个线程同时跑 OCR，
+# 内存耗尽。所以「已启动」标志和就绪信号都是进程级的。
+# 就绪信号不能是每个调用方自己的 Event：否则第二次调用的短路分支会立即 set()，
+# 而真正的索引还在第一次启动的线程里跑，初始化遮罩会提前消失。
+_background_index_started = False
+_background_index_lock = threading.Lock()
+_background_index_done = threading.Event()
+
+
+def start_background_index() -> threading.Event:
+    """启动后台索引线程（进程内只启动一次），返回进程级共享的完成信号。
+
+    ⚠️ 这个 Event 表达的是【初始化流程结束】，不是【组件可用】——成功失败都会 set。
+    UI 遮罩用它决定「不再挡着」；真实可用性一律查 HealthRegistry。
+    """
+    global _background_index_started
+    with _background_index_lock:
+        if _background_index_started:
+            return _background_index_done
+        _background_index_started = True
+
+    def _run():
+        try:
+            # 启动时清理历史遗留的临时文件
+            try:
+                cleaned = cleanup_stale_temp_files()
+                if cleaned > 0:
+                    logger.info(f"[RAG] 启动清理：移除 {cleaned} 个历史遗留临时文件")
+                _init_stage_log.append(f"temp_cleaned:{cleaned}")
+            except Exception as e:
+                logger.debug(f"[RAG] 启动清理跳过: {e}")
+
+            stats = index_documents()
+            _n_err = len(stats.get('errors', []))
+            (logger.warning if _n_err else logger.info)(
+                f"[RAG] 知识库就绪 · 新增 {stats['indexed']} · 未变化 {stats['skipped']} · 失败 {_n_err}")
+            _init_stage_log.append(
+                f"done:{stats['indexed']}:{stats['skipped']}:{len(stats.get('errors', []))}"
+            )
+        except Exception as e:
+            # ⚠️ 这一个 except 曾经吞掉三次根因完全不同的致命失败（2026-08-03 实测）：
+            #   ① 旧版 chromadb 建的库与当前版本 schema 不兼容
+            #   ② transformers 因 CVE 拒绝加载 .bin 权重（缺 safetensors）
+            #   ③ 模型压根没下载成功
+            # 三次用户可见表现完全相同：UI 零提示，知识库彻底不可用，只有翻 cmd 才发现。
+            # 现在改为登记到 HealthRegistry，由 UI 侧消费者呈现。
+            # 本模块里的具体加载点已按根因分类上报；这里只兜底那些没被具体上报覆盖的。
+            import traceback
+            logger.error(
+                f"[RAG] 后台初始化失败: {type(e).__name__}: {e}\n{traceback.format_exc()}"
+            )
+            try:
+                from core.health import Cap, get_health, Status, report_fault
+                _h = get_health()
+                if _h.status_of(Cap.KB_VECTOR_SEARCH) == Status.AVAILABLE and \
+                   _h.status_of(Cap.KB_STORE) == Status.AVAILABLE:
+                    report_fault(
+                        Cap.KB_STORE, "RAG_INIT_FAILED",
+                        user_message="知识库初始化失败，检索功能当前不可用。",
+                        hint="查看运行日志里的 [RAG] 段落获取详细报错。",
+                        hint_en=("Check the [RAG] section of the runtime log for the "
+                                 "full error; restarting Nano retries initialisation."),
+                        detail=f"{type(e).__name__}: {e}",
+                    )
+            except Exception:
+                pass
+        finally:
+            _background_index_done.set()
+
+    threading.Thread(target=_run, name="rag-init", daemon=True).start()
+    return _background_index_done
 
 
 def register_temp_file(filename: str, path: str):

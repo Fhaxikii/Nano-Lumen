@@ -7911,7 +7911,7 @@ class WebUI:
         """定时 drain 状态转移队列。
 
         为什么是"登记 + 轮询"而不是 callback：故障可能发生在事件循环存在之前
-        （_init_rag_async 跑在普通 threading.Thread 里，且 WebUI() 构造早于 ui.run()），
+        （core.rag.start_background_index 跑在普通 threading.Thread 里，且 WebUI() 构造早于 ui.run()），
         也可能发生在 UI 尚未构建完成时。项目里已有同款范式：rag_engine._init_stage_log
         线程写、UI 轮询读。
         """
@@ -15550,7 +15550,7 @@ class WebUI:
         ui.timer(3, self._update_net_status)
 
         # ── 初始化中遮罩 ──────────────────────────────────────────────
-        # 后台 RAG 索引(嵌入模型加载、BM25构建)在 _init_rag_async 里跑，
+        # 后台 RAG 索引(嵌入模型加载、BM25构建)在 core.rag.start_background_index 里跑，
         # 不阻塞页面渲染，但用户此时看到的UI其实还不能正常工作。
         # 用 self.agent._rag_ready(threading.Event) 作为最终就绪信号，
         # 遮罩盖住整个页面，就绪后自动隐藏。

@@ -88,7 +88,8 @@ class _FakeRegistry:
 
 
 def make_orch(tmp: pathlib.Path):
-    orch_mod._rag_init_started = True
+    import core.rag as _rag
+    _rag._background_index_started = True   # 跳过知识库后台索引（会去加载 bge-m3）
     st = RuntimeStore(tmp / "rt.db")
     _stores.append(st)
     k = reset_kernel_for_tests(store=st, clock=FakeClock(BASE_T))

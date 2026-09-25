@@ -18,7 +18,7 @@ patch 它 = 给循环喂剧本，循环本身一行未改。
 
 - 独立的 `data` 目录（临时目录），**不碰 `data/nano_runtime.db`**
   —— 用户的 1/2 行实测数据在那里，不能被测试污染
-- `_init_rag_async` 用模块级 `_rag_init_started` 全局开关跳过（否则会去加载 bge-m3）
+- 知识库后台索引用 `core.rag._background_index_started` 跳过（否则会去加载 bge-m3）
 - `_run_os_skill_plan_loop` 被换成空生成器（否则会真去操作屏幕）
 
 用法：
@@ -93,7 +93,8 @@ class _FakeRegistry:
 
 def make_orch(db_dir: pathlib.Path, t: float):
     """造一个能跑 _run_react_loop 的真 Orchestrator，但内核指向独立的临时库。"""
-    orch_mod._rag_init_started = True          # 跳过 RAG 后台索引（会去加载 bge-m3）
+    import core.rag as _rag
+    _rag._background_index_started = True   # 跳过知识库后台索引（会去加载 bge-m3）
     clock = FakeClock(t)
     st = RuntimeStore(db_dir / "rt.db")
     _stores.append(st)

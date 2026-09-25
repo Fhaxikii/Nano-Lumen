@@ -2879,15 +2879,6 @@ _RESERVED_TOOL_NAMES = {
 }
 
 
-# 全局标志：确保整个进程只跑一次 RAG 初始化，防止多次实例化时重复索引
-_rag_init_started = False
-_rag_init_lock = __import__('threading').Lock()
-# 修复：就绪信号必须是进程级共享的，不能是每个 Orchestrator 实例自己的
-# threading.Event()——否则"二次实例化短路"分支会把自己的 Event 立即 set()，
-# 而真正的索引在第一个实例的后台线程里还没跑完，导致初始化遮罩瞬间消失。
-_rag_ready_event = __import__('threading').Event()
-
-
 # ══════════════════════════════════════════════════════════════════════════
 # ToolBatchSpan 的 shadow 接线
 # ══════════════════════════════════════════════════════════════════════════
@@ -4108,10 +4099,9 @@ class Orchestrator:
             self._wm = None
             self._wm_session_id = ""
 
-        # lazy + 后台初始化，避免阻塞 UI 启动
-        # 修复：引用进程级共享 Event，不要每个实例新建自己的
-        self._rag_ready = _rag_ready_event
-        self._init_rag_async()
+        # 知识库后台索引（进程内只启动一次，不阻塞 UI 启动）；
+        # _rag_ready 是进程级共享的「初始化流程结束」信号
+        self._rag_ready = rag_engine.start_background_index()
 
         # ReAct 并发信号量（在第一次 asyncio 事件循环里懒初始化）
         self._rag_parallel_sem: asyncio.Semaphore | None = None
@@ -4279,74 +4269,6 @@ class Orchestrator:
     EXPLORATION_MAX_FILE_TOOL_CHAIN = 6
 
     # ── 初始化 ───────────────────────────────────────────────────────────
-
-    def _init_rag_async(self):
-        """后台线程初始化 RAG 索引，不阻塞 UI 启动。
-        
-        全局只跑一次：防止 NiceGUI 多次实例化 Orchestrator 时重复启动索引线程，
-        避免多线程同时跑 OCR 导致内存耗尽。
-        """
-        global _rag_init_started
-        with _rag_init_lock:
-            if _rag_init_started:
-                # 不重复索引，也不在这里 set()——self._rag_ready 现在是
-                # 进程级共享 Event，会由第一个实例启动的索引线程在真正
-                # 完成后统一 set()。
-                return
-            _rag_init_started = True
-
-        def _run():
-            try:
-                # Phase 1 修复：启动时清理历史遗留的临时文件
-                try:
-                    cleaned = rag_engine.cleanup_stale_temp_files()
-                    if cleaned > 0:
-                        logger.info(f"[RAG] 启动清理：移除 {cleaned} 个历史遗留临时文件")
-                    rag_engine._init_stage_log.append(f"temp_cleaned:{cleaned}")
-                except Exception as e:
-                    logger.debug(f"[RAG] 启动清理跳过: {e}")
-
-                stats = rag_engine.index_documents()
-                _n_err = len(stats.get('errors', []))
-                (logger.warning if _n_err else logger.info)(
-                    f"[RAG] 知识库就绪 · 新增 {stats['indexed']} · 未变化 {stats['skipped']} · 失败 {_n_err}")
-                rag_engine._init_stage_log.append(
-                    f"done:{stats['indexed']}:{stats['skipped']}:{len(stats.get('errors', []))}"
-                )
-            except Exception as e:
-                # ⚠️ 这一个 except 曾经吞掉三次根因完全不同的致命失败（2026-08-03 实测）：
-                #   ① 旧版 chromadb 建的库与当前版本 schema 不兼容
-                #   ② transformers 因 CVE 拒绝加载 .bin 权重（缺 safetensors）
-                #   ③ 模型压根没下载成功
-                # 三次用户可见表现完全相同：UI 零提示，知识库彻底不可用，只有翻 cmd 才发现。
-                # 现在改为登记到 HealthRegistry，由 UI 侧消费者呈现。
-                # rag.py 里的具体加载点已按根因分类上报；这里只兜底那些没被具体上报覆盖的。
-                logger.error(
-                    f"[RAG] 后台初始化失败: {type(e).__name__}: {e}\n{traceback.format_exc()}"
-                )
-                try:
-                    from core.health import Cap, get_health, Status, report_fault
-                    _h = get_health()
-                    if _h.status_of(Cap.KB_VECTOR_SEARCH) == Status.AVAILABLE and \
-                       _h.status_of(Cap.KB_STORE) == Status.AVAILABLE:
-                        report_fault(
-                            Cap.KB_STORE, "RAG_INIT_FAILED",
-                            user_message="知识库初始化失败，检索功能当前不可用。",
-                            hint="查看运行日志里的 [RAG] 段落获取详细报错。",
-                            hint_en=("Check the [RAG] section of the runtime log for the "
-                                     "full error; restarting Nano retries initialisation."),
-                            detail=f"{type(e).__name__}: {e}",
-                        )
-                except Exception:
-                    pass
-            finally:
-                # ⚠️ 语义说明（外部评审推演出来的）：这个 Event 表达的是【初始化流程结束】，
-                # 不是【组件可用】——成功失败都会 set。UI 遮罩用它决定"不再挡着"是对的，
-                # 但绝不能拿它当 ready。真实可用性一律查 HealthRegistry。
-                self._rag_ready.set()
-
-        t = threading.Thread(target=_run, name="rag-init", daemon=True)
-        t.start()
 
     def _load_system_instruction(self) -> str:
         parts = []
