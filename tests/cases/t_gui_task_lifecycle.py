@@ -415,6 +415,12 @@ def t_wiring() -> None:
     check(osrc.count("_gui_task_track_turn(self._run_react_loop(") == 2, "唤醒轮也经过 _gui_task_track_turn")
     check("self._take_window_note()" in osrc, "工具结果附窗口说明")
     plan = S.def_text("core.orchestrator", "_turn_tool_plan", owner="Orchestrator")
+    check("d.name not in _resident" in plan and "_resident_note" in plan
+          and "without load_tools" in plan,
+          "常驻的屏幕工具不再列进「按需加载」清单，并在那段说明后补一句例外（名单同源）")
+    reset = S.def_text("core.orchestrator", "_turn_reset_runtime", owner="Orchestrator")
+    check("if not self._gui_task_active():" in reset and "self._last_fg_window = None" in reset,
+          "前台窗口基准：GUI 任务进行中跨轮保留，没有任务时每轮清零")
     check("self._gui_task_active()" in plan and '"computer_use", "set_window_mode", "look_at_screen"' in plan,
           "GUI 任务进行中：屏幕工具这一簇随每一轮下发（load_tools 不跨轮）")
     check('register_tick_step("gui_task_idle"' in osrc and "self._install_gui_task_idle_tick()" in osrc,

@@ -246,6 +246,8 @@ def t_wiring() -> None:
     check('if _rs.get("ui_stopped"):' in app and "self._discard_after_stop(step, _rs)" in app,
           "界面收尾后到达的事件不再显示")
     code = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
+    check('f"已终止 · {_el}s{self._turn_tok_suffix(_tok)}"' in code and "{_tok} tok\")" not in code,
+          "终止的状态行按「Token 计数器」设置显示 token（与正常收尾同一个函数）")
     check("the user pressed Stop" not in code, "界面不再写终止事实")
     rl = S.def_text("core.orchestrator", "_interject_stop_event", owner="Orchestrator")
     check("the user pressed Stop" in rl and "add_system_note" in rl, "终止事实由后端在真正停下时写")

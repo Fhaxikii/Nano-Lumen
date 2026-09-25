@@ -540,23 +540,33 @@ class TurnMixin:
         self._core_manifest = [d.manifest for d in _core_always + _core_cond]
         # GUI 任务进行中（跨轮）：屏幕工具这一簇直接随本轮下发。`load_tools` 的加载不跨轮，
         # 否则每个新轮的第一次 computer_use 都会被拒、白费一次往返。放在带条件那一段（断点之后）。
+        _resident: list = []
         if self._gui_task_active():
             for _n in ("computer_use", "set_window_mode", "look_at_screen"):
                 _m = self._tool_pool.get(_n)
                 if _m is not None and _m not in self._core_manifest:
                     self._core_manifest.append(_m)
+                    _resident.append(_n)
         # ⭐ 稳定段长度 —— 发请求时告诉 provider 断点该打在哪。
         #    ⚠️ 它必须跟着 `_core_manifest` 一起算，**不能在别处重新数** ——
         #       📌 一个「这份名单的前 N 个」的数字，和那份名单必须同源，
         #          否则两边各自演化，断点就会打在错的位置上（而且不报错）。
         self._core_stable_n = len(_core_always)
-        _deferred = [d for d in _advertised if d.preload is Preload.DEFERRED]
+        # 随 GUI 任务常驻的工具不再列进「按需加载」清单，并在那段说明后面补一句例外，
+        # 否则同一份提示里既说「已附带」又说「这一轮要重新加载」。名单与上面常驻的同源。
+        _deferred = [d for d in _advertised
+                     if d.preload is Preload.DEFERRED and d.name not in _resident]
         # ③ 感知块由目录渲染 —— `[:28]` 字符级截断（根因）随旧实现删除。
         # ⚠️ 这里传的是**过完 health 门控**的那批，所以「坏掉的工具」也不会出现在
         #    感知块里 —— 与 manifest 层保持同一个口径（说得见的都真能用）。
+        _resident_note = (
+            "Exception right now: a screen-operation task is in progress, so "
+            + ", ".join(_resident)
+            + " stay attached on every turn until it ends - call them directly, without load_tools.\n"
+        ) if _resident else ""
         self._deferred_awareness_text = (
-            _cat.DEFERRED_HEADER + "\n".join(f"  - {d.name}: {d.awareness}"
-                                             for d in _deferred)
+            _cat.DEFERRED_HEADER + _resident_note
+            + "\n".join(f"  - {d.name}: {d.awareness}" for d in _deferred)
         ) if _deferred else ""
         try:
             logger.debug(
@@ -574,9 +584,10 @@ class TurnMixin:
         # 已删 —— 租约靠 TTL 自愈，不需要"每轮兜底"这种依赖下一轮才生效的止血。
         # 📌 实测证伪过那个前提：「每轮重置把爆炸半径压到一轮」——
         #    「一轮」只在**有下一轮**时才存在，用户不说话它就一直挂着（实测 61 分钟）。
-        # ⭐ 前台窗口身份的比较基准每轮清零 —— 跨轮的"窗口变了"没有意义，
-        #    那本来就是两件事之间。与活动租约同一个边界（见 `_window_identity_note`）。
-        self._last_fg_window = None
+        # 前台窗口身份的比较基准（见 `_window_identity_note`）：没有 GUI 任务时每轮清零；
+        # GUI 任务进行中（跨轮）不清 —— 两轮之间用户可能用过电脑，跨轮的前台变化正是要告诉模型的事实。
+        if not self._gui_task_active():
+            self._last_fg_window = None
         # ⭐ 活动租约也在每轮开头兜底归还。
         #    它的正常释放点是"一整段 GUI 操作结束"，而"结束"最可靠的判据就是
         #    **下一轮开始了** —— 所以这里是它真正的边界，不是 os_execute 的 finally。

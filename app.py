@@ -4673,7 +4673,8 @@ class WebUI:
                                                     'flex-shrink:0; display:inline-block;')
                             # ⚠️ 这行字**不在 Nano 气泡里**（是元信息行/系统状态）→
                             #    命中固定文案豁免第 3、5 条，允许写死。
-                            _rs["status_lbl"].set_text(f"已终止 · {_el}s · {_tok} tok")
+                            # token 段按「Token 计数器」设置显示（与正常收尾同一个函数）
+                            _rs["status_lbl"].set_text(f"已终止 · {_el}s{self._turn_tok_suffix(_tok)}")
                             _rs["status_lbl"].style(
                                 'font-size:var(--nano-fs-base); color:var(--nano-danger); font-style:normal; '
                                 'letter-spacing:0.01em; font-family:var(--nano-mono);')

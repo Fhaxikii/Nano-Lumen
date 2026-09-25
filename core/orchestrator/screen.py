@@ -213,8 +213,8 @@ class ScreenMixin:
         ⚠️ 身份用 **hwnd**，不是标题：两个未命名记事本的标题**完全一样**
         （都是"无标题 - 记事本"），靠标题判身份正好在最该分清的场景下失效。
 
-        ⚠️ 比较基准是**本轮**（`_last_fg_window` 每轮重置），与活动租约同一个边界 ——
-        跨轮的"变了"没有意义，那本来就是两件事之间。
+        比较基准 `_last_fg_window`：没有 GUI 任务时每轮清零；GUI 任务进行中跨轮保留
+        （一个 GUI 任务可以跨多轮，两轮之间用户可能用过电脑）。
         """
         try:
             from core.os_layer.executor_low import foreground_identity
