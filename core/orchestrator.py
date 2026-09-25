@@ -4897,9 +4897,9 @@ class Orchestrator:
         """**最近一条**待审载荷的只读视图。
 
         存在的意义是让"只关心有没有待审"的十几处调用点不用改
-        （`if self._pending_skill:` / `_explain_pending_skill()` / 日志 …）。
+        （`if self._pending_skill:` / 日志 …）。
         ⚠️ **需要指定具体哪一条时不要用它**，要显式传 filename ——
-        用它就等于又回到了单槽假设，而那正是 的根因。
+        用它就等于又回到了单槽假设。
         """
         for _fn in reversed(self._pending_skill_order):
             _p = self._pending_skills.get(_fn)
@@ -6256,34 +6256,6 @@ class Orchestrator:
             if isinstance(s, dict):
                 names.append(s.get('name'))
         return [n for n in names if n]
-
-    @staticmethod
-    def _is_high_risk_code(code: str) -> bool:
-        # 这里扫描的是代码危险 API，不是用户语义路由；用于审计说明。
-        risk_tokens = ["subprocess", "os.system", "shell=True", "eval(", "exec(", "shutil.rmtree", "unlink(", "remove("]
-        return any(t in (code or "") for t in risk_tokens)
-
-    def _explain_pending_skill(self, risk_only: bool = False) -> str:
-        if not self._pending_skill:
-            return "当前没有待审计 Skill。"
-        filename = self._pending_skill.get("filename", "UnknownSkill")
-        description = self._pending_skill.get("description", "暂无描述")
-        code = self._pending_skill.get("code", "")
-        high_risk = self._is_high_risk_code(code)
-        lines = [
-            f"当前待审计 Skill：**{filename}**",
-            f"作用：{description}",
-        ]
-        if high_risk:
-            lines.extend([
-                "",
-                "⚠️ 风险等级：高。这个 Skill 代码里包含系统命令、动态执行或文件破坏类能力的迹象。",
-                "建议：不要部署无限制版本；优先改成白名单命令、禁用 `shell=True`、限制工作目录，并在每次执行前二次确认。",
-            ])
-        elif risk_only:
-            lines.extend(["", "风险提示：未发现明显高危系统 API，但仍建议在审计窗口确认文件读写、网络访问和参数边界。"])
-        lines.extend(["", "你可以继续要求：解释、修改、改成更安全版本、丢弃，或在审计窗口验证并应用。"])
-        return "\n".join(lines)
 
     async def _emit_skill_preview_from_decision(self, decision, used_model: str, mode: str = "create",
                                                   target_skill: str | None = None, change_summary: str = "",
@@ -9212,20 +9184,6 @@ class Orchestrator:
         return mgr
 
 
-    def _get_self_window_rect(self):
-        """拿 Nano 自己窗口的物理像素矩形 (left, top, w, h)；找不到返回 None。"""
-        try:
-            import pygetwindow as gw
-            from core.os_layer.executor_low import _is_self_window_title
-            for w in gw.getAllWindows():
-                t = (w.title or "").strip()
-                if t and _is_self_window_title(t):
-                    if w.width > 0 and w.height > 0:
-                        return (int(w.left), int(w.top), int(w.width), int(w.height))
-        except Exception:
-            pass
-        return None
-
     _LOOK_FRACS = {
         "left": (0, 0, 0.5, 1), "right": (0.5, 0, 1, 1),
         "top": (0, 0, 1, 0.5), "bottom": (0, 0.5, 1, 1),
@@ -9774,45 +9732,6 @@ class Orchestrator:
     async def _handle_list_knowledge_files(self, args: dict, aid: str, *,
                                            event_queue, **_ctx) -> str:
         return await asyncio.to_thread(rag_engine.list_knowledge_files_for_agent)
-
-    @staticmethod
-    def _slice_file_text(text: str, args: dict) -> str:
-        """按 `offset`/`limit`（1 起、按行）取一段，并**如实说明这是一段**。
-
-        🔴 不切片时**一个字都不改**（连提示行都不加）——
-           📌 一个「顺手给所有人加一行」的改动，会让每一次调用都多付它的代价。
-
-        ⚠️ 越界不报错，钳到边界 + 说清楚：
-           📌 模型给的 offset 超了，是它**不知道文件多长**，那正是本项要修的问题；
-              为此报一次错，等于用惩罚回答一个它没法预先知道的问题。
-        """
-        if not isinstance(text, str) or not text:
-            return text
-        try:
-            _off = args.get("offset")
-            _lim = args.get("limit")
-            if _off in (None, "") and _lim in (None, ""):
-                return text
-            lines = text.splitlines()
-            _total = len(lines)
-            _start = max(1, int(_off or 1))
-            if _start > _total:
-                return (f"[Slice out of range] 这个文件只有 {_total:,} 行，"
-                        f"而 offset={_start}。整份内容没有变，换一个 offset 再读。")
-            _n = int(_lim) if _lim not in (None, "") else (_total - _start + 1)
-            _n = max(1, _n)
-            _end = min(_total, _start + _n - 1)
-            _body = "\n".join(lines[_start - 1:_end])
-            # ⭐ **总行数必须给** —— 📌 模型只有知道总长，才谈得上"还剩多少没读"；
-            #    没有它，分片阅读就退化成"读一段、猜一下、再读一段"。
-            _more = ""
-            if _end < _total:
-                _more = f"（还有 {_total - _end:,} 行没读，下次用 offset={_end + 1}）"
-            return (f"[Lines {_start:,}-{_end:,} of {_total:,}]{_more}\n"
-                    f"{'─' * 40}\n{_body}")
-        except Exception as e:
-            logger.warning(f"[Read] 切片失败，退回整份: {e}")
-            return text
 
     def _ui_sink(self, event_queue):
         """这次 UI 往返该发到哪条通道。
@@ -16119,92 +16038,7 @@ class Orchestrator:
             else:
                 logger.warning("[防御] 末尾是合法工具对，batch 已完成，跳过回滚，避免误删历史")
 
-    # ══════════════════════════════════════════════════════════════════════
-    # "信息全"通用 helper
-    # ══════════════════════════════════════════════════════════════════════
-    # 背景：chat_without_tools_or_call 语境下，模型有时会忽略"只许出文字"
-    # 的约束，吐出一个裸 function_call、不带任何文本。框架不会执行这个
-    # 调用（多数语境下执行它是错的——这只是"总结/确认"环节），但模型这一刻
-    # "正打算做什么"是真实存在的信息，不能让通用兜底文案("我理解你的需求...
-    # 可以吗？")把它抹掉，否则纯 UI 用户完全看不到"模型其实差一步就说清楚了"。
-    #
-    # 这两个 helper 只做只读的字符串拼接：把 AgentDecision(call) 翻译成一句
-    # 中文人话，再包装成一句"刚才正准备…"的开场白，供各 chat_without_tools
-    # 兜底分支拼接进自己的兜底文案。不执行、不路由、不写 memory。
 
-    def _stray_call_notice(self, stray_decision: Optional["AgentDecision"]) -> str:
-        """把"模型刚才想做但被打断"的事实包装成一句开场白。
-
-        没有 stray_decision 时返回空字符串（调用方原样使用自己原有的兜底文案，
-        行为与改动前完全一致）。
-        """
-        if stray_decision is None:
-            return ""
-        try:
-            # ⑧ 「模型打算做什么」问目录 —— 改造前这是**第二张**用户可见
-            # 文案表（`_describe_decision_for_user`，一堆 `if name == ...`），
-            # 与工具卡那张各写一遍中文、而且会漂。
-            # 📌 现在 card 与 intent 是**同一处声明的两个渲染上下文**。
-            desc = self._get_tool_catalog().presentation(
-                stray_decision.name or "某个工具", stray_decision.args or {},
-                intent=True)
-        except Exception:
-            return ""
-        return f"（刚才我正准备{desc}，这一步还没走完——）\n\n"
-
-
-
-    # 实测反复观察到的固定模式（不是固定模板复读，每次措辞略有不同，但结构
-    # 完全一致）：开头一句独立成句的自我宣告（"最后输出对用户请求的回复。"/
-    # "最后输出回答。"/"最后输出最终回复。"），后面跟一个空行，再接真正内容。
-    # 只在文件工具链以文字答案结束这条路径上出现（chat_with_tools_stream
-    # 没有_OUTPUT_LAYER那层"别加元信息开场白"的约束——里
-    # "复述思考过程"那条记录）。试过在protocol里加约束去堵这个，结果触发了
-    # 退化复读熔断（已回滚），改成代码层面后处理清洗，不碰那段脆弱的prompt。
-    # 正则故意写得很窄：必须是"最后输出"开头、"回复/回答"收尾的独立短句
-    # （后面紧跟句号或换行），不会误删用户请求生成内容里偶然包含相似措辞的
-    # 正常文本（比如"最后输出回复的时候要注意..."这种continuation不会被匹配，
-    # 因为它不是在标点处独立结束）。
-    _SELF_ANNOUNCEMENT_RE = re.compile(
-        r"^\s*最后输出(?:对用户请求的)?(?:最终)?回[复答][。\n]+\s*"
-    )
-
-    @classmethod
-    def _strip_self_announcement_prefix(cls, text: str) -> str:
-        """清洗"最后输出XX回复"这类自我宣告式开场白，只用于文件工具链以
-        文字答案结束的路径（见上面_SELF_ANNOUNCEMENT_RE的注释）。"""
-        if not text:
-            return text
-        return cls._SELF_ANNOUNCEMENT_RE.sub("", text, count=1)
-
-    @staticmethod
-    def _fallback_format_tool_result(result_str: str) -> str:
-        if not result_str:
-            return "操作已执行，但工具未返回任何内容。"
-        text = result_str.strip()
-        for prefix in ("【执行成功】", "【执行失败】", "【降级输出】"):
-            if text.startswith(prefix):
-                text = text[len(prefix):].strip()
-                break
-        return text or "操作已执行。"
-
-    @staticmethod
-    def _fallback_format_kb_result(kb_result: str) -> str:
-        if not kb_result:
-            return "本地知识库未返回任何内容。"
-        text = kb_result
-        text = text.replace("【本地知识库检索结果】", "").strip()
-        text = text.replace("【本地知识库未命中】", "").strip()
-        text = text.replace("【本地知识库检索异常】", "").strip()
-        cut_markers = [
-            "【以上内容为本地知识库返回",
-            "【如果用户问题不依赖",
-        ]
-        for marker in cut_markers:
-            idx = text.find(marker)
-            if idx > 0:
-                text = text[:idx].rstrip()
-        return text or "本地知识库未返回有效内容。"
 
     def _get_generic_error_payload(self, err: Exception, skill: str) -> dict:
         return {

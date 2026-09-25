@@ -10,14 +10,14 @@
         📌 一份写在常量里但没人调用的黑名单，跟没有是一样的
            （同 `is_readonly()` 那个零调用方的死字段）。
 
-  ② **切片如实说明自己是一段**
+  ② **切片如实说明自己是一段**（`core.reading.slice_lines` + `render`，
+     peek_file / load_full_file 实际走的路径）
      📌 模型只有知道总长，才谈得上「还剩多少没读」；
         没有它，分片阅读退化成「读一段、猜一下、再读一段」。
+     「不切片时一个字都不改」不再是约束：`render` 每次都带全局信息头
+     （总行数 / 总字数 / 位置），这是 `core/reading.py` 的设计。
 
-  ③ **不切片时一个字都不改**
-     📌 一个「顺手给所有人加一行」的改动，会让每一次调用都多付它的代价。
-
-  ④ **`search_files` 不进 `os_execute`**（会更严重）
+  ③ **`search_files` 不进 `os_execute`**（会更严重）
 
 用法：
   py -3.10 tests\\t_p16_search_read.py
@@ -124,15 +124,15 @@ def t_search_actually_searches() -> None:
 
 def t_slice_tells_the_truth() -> None:
     print("\n[3] ⭐⭐⭐ 切片如实说明「这是一段」")
-    from core.orchestrator import Orchestrator as O
+    from core import reading as R
     _t = "\n".join(f"L{i}" for i in range(1, 201))
 
-    check(O._slice_file_text(_t, {}) == _t,
-          "⭐⭐ 不切片时**一个字都不改**（连提示行都不加）—— "
-          "📌 一个「顺手给所有人加一行」的改动，会让每一次调用都多付它的代价")
+    def _read(**kw) -> str:
+        return R.render(R.slice_lines(_t, **kw), filename="t.txt")
 
-    _s = O._slice_file_text(_t, {"offset": 5, "limit": 3})
-    check("L5" in _s and "L7" in _s and "L8" not in _s, "⭐ 切到正确的行")
+    _s = _read(offset=5, limit=3)
+    _body = _s.split("\n", 2)[2]           # 去掉信息头和分隔线
+    check("L5" in _body and "L7" in _body and "L8" not in _body, "⭐ 切到正确的行")
     check("of 200" in _s,
           "⭐⭐⭐ **给出总行数** —— 📌 模型只有知道总长，"
           "才谈得上「还剩多少没读」；没有它，分片阅读退化成"
@@ -141,16 +141,18 @@ def t_slice_tells_the_truth() -> None:
           "⭐⭐ 直接告诉它**下次从哪开始** —— "
           "📌 能算出来的事别让模型去算")
 
-    _tail = O._slice_file_text(_t, {"offset": 198})
-    check("没读" not in _tail,
+    _tail_sl = R.slice_lines(_t, offset=198)
+    _tail = R.render(_tail_sl, filename="t.txt")
+    check(not _tail_sl["has_more"] and "offset=" not in _tail,
           "⚠️ 读到结尾时**不提示还剩多少**（因为没剩）—— "
           "📌 一句「还有 0 行」会让人以为还有东西")
 
-    _oob = O._slice_file_text(_t, {"offset": 999})
-    check("只有 200 行" in _oob and "换一个 offset" in _oob,
+    _oob_sl = R.slice_lines(_t, offset=999)
+    _oob = R.render(_oob_sl, filename="t.txt")
+    check(_oob_sl["capped_by"] == "out_of_range" and "200" in _oob and "offset" in _oob,
           "⭐⭐ 越界**不报错**，说清总长让它重来 —— "
-          "📌 offset 超了是因为它不知道文件多长，而那正是本项要修的问题；"
-          "为此报错等于用惩罚回答一个它没法预先知道的问题")
+          "📌 offset 超了是因为它不知道文件多长；"
+          "为此报错等于用惩罚回答一个它没法预先知道的问题", _oob[:80])
 
 
 def t_not_in_os_execute() -> None:

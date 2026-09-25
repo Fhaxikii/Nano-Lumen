@@ -164,9 +164,10 @@ def t_field_removed(tmp: pathlib.Path) -> None:
     check(not read, "没有任何地方读它", str(read))
 
     # 前置条件：确认 AST 分析确实在工作（纪律——别让"什么都没找到"假通过）
+    # 只要求「找得到」：具体次数随代码增删变化，不是这条要守的东西。
     other = [n.attr for n in ast.walk(tree)
              if isinstance(n, ast.Attribute) and n.attr == "_pending_skill"]
-    check(len(other) > 5, "前置条件：AST 能在同一文件里找到 _pending_skill（分析有效）",
+    check(len(other) >= 1,"前置条件：AST 能在同一文件里找到 _pending_skill（分析有效）",
           f"命中 {len(other)} 次")
 
     # ⚠️ 同样只能用 AST。这三个名字在留档注释里被**故意**提到了
