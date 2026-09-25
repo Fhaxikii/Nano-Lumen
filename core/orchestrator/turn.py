@@ -900,19 +900,7 @@ class TurnMixin:
         #    yield 点有几十处，漏一个就复现 —— 📌 **防御要放在收口处，不是每个发出点。**
         yield {"event": "thinking", "log": "正在初始化寻址...", "status": "CORE_THINKING", "current_skill": None, "rag_hit": False, "full_file_hit": False}
 
-        # 快路径分流：简单任务不注入额外规则，节省 token
-        _registered_count = len(self._skill_names(self.registry.get_all_manifests()))
-        _CHAIN_WORDS = {"先", "再", "然后", "接着", "之后", "最后", "并且", "同时", "分别"}
-        _is_short_simple = len(query.strip()) < 15 and not any(w in query for w in _CHAIN_WORDS)
-        # 原本这里还有第三个条件 _classifier_says_simple（要求 primary_conf >= 0.6），
-        # 分类器删掉后 primary_conf 恒为 0.0，它恒为 False，在 or 链里等于不存在。移除。
-        _force_fast_path = (
-            _registered_count < 1
-            or _is_short_simple
-        )
         system_guide = base_guide
-        if not _force_fast_path:
-            logger.debug(f"[Router] 慢路径: skills={_registered_count}, query_len={len(query.strip())}")
 
         # 未决交互：让模型看见"有个问题挂在那里"。
         # 放在最前面是有意的——它决定这一轮该不该走 answer_open_interaction，
@@ -1041,42 +1029,9 @@ class TurnMixin:
         except Exception as _sc_err:
             logger.debug(f"[F6] 作用域注入跳过: {_sc_err}")
 
-        context = self._build_pipeline_context()
-
-        # 主决策特有的"用户上传文件提示 / 图片"注入——这两个是
-        # 用户当轮输入的一部分，只在主决策入口有。
-        # 注：只追加到发给模型的 context 副本，不污染 self.memory（原始 query
-        # 在这之前已干净存好）。
-        import copy
-        context = copy.deepcopy(context)
-        if temp_file_hint or image_parts:
-            for i in range(len(context) - 1, -1, -1):
-                item = context[i]
-                role = item.get("role") if isinstance(item, dict) else getattr(item, "role", None)
-                if role == "user" and isinstance(item, dict):
-                    parts = list(item.get("parts", []))
-                    if temp_file_hint:
-                        parts.append({"text": temp_file_hint})
-                    if image_parts:
-                        parts.extend(image_parts)
-                    item["parts"] = parts
-                    break
-
-        # ── 所有消息统一走 ReAct 主循环（fast-path 已于 0703 合并删除）──────────
-        # 闲聊/无工具需求的消息：模型按 ReAct 协议（见 _react_loop_prompt "直接回答"
-        # + "闲聊不调工具"约束）第一轮直接出话、不产生 tool_use，渲染与旧 fast-path 一致；
-        # 需要工具时正常进多轮。稳定前缀+核心工具 >4096 触发缓存，成本反而更低。
-
-        # ── ReAct 主循环替代旧"一次决策+巨型分支树" ─────────────────────────
-        # _run_react_loop 内部自行调用 _stream_decision_core，多轮迭代直到
-        # 模型输出最终文字答案或达到最大轮次。
-        # temp_file_hint / image_parts 的注入：在第一轮 _stream_decision_core
-        # 调用时，context 已经含有它们（通过上面的 context = copy.deepcopy + 注入）。
-        # _run_react_loop 第一轮调用 _build_pipeline_context() 会拿到注入后的
-        # memory（因为 add_message("user", query) 已经在上面执行），
-        # 但 temp_file_hint 不在 memory 里——需要显式传给第一轮。
-        # 解决方式：把 temp_file_hint/image_parts 注入到刚写入 memory 的 user 消息上。
-        # （这里直接修改 memory.storage 最后一条——user 消息刚被写入，是安全的）
+        # 所有消息都走 ReAct 主循环；闲聊时模型第一轮直接作答、不产生 tool_use。
+        # 附件提示与本轮图片不在 memory 的文本里：_run_react_loop 每轮都从 memory 重建上下文，
+        # 所以把它们挂到刚写入的那条 user 消息上（此时它就是 storage 的最后一条）。
         if temp_file_hint or image_parts:
             _last_user_msg = self.memory.storage[-1] if self.memory.storage else None
             if _last_user_msg is not None and _last_user_msg.role == "user":
