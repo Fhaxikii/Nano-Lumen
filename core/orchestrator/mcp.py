@@ -292,11 +292,16 @@ class McpMixin:
             _approved["v"] = False
             _confirm_ev.set()
 
-        yield {"event": "mcp_connect_confirm",
-               "info": _info, "purpose_line": _purpose, "what_it_does": _what,
-               "on_confirm": _on_ok, "on_cancel": _on_no}
+        from core.runtime import replies as _replies
+        _rid = _replies.register({"confirm": _on_ok, "cancel": _on_no})
+        try:
+            yield {"event": "mcp_connect_confirm",
+                   "info": _info, "purpose_line": _purpose, "what_it_does": _what,
+                   "reply_id": _rid, "actions": ["confirm", "cancel"]}
 
-        _oc = await _ib.wait_confirm_or_user_message(_confirm_ev, 300)
+            _oc = await _ib.wait_confirm_or_user_message(_confirm_ev, 300)
+        finally:
+            _replies.discard(_rid)
         if _oc != _ib.ConfirmOutcome.CONFIRMED or not _approved["v"]:
             # 🔴 三种"没接入"**分开交给模型** —— 📌 对模型下一步的含义完全不同：
             #    用户明确拒绝 → 别再提；改口说别的 → 先答那件事；超时 → 可以再问一次。

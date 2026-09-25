@@ -723,15 +723,19 @@ class ToolDispatchMixin:
                         _cancelled[0] = True
                         _loop.call_soon_threadsafe(_confirm_ev.set)
 
+                    from core.runtime import replies as _replies
+                    _rid = _replies.register({"confirm": _on_confirm, "cancel": _on_cancel})
                     await event_queue.put({
                         "event": "execution_confirm",
                         "skill_name": name,
                         "side_effects": [_mcp_confirm],
-                        "on_confirm": _on_confirm,
-                        "on_cancel": _on_cancel,
+                        "reply_id": _rid, "actions": ["confirm", "cancel"],
                     })
                     from core.runtime import inbox as _ib6
-                    _oc6 = await _ib6.wait_confirm_or_user_message(_confirm_ev, 300)
+                    try:
+                        _oc6 = await _ib6.wait_confirm_or_user_message(_confirm_ev, 300)
+                    finally:
+                        _replies.discard(_rid)
                     if _oc6 != _ib6.ConfirmOutcome.CONFIRMED:
                         _cancelled[0] = True
                     if _cancelled[0]:
@@ -990,15 +994,19 @@ class ToolDispatchMixin:
                         _cancelled[0] = True
                         _loop.call_soon_threadsafe(_confirm_ev.set)
 
+                    from core.runtime import replies as _replies
+                    _rid = _replies.register({"confirm": _on_confirm, "cancel": _on_cancel})
                     await event_queue.put({
                         "event": "execution_confirm",
                         "skill_name": name,
                         "side_effects": _side_check,
-                        "on_confirm": _on_confirm,
-                        "on_cancel": _on_cancel,
+                        "reply_id": _rid, "actions": ["confirm", "cancel"],
                     })
                     from core.runtime import inbox as _ib6
-                    _oc6 = await _ib6.wait_confirm_or_user_message(_confirm_ev, 300)
+                    try:
+                        _oc6 = await _ib6.wait_confirm_or_user_message(_confirm_ev, 300)
+                    finally:
+                        _replies.discard(_rid)
                     if _oc6 != _ib6.ConfirmOutcome.CONFIRMED:
                         _cancelled[0] = True
 

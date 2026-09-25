@@ -227,7 +227,7 @@ def t_authorized_by_is_visible() -> None:
     check(fn is not None, "⚠️ 前置：找得到 `_execute_dsl_step`")
     body = ast.unparse(fn) if fn else ""
 
-    check("'on_auto'" in body,
+    check("'auto': _on_auto" in body,
           "⭐⭐⭐ **auto 走一个单独的回调** —— 🔴 复用 `on_confirm` 的话，"
           "「用户亲自点了同意」和「auto 替用户点了」在这一层就完全无法区分，"
           "而它们对模型是两件事")

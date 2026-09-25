@@ -166,6 +166,9 @@ class OsSkillMixin:
                     # ⭐ 复用弹窗现成的「风险原因」那一栏 —— 不新增 UI 通道。
                     #    📌 一个只多一行文字的需求，不该换来一条新的展示管线。
                     _reasons.append(f"[自动放行被拦下] {_gate_why}")
+                from core.runtime import replies as _replies
+                _rid = _replies.register({"confirm": _on_confirm, "always": _on_always,
+                                          "cancel": _on_cancel, "auto": _on_auto})
                 yield {
                     "event": "os_action_confirm",
                     "action": action, "effective_risk": risk,
@@ -177,17 +180,20 @@ class OsSkillMixin:
                     "params_raw": _raw_params,
                     "annotated_image_path": annotated,
                     "agent_label": _agent_label,
-                    "on_confirm": _on_confirm, "on_always": _on_always,
-                    "on_cancel": _on_cancel, "on_auto": _on_auto,
+                    "reply_id": _rid,
+                    "actions": ["confirm", "always", "cancel", "auto"],
                 }
 
                 from core.runtime import inbox as _ib6
                 # ⭐⭐ Subagent发起的确认**只认这个弹窗自己的回应**（+ 超时兜底）。
                 #    理由见 `wait_confirm_or_user_message` 的 docstring：
                 #    📌 一个「取消」的信号，必须来自它要取消的那件事的同一条注意力。
-                _oc6 = await _ib6.wait_confirm_or_user_message(
-                    _confirm_ev, 300,
-                    cancel_on_user_message=not _agent_label)
+                try:
+                    _oc6 = await _ib6.wait_confirm_or_user_message(
+                        _confirm_ev, 300,
+                        cancel_on_user_message=not _agent_label)
+                finally:
+                    _replies.discard(_rid)
                 if _oc6 != _ib6.ConfirmOutcome.CONFIRMED:
                     # 🔴 **告诉 UI 把那个弹窗收掉**。
                     #    用户改口说话 / 干等超时，这两条路上**没有人点过按钮**，

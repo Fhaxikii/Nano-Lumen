@@ -91,7 +91,8 @@ async def _call(code: str, purpose: str = "test", approve: bool = True,
             for ev in q.items:
                 if ev.get("event") == "execution_confirm" and not ev.get("_done"):
                     ev["_done"] = True
-                    (ev["on_confirm"] if approve else ev["on_cancel"])()
+                    from core.runtime import replies
+                    replies.resolve(ev["reply_id"], "confirm" if approve else "cancel")
         if task.done():
             break
     return await task, q.items

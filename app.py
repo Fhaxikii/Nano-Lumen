@@ -2416,7 +2416,8 @@ class WebUI:
         📌 同一件事有两处各画一遍，只在"我两次想法相同"的前提下一致
            （本项目第 N 次撞这个形状：live/replay 工具卡、pill、渲染…）。
         """
-        _on_confirm = step.get("on_confirm")
+        from core.runtime.replies import reply_callback as _reply_cb
+        _on_confirm = _reply_cb(step, "confirm")
         # auto 模式（全局或本次临时）→ 自动通过，不弹窗（消除中途偷焦点）
         # ⭐ 走 `on_auto` 而**不是** `on_confirm` —— 📌 「用户亲自点了同意」
         #    和「auto 替用户点了」对模型是两件事：前者是一次真实的人类判断，
@@ -2433,7 +2434,7 @@ class WebUI:
         #    📌 而这正是它该有的语义：用户开的本来就是 auto，
         #       "始终"什么呢？下一个弹窗是**另一次**意图对不上，不是同一件事。
         if self._auto_on() and step.get("auto_ok") is True:
-            _cb = step.get("on_auto") or _on_confirm
+            _cb = _reply_cb(step, "auto") or _on_confirm
             if _cb:
                 _cb()
             return True
@@ -2450,8 +2451,8 @@ class WebUI:
                 reason=step.get("reason", ""),
                 params_raw=step.get("params_raw", {}),
                 on_confirm=_on_confirm or (lambda: None),
-                on_always=step.get("on_always") or (lambda: None),
-                on_cancel=step.get("on_cancel") or (lambda: None),
+                on_always=_reply_cb(step, "always") or (lambda: None),
+                on_cancel=_reply_cb(step, "cancel") or (lambda: None),
                 annotated_image_path=step.get("annotated_image_path", ""),
                 agent_label=step.get("agent_label", ""),
             )
@@ -3866,6 +3867,7 @@ class WebUI:
 
             # ── 选择卡片 ─────────────────────────────────────────────
             if step.get("event") == "user_choice_request":
+                from core.runtime.replies import reply_callback as _reply_cb
                 # 支持一次弹出多张选择卡片（cards 列表）；向后兼容单卡（顶层 question/choices）
                 _cards = step.get("cards")
                 if not _cards:
@@ -3873,8 +3875,8 @@ class WebUI:
                         "question": step.get("question", "请选择"),
                         "choices": step.get("choices", []),
                         "allow_custom": step.get("allow_custom", True),
-                        "on_choice": step.get("on_choice"),
-                        "on_dismiss": step.get("on_dismiss"),
+                        "reply_id": step.get("reply_id"),
+                        "actions": step.get("actions"),
                     }]
                 try:
                     if self._current_loading_label:
@@ -3889,8 +3891,8 @@ class WebUI:
                     if _idx >= _total:
                         return
                     _c = _cards[_idx]
-                    _real_choice = _c.get("on_choice") or (lambda v: None)
-                    _real_dismiss = _c.get("on_dismiss") or (lambda: None)
+                    _real_choice = _reply_cb(_c, "choice") or (lambda v: None)
+                    _real_dismiss = _reply_cb(_c, "dismiss") or (lambda: None)
 
                     def _wrapped_choice(v, _i=_idx):
                         _real_choice(v)
@@ -3927,21 +3929,23 @@ class WebUI:
             # 🔴 而且对 stdio，「连上」本身就是在本机执行第三方代码 ——
             #    这是执行第三方代码前的**最后一道**，auto 豁免它 = 那道就不存在了。
             if step.get("event") == "mcp_connect_confirm":
+                from core.runtime.replies import reply_callback as _reply_cb
                 with self._ui_scope():
                     self._show_mcp_connect_dialog(
                         info=step.get("info") or {},
                         purpose_line=step.get("purpose_line", ""),
                         what_it_does=step.get("what_it_does", ""),
-                        on_confirm=step.get("on_confirm") or (lambda: None),
-                        on_cancel=step.get("on_cancel") or (lambda: None),
+                        on_confirm=_reply_cb(step, "confirm") or (lambda: None),
+                        on_cancel=_reply_cb(step, "cancel") or (lambda: None),
                     )
                 continue
 
             if step.get("event") == "execution_confirm":
                 _skill_name  = step.get("skill_name", "")
                 _side_effects = step.get("side_effects", [])
-                _confirm_cb  = step.get("on_confirm")
-                _cancel_cb   = step.get("on_cancel")
+                from core.runtime.replies import reply_callback as _reply_cb
+                _confirm_cb  = _reply_cb(step, "confirm")
+                _cancel_cb   = _reply_cb(step, "cancel")
                 # auto 模式（全局或本次临时）→ 自动通过，不弹窗（不偷焦点）
                 if self._auto_on():
                     if _confirm_cb:
@@ -4145,8 +4149,9 @@ class WebUI:
 
             # ── 缩窗前的临时 auto 授权（缩窗即开始操作屏幕，先要授权）──────
             if step.get("event") == "mini_auth_request":
-                _approve = step.get("on_approve")
-                _reject  = step.get("on_reject")
+                from core.runtime.replies import reply_callback as _reply_cb
+                _approve = _reply_cb(step, "approve")
+                _reject  = _reply_cb(step, "reject")
                 if self._global_auto:
                     # 全局 auto 已开 → 直接缩窗，不弹授权
                     await self._enter_mini()

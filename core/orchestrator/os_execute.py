@@ -56,6 +56,8 @@ class OsExecuteMixin:
                 _cancelled[0] = True
                 _loop.call_soon_threadsafe(_confirm_ev.set)
 
+            from core.runtime import replies as _replies
+            _rid = _replies.register({"confirm": _on_confirm, "cancel": _on_cancel})
             await event_queue.put({
                 "event": "execution_confirm",
                 # ⚠️ 复用 `skill_name` 这个字段名 —— UI 那边照它渲染标题。
@@ -73,11 +75,13 @@ class OsExecuteMixin:
                 #    ⚠️ Skill 那边能改，是因为改完**还会再过一遍审计管线**；
                 #       一次性执行**没有第二遍**。
                 "preview_code": code,
-                "on_confirm": _on_confirm,
-                "on_cancel": _on_cancel,
+                "reply_id": _rid, "actions": ["confirm", "cancel"],
             })
             from core.runtime import inbox as _ib
-            _oc = await _ib.wait_confirm_or_user_message(_confirm_ev, 300)
+            try:
+                _oc = await _ib.wait_confirm_or_user_message(_confirm_ev, 300)
+            finally:
+                _replies.discard(_rid)
             if _oc != _ib.ConfirmOutcome.CONFIRMED:
                 _cancelled[0] = True
             if _cancelled[0]:

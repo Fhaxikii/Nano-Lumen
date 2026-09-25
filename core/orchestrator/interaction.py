@@ -539,14 +539,18 @@ class InteractionMixin:
                 _maybe_done()
             return _h
 
+        from core.runtime import replies as _replies
         _cards = []
+        _rids = []
         for _i, _spec in enumerate(_q_specs):
+            _rid = _replies.register({"choice": _make_on_choice(_i),
+                                      "dismiss": _make_on_dismiss(_i)})
+            _rids.append(_rid)
             _cards.append({
                 "question": _spec.get("question", "Please choose"),
                 "choices": _spec.get("choices", []),
                 "allow_custom": _spec.get("allow_custom", True),
-                "on_choice": _make_on_choice(_i),
-                "on_dismiss": _make_on_dismiss(_i),
+                "reply_id": _rid, "actions": ["choice", "dismiss"],
             })
 
         await event_queue.put({"event": "user_choice_request", "cards": _cards})
@@ -554,7 +558,11 @@ class InteractionMixin:
         # ⭐ 选择卡也走双路：用户改口说话时不该继续干等五分钟。
         #    ⚠️ 这一处**不改判据** —— 未答的问题原本就按「用户跳过」处理，
         #       用户说话只是让它**提前**走到那个已有的分支。
-        await _ib6.wait_confirm_or_user_message(_c1_ev, 300)
+        try:
+            await _ib6.wait_confirm_or_user_message(_c1_ev, 300)
+        finally:
+            for _rid in _rids:
+                _replies.discard(_rid)
 
         def _fmt_one(spec, val):
             q = spec.get("question", "Choice")

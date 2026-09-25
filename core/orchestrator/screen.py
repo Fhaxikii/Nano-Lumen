@@ -647,15 +647,20 @@ class ScreenMixin:
             _approved[0] = False
             _loop.call_soon_threadsafe(_ev.set)
 
+        from core.runtime import replies as _replies
+        _rid = _replies.register({"approve": _on_approve, "reject": _on_reject})
         await event_queue.put({
             "event": "mini_auth_request",
-            "on_approve": _on_approve,
-            "on_reject": _on_reject,
+            "reply_id": _rid, "actions": ["approve", "reject"],
         })
         from core.runtime import inbox as _ib6
         # ⭐ 缩窗授权也走双路。⚠️ fail-safe 方向是**不授权** ——
         #    用户打字打断一个「要不要让我操作你的屏幕」，绝不能当成同意。
-        if await _ib6.wait_confirm_or_user_message(_ev, 300) != _ib6.ConfirmOutcome.CONFIRMED:
+        try:
+            _oc_mini = await _ib6.wait_confirm_or_user_message(_ev, 300)
+        finally:
+            _replies.discard(_rid)
+        if _oc_mini != _ib6.ConfirmOutcome.CONFIRMED:
             _approved[0] = False
         if _approved[0]:
             return (
