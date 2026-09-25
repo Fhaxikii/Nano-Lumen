@@ -219,10 +219,6 @@ class ToolOutcome(NamedTuple):
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# 显式思考流：用户消息层protocol注入文本（2026-06-21）
-
-
-# ══════════════════════════════════════════════════════════════════════════
 # Skill 开发协议 v3.2 — 注入 system prompt，指导模型生成合规代码
 # ══════════════════════════════════════════════════════════════════════════
 # ⚠️ **v3.2（2026-08-29）**：两件事一起做了。
@@ -637,7 +633,7 @@ The generated code must follow them strictly.
 # 所以不再手抄，而是用 `tests/t_exit_tool_card.py` 的 AST 不变量把它和
 # `app.py` 里真实的 `if step.get("event") == X: … return` 绑死 ——
 # 以后谁加第五个终端事件，测试会先红。
-# 📌 同 那条判据：**常量表必须能被证明等于真实分发链，而不是靠人记得同步。**
+# 📌 判据：**常量表必须能被证明等于真实分发链，而不是靠人记得同步。**
 _UI_TERMINAL_EVENTS = frozenset({
     "final_result",
     "sys_error",
@@ -1875,7 +1871,7 @@ def _ambient_cat(app: str) -> str:
 def _ambient_parse_title(app: str, title: str):
     """→ `referent.parse_title`。**搬家留的转发**。
 
-    ⚠️ 它被搬进 `core/proactive/referent.py` 是因为 的句柄解析要用它，
+    ⚠️ 它被搬进 `core/proactive/referent.py` 是因为那里的句柄解析要用它，
        而 `proactive → orchestrator` 会成环。完整推导（含 `office` 为什么
        必须和 `editor` 走同一条）在那边的函数 docstring 里。
     📌 **删/搬一段代码时，长在它身上的「为什么」要跟着搬到新家** ——
@@ -2169,7 +2165,7 @@ class Orchestrator:
                📌 **一个需要在下游手工修正的名单，说明它上游描述得不对。**
           · Skill 那两行的描述从 `registry.get_skill_awareness_list()` 的
             **`[:50]` 字符级截断**换成目录里的 `awareness`（按词/句边界压缩）。
-            🔴 那个 `[:50]` 是 的**另一半** —— 只修 `[:28]` 不修它，
+            🔴 那个 `[:50]` 是 `[:28]` 截断问题的**另一半** —— 只修 `[:28]` 不修它，
                不算死透。`get_skill_awareness_list` 随本次改动一起删除。
         ⚠️ 「官方 / 用户」这个维度**仍然问 registry**，没有塞进 ToolDefinition：
            `ToolOrigin` 回答的是「身份权威在哪」（BUILTIN/SKILL/MCP），
@@ -2423,7 +2419,7 @@ class Orchestrator:
             # 根因：模型返回了 OpenAI 风格的嵌套外壳
             #   {"type": "function", "function": {"name": ...}}
             # 而 `registry._manifest_name()` 取的是**顶层** `name`。
-            # 协议 把内层字段（3.1 参数对应、3.2 类型小写）规定得极细，
+            # 协议把内层字段（3.1 参数对应、3.2 类型小写）规定得极细，
             # **却从来没规定过骨架** —— 规定了细节、没规定形状。
             #
             # 这里按 registry 的同一判据静态核一次：取不到名字就在**审计窗口**拦住，
@@ -3332,7 +3328,7 @@ class Orchestrator:
                f"Treat it as the answer to that item; do not pick a different one.\n"
                if _reply_iid else "")
             # ⭐⭐ 歧义消解（2026-08-06 实测）：不点名时该指哪一条。
-            # 见上面 `_newest_id` 那段注释里 用户的理由。
+            # 见上面 `_newest_id` 那段注释里用户的理由。
             # ⚠️ 上面插了一个 `+ (条件表达式)` 之后，这里**必须继续用 `+`** ——
             # 裸字符串没法跟一个 `+` 表达式的结果做隐式拼接（那是语法错误）。
             + "\nIf several items are open and the user does not say which one "
@@ -3420,7 +3416,7 @@ class Orchestrator:
     #    > nano 只是很软地声明了「在 xx 时候必须先查看记忆再回答」。
     #    > **太模糊，nano 没办法先入为主地「预览到」记忆里大概有些什么。**
     # 📌 **一条召回不到的记忆，和一条没写过的记忆，对用户是同一个东西。**
-    # ⭐ 沿用 的那句：**索引不是被回忆的，是被塞进来的。**
+    # ⭐ 沿用这句：**索引不是被回忆的，是被塞进来的。**
     # ⭐ 这是「注入事实」模式的第六个实例：
     #    健康态 → 预算态 → 上下文压力 → 记忆索引 →
     #    [窗口形态] → 本条。
@@ -4062,7 +4058,7 @@ class Orchestrator:
         # **每一条都对，但每一条都指错了方向**：用户看到的是"模型不懂协议"，
         # 真相是"模型话没说完"。照着这些错误去改需求、改提示词，全是白功。
         #
-        # 这与 //审计失败反馈是同一条判据：**报错要正确且充分。**
+        # 这与审计失败反馈是同一条判据：**报错要正确且充分。**
         # 技术上正确但把人引向错误结论的报错，比没有报错更糟。
         if getattr(decision, "truncated", False):
             _n_lines = len((code or "").splitlines())
@@ -4248,7 +4244,7 @@ class Orchestrator:
             #   15:11  side_effects 含 'shell'      要求 dangerous，实际 readonly
             # 报错内容每次都写得清清楚楚，但**一个字都没到模型手里** ——
             # 它没有任何途径知道自己错在哪，只能原样再撞一次。
-            # 这就是 那条判据：正确但不充分 = 不合格。
+            # 判据：正确但不充分 = 不合格。
             self._last_spec_errors = list(errors or [])
             return None
         self._last_spec_errors = []
@@ -4336,7 +4332,7 @@ class Orchestrator:
                         #    `_generate_skill_spec` **进门就清空 `_last_spec_errors`**，
                         #    所以如果重试是因为别的原因失败（provider 报错 / 构建异常），
                         #    那份清空会让下面的降级分支拿到空列表 → `spec_injection = ""`
-                        #    → **正是 那个「双重伤害」的复发路径**
+                        #    → **正是「双重伤害」的复发路径**
                         #    （代码生成阶段既没有 spec、也不知道刚才错在哪，
                         #      于是带着同一个违规继续往下走，最后真的部署上去了）。
                         # 📌 **一个「进门先清空」的字段，任何重试都必须先把旧值接住。**
@@ -4622,7 +4618,7 @@ class Orchestrator:
                 # 而模型的真实回复就在 `_raw2` 里，只进了日志。
                 #
                 # 实测：用户让 Nano"配合测试、故意用错的 manifest 外壳"，
-                # 它**正确地拒绝了**并引用了协议 的 FORBIDDEN 条款与后果。
+                # 它**正确地拒绝了**并引用了协议的 FORBIDDEN 条款与后果。
                 # 但屏幕上只有那句废话 —— 用户照着"换个方式描述需求"去改，
                 # 被引向完全错误的方向（真正原因是"你要求的写法违反协议，我不能那么写"）。
                 #
@@ -6135,7 +6131,7 @@ class Orchestrator:
                 self._drop_pending_skill(_fn)
                 logger.info(f"[Pending] 超时清除待审 Skill「{_fn}」（{age:.0f}s 未处理）")
                 # 交互也要跟着关 —— 否则卡片还挂着，点进去却发现代码没了
-                # （那正是 那条误导消息的来源）。
+                # （那正是误导消息的来源）。
                 try:
                     from core.runtime import interaction as _it_e
                     _rt_close_skill_audit(_fn, approved=False,
@@ -6843,11 +6839,11 @@ class Orchestrator:
         ⚠️ 与改造前有**一处刻意的差异**，留痕：
            改造前拼的是 `registry.list_enabled_skills()`（Skill **实例**字典），
            而目录投影的是 `registry.get_all_manifests()`（**manifest** 列表）。
-           两者在正常情况下一致，但 那种「manifest 顶层没有 name、整条被丢弃」
+           两者在正常情况下一致，但那种「manifest 顶层没有 name、整条被丢弃」
            的 Skill 只会出现在前者里 —— 它**装载成功、UI 显示 READY，而模型
            从来看不见它**。把这种名字放进"你是不是想调这个"的提示里，
            等于劝模型去调一个它拿不到 schema 的东西。
-           📌 同 那条：**半可见的能力比不可见更坏。**
+           📌 **半可见的能力比不可见更坏。**
         """
         return sorted(n for n in self._get_tool_catalog().names() if n)
 
@@ -7790,7 +7786,7 @@ class Orchestrator:
                  if _dt.datetime.fromtimestamp(ts).strftime("%H:%M:%S") == _at]
         _hit = _hits[0] if _hits else None
         if _hit is None:
-            # ⚠️ **给出口，不只给一个「没找到」**（同 那条：模型需要的是
+            # ⚠️ **给出口，不只给一个「没找到」**（模型需要的是
             #    一个出口，不是一个名字）。所以这里连「哪些是可取的」一起说。
             _avail = ", ".join(
                 _dt.datetime.fromtimestamp(t).strftime("%H:%M:%S")
@@ -7969,7 +7965,7 @@ class Orchestrator:
     #    ⚠️ 所以**别在 agent 那边另起一个计数器** —— 那会变成两份账。
     #    ⭐ 而归属对不对，靠的是第 0 步那个 `ContextVar`（见 `core/usage.py`）。
     #
-    # ⚠️ **Subagent进 那张后台任务抽屉**（早先的设计 2026-08-12 定）：
+    # ⚠️ **Subagent 进后台任务抽屉**（早先的设计 2026-08-12 定）：
     #    agent 是「**无法被回看的后台任务**」—— 进 Running/Finished、有终止 `■`、
     #    也计入 `x running task(s)` pill，与普通后台任务唯一差别是
     #    **主体模型不回看它的过程**（一看就丧失隔离的全部价值）。
@@ -9382,7 +9378,7 @@ class Orchestrator:
         # 在这里挡比在 dispatch 里挡更好 —— **一步都还没做**，
         # 不会留下"做了一半"的现场让模型去猜环境变成什么样了。
         # ⚠️ 话术必须**说清是谁占着**，不能统一成一句"你先操作"：
-        #    触发源不一定是用户（也可能是别的程序抢了前台，见 补记 ②），
+        #    触发源不一定是用户（也可能是别的程序抢了前台），
         #    对一个没动过手的用户说"你先操作"比不说更糟。
         # ⭐⭐⭐ **拿不到就在这一轮里等，不是失败。**
         #
@@ -11620,7 +11616,7 @@ class Orchestrator:
                     # 这里把它拦下来 —— 不给 UI，而是写成 tool_result 喂回记忆，
                     # 然后 `continue` 让 ReAct 循环再跑一轮，由模型用它自己的话说。
                     #
-                    # 📌 这与 是同一条：**给出足够的事实，让它自己判断怎么说、
+                    # 📌 同一条判据：**给出足够的事实，让它自己判断怎么说、
                     #    下一步做什么**，而不是替它把话说死。
                     _defer_to_model: str | None = None
 
@@ -11913,8 +11909,7 @@ class Orchestrator:
         所有"不调工具、直接生成最终回答（结果总结/失败转写等收尾文案）"的调用点
         都走这个，不再各自手写"调 chat_without_tools 拿完整字符串"。
 
-        跟思考流的 _stream_decision 不同：这里不需要 think protocol 注入（最终
-        答案本来就不需要思考标签），直接复用 chat_without_tools_stream 的
+        直接复用 chat_without_tools_stream 的
         text_delta/done 两段式事件，翻译成前端的 final_text_start/
         final_text_delta，结果通过实例属性回传：
           self._last_stream_final_text  : str        完整最终文本
@@ -12447,7 +12442,7 @@ class Orchestrator:
                 # 旧代码的辩解是"注入回去让模型自己再 wait_for 一次"，
                 # 等于把一个**确定的承诺**换成了一次**模型判断**。
                 #
-                # 📌 判据（用户提出、外部评审 独立确认）：
+                # 📌 判据（用户提出、外部评审独立确认）：
                 #    **「本轮 Nano 不再暂停」与「未来的承诺已经解除」是两件事。**
                 #    用户发消息只证明前者。
                 #
@@ -12645,7 +12640,7 @@ class Orchestrator:
         # 用户那句话里有没有"写一个 skill"，决定了用户能不能看见 Nano 在做什么。
         # 违反了那条约定（新工具必须能被工具卡片显示、且正确出现在感知清单里）。
         #
-        # **证据 2 —— 它一直在替 那条 bug 挡枪。**
+        # **证据 2 —— 它一直在替元工具入口越界那个 bug 挡枪。**
         # 三份日志里"快路径入口从不越界、元工具入口每次都越界"，
         # 当时判断成"快路径运气好"。真实原因是它的 `messages` 只有 1 条 ——
         # 没有 `load_tools` 回执可污染。**所以那个 bug 才活了那么久没被定位。**
@@ -12953,10 +12948,8 @@ class Orchestrator:
 
         context = self._build_pipeline_context()
 
-        # 显式思考流：主决策特有的"用户上传文件提示 / 图片"注入——这两个是
-        # 用户当轮输入的一部分，只在主决策入口有；protocol 的注入由下面
-        # _stream_decision 内部统一处理（_inject_think_protocol），所以这里
-        # 只追加 temp_file_hint/image_parts，不在这里加 protocol。
+        # 主决策特有的"用户上传文件提示 / 图片"注入——这两个是
+        # 用户当轮输入的一部分，只在主决策入口有。
         # 注：只追加到发给模型的 context 副本，不污染 self.memory（原始 query
         # 在这之前已干净存好）。
         import copy
@@ -13233,7 +13226,7 @@ class Orchestrator:
         if _op == "delete":
             # ⚠️ 返回值（那句固定中文）**故意不再使用** —— 只留它的副作用：
             #    把待确认登记成 Interaction（PERSISTED，跨重启存活 + 模型看得见）。
-            #    ⚠️ 待办条目自身的展示文本目前仍是固定中文，属 的范围，本次不动。
+            #    ⚠️ 待办条目自身的展示文本目前仍是固定中文，属多语言化（i18n）的范围，本次不动。
             self._request_mcp_management_confirmation(_op, _srv)
             yield _defer(
                 f"Deleting MCP server {_srv!r} is NOT done yet - it needs the user's explicit "
