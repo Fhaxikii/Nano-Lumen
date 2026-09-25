@@ -224,8 +224,9 @@ def render(sl: dict, *, peek: bool = False, filename: str = "") -> str:
        没有它，分片阅读就退化成「读一段、猜一下、再读一段」。
     """
     if sl["capped_by"] == "out_of_range":
-        return (f"[Out of range] 这个文件只有 {sl['total_lines']:,} 行，"
-                f"而 offset={sl['start']}。整份内容没有变，换一个 offset 再读。")
+        return (f"[Out of range] This file has only {sl['total_lines']:,} lines, "
+                f"but offset={sl['start']}. The file is unchanged; read again with a "
+                f"different offset.")
     # ⭐ **文件名必须在头里**，两个理由缺一不可：
     #   ① 给模型：多份文件交替读时，「第 5000 行」得知道是哪一份的第 5000 行
     #   ② 给压缩器：`compress_file_reads` 靠它认出「同一个文件的旧切片」——
@@ -236,9 +237,10 @@ def render(sl: dict, *, peek: bool = False, filename: str = "") -> str:
             + (f" · {filename}" if filename else "") + "]")
     tail = ""
     if sl["has_more"]:
-        tail = (f"\n\n[还有 {sl['total_lines'] - sl['end']:,} 行没读。"
-                f"继续读：offset={sl['next_offset']}]")
+        tail = (f"\n\n[{sl['total_lines'] - sl['end']:,} more lines not read yet. "
+                f"To continue: offset={sl['next_offset']}]")
         if sl["capped_by"] == "hard_cap":
             # ⚠️ 说清是**系统**截的，不是文件到头了 —— 两者对下一步的含义不同。
-            tail += f"\n[本次达到单次读取上限 {MAX_READ_CHARS:,} 字符，已截断]"
+            tail += (f"\n[This read hit the per-read limit of {MAX_READ_CHARS:,} "
+                     f"characters and was cut here]")
     return f"{head}\n{'─' * 40}\n{sl['body']}{tail}"

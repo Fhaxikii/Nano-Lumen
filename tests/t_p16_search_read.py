@@ -154,6 +154,15 @@ def t_slice_tells_the_truth() -> None:
           "📌 offset 超了是因为它不知道文件多长；"
           "为此报错等于用惩罚回答一个它没法预先知道的问题", _oob[:80])
 
+    import re as _re
+    _big = "\n".join("x" * 200 for _ in range(5000))
+    _cap = R.render(R.slice_lines(_big, offset=1, limit=5000), filename="t.txt")
+    _frames = [_s.replace(_body, ""), _tail, _oob, _cap.split("\n", 2)[0], _cap[-200:]]
+    _han = [f for f in _frames if _re.search(r"[一-鿿]", f)]
+    check("per-read limit" in _cap and not _han,
+          "⭐ 给模型的分片提示全是英文（正常 / 读到结尾 / 越界 / 触发单次上限）",
+          str([f[:40] for f in _han]))
+
 
 def t_not_in_os_execute() -> None:
     print("\n[4] ⭐⭐ `search_files` 是**独立工具**，没塞进 os_execute")
