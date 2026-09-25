@@ -2447,7 +2447,6 @@ class WebUI:
                 on_confirm=_on_confirm or (lambda: None),
                 on_always=_reply_cb(step, "always") or (lambda: None),
                 on_cancel=_reply_cb(step, "cancel") or (lambda: None),
-                annotated_image_path=step.get("annotated_image_path", ""),
                 agent_label=step.get("agent_label", ""),
             )
         return False
@@ -2533,14 +2532,12 @@ class WebUI:
     def _show_os_action_confirm_dialog(self, action: str, effective_risk: int,
                                         params_summary: str, reason: str,
                                         on_confirm, on_always, on_cancel,
-                                        annotated_image_path: str = "",
                                         params_raw: dict = None,
                                         agent_label: str = ""):
         """OS 操作授权弹窗。
 
         risk=2 → 黄色标准卡片（可选"始终允许"）
         risk=3 → 红色 + 5秒倒计时（确认按钮倒计时内禁用，不可"始终允许"）
-        annotated_image_path → click 类操作的定位标注截图（让用户看到"要点哪"）
         """
         client = self._ui_client
         if client is None:
@@ -2644,26 +2641,6 @@ class WebUI:
                 ):
                     if reason:
                         ui.label(reason).style('font-size:var(--nano-fs-md); color:var(--nano-fg-soft);')
-
-                    # 定位标注截图——让用户看到"Nano 要点这里"再确认
-                    if annotated_image_path:
-                        try:
-                            import base64 as _b64, pathlib as _pl
-                            _p = _pl.Path(annotated_image_path)
-                            if _p.exists():
-                                _raw = _p.read_bytes()
-                                _b64str = _b64.b64encode(_raw).decode()
-                                # ⚠️ 这张**刻意不缩略**：用户要靠它判断「红圈对不对」，
-                                #    缩了就看不清 —— 📌 一张要用来做决定的图，
-                                #    和一张只用来证明「我看过」的图，不是一回事。
-                                #    但仍然可以点开看原图。
-                                chat_image(f"data:image/png;base64,{_b64str}",
-                                           alt="即将点击的位置", thumb_h=320)
-                                ui.label('红圈处是我即将点击的位置，确认无误再点「执行」').style(
-                                    'font-size:var(--nano-fs-sm); color:var(--nano-fg-soft); font-style:italic;'
-                                )
-                        except Exception:
-                            pass
 
                     if params_summary:
                         with ui.row().style('align-items:center; gap:8px; margin-top:4px;'):

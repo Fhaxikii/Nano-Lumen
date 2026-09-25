@@ -99,6 +99,24 @@ class OsSkillMixin:
         confirmed = True
         result = None
 
+        # 鼠标 / 键盘 / 窗口动作只能在 GUI 任务内执行（任务由用户授权一次，期间不逐个确认）。
+        _gate_action = (instr or {}).get("action") or ""
+        try:
+            from core.os_layer import dsl as _dsl_gate
+            _needs_task = _dsl_gate.contends_for_machine(_gate_action)
+        except Exception:
+            _needs_task = False
+        if _needs_task and not self._gui_task_active():
+            yield {"_step_result": {
+                "ok": False, "action": _gate_action, "data": {}, "summary": "",
+                "error": ("no_screen_task: no screen-operation task is active, so this "
+                          "mouse/keyboard/window action was NOT performed. Call "
+                          "set_window_mode('mini') first - it starts the task, which the user "
+                          "authorizes once. If the user declined that authorization, do not "
+                          "operate the screen; tell the user instead."),
+            }}
+            return
+
         # ⚠️ 每走一步给镜像租约续期。**这条不能省。**
         # 一次 GUI 自动化可能跑几分钟，租约不续就会到期，于是一个**完全正常**的
         # 长任务被记成"泄漏" —— 那是假阳性，而假阳性是 shadow 最坏的一种失败
@@ -111,7 +129,6 @@ class OsSkillMixin:
                 risk      = ev["effective_risk"]
                 p_summary = ev.get("params_summary", "")
                 reason    = ev.get("reason", "")
-                annotated = ev.get("annotated_image_path", "")
                 resolved_instr = ev.get("_resolved_instr", instr)
 
                 _confirm_ev = _asyncio.Event()
@@ -178,7 +195,6 @@ class OsSkillMixin:
                     "risk_reasons": _reasons,
                     "params_summary": p_summary, "reason": reason,
                     "params_raw": _raw_params,
-                    "annotated_image_path": annotated,
                     "agent_label": _agent_label,
                     "reply_id": _rid,
                     "actions": ["confirm", "always", "cancel", "auto"],

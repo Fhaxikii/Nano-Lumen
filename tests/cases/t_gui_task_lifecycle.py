@@ -7,6 +7,7 @@
 - 用户手动放大：只改窗口形态，任务与授权保留，下一个工具结果附一次说明；
   之后再缩回 mini 不重新授权。
 - 界面：mini 窗开关不碰租约；GUI 任务结束而窗口仍是 mini 时由 1 秒 tick 恢复。
+- 鼠标 / 键盘 / 窗口动作只能在 GUI 任务内执行；逐次点击授权的标注图已删除。
 
 用法：
   py -3.10 tests\\cases\\t_gui_task_lifecycle.py
@@ -211,6 +212,46 @@ def t_idle(tmp: pathlib.Path) -> None:
     o._gui_task_end("cleanup")
 
 
+def t_screen_action_gate(tmp: pathlib.Path) -> None:
+    print("\n▶ 鼠标 / 键盘 / 窗口动作只能在 GUI 任务内")
+    k = make_kernel(tmp / "e")
+    o = make_orch()
+    calls: list = []
+
+    class _Disp:
+        async def execute(self, instr):
+            calls.append(instr.get("action"))
+            yield {"type": "result", "ok": True, "action": instr.get("action"), "data": {},
+                   "summary": "done", "error": ""}
+
+    async def step(action):
+        res = None
+        async for ev in o._execute_dsl_step({"action": action, "params": {}}, _Disp(), None, "m"):
+            if "_step_result" in ev:
+                res = ev["_step_result"]
+        return res
+
+    r = asyncio.run(step("click"))
+    check(r and r["ok"] is False and "no_screen_task" in r["error"] and "set_window_mode('mini')" in r["error"]
+          and calls == [], "没有 GUI 任务：click 不执行，告诉模型先缩窗开始任务", (r or {}).get("error", "")[:50])
+    for a in ("drag", "type_text", "hotkey", "win_close"):
+        calls.clear()
+        r = asyncio.run(step(a))
+        check(r["ok"] is False and calls == [], f"没有 GUI 任务：{a} 同样不执行")
+    calls.clear()
+    asyncio.run(step("screenshot"))
+    check(calls == ["screenshot"], "只读动作（screenshot）不需要任务")
+    o._gui_task_begin("test")
+    calls.clear()
+    asyncio.run(step("click"))
+    check(calls == ["click"], "GUI 任务内：click 交给执行层")
+    o._gui_task_end("cleanup")
+
+    hits = [m for m in ("core.os_layer.dispatch", "core.orchestrator", "app")
+            if "annotated_image_path" in S.module_text(m) or "_annotate_screenshot" in S.module_text(m)]
+    check(not hits, "逐次点击授权的标注图已删除（生成、事件字段、界面渲染）", ", ".join(hits))
+
+
 def t_wiring() -> None:
     print("\n▶ 接线")
     osrc = S.module_text("core.orchestrator")
@@ -251,6 +292,7 @@ if __name__ == "__main__":
         t_set_window_mode(tmp)
         t_turns_and_stops(tmp)
         t_idle(tmp)
+        t_screen_action_gate(tmp)
     t_wiring()
 
     _ok = sum(1 for r in _results if r[0])

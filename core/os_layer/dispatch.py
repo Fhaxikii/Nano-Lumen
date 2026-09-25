@@ -341,9 +341,8 @@ class OSDispatcher:
             return
 
         # ── 定位前置 ───────────────────────────────────────────────────────
-        # click 类带语义 target 时，在弹确认窗之前先定位，让用户看到"要点哪"。
-        # 定位失败 → 直接回状态（不弹窗，弹了也没意义）；成功 → 改写 instr 为确定坐标 + 标注图。
-        annotated_image_path = ""
+        # click 类带语义 target 时，在授权检查之前先定位。
+        # 定位失败 → 直接回状态；成功 → 把 instr 改写为确定坐标（执行时不再重新定位）。
         if (vr.action in _LOCATE_ACTIONS
                 and (instr.get("params") or {}).get("target")
                 and (instr.get("params") or {}).get("x") is None):
@@ -373,17 +372,13 @@ class OSDispatcher:
                        "error": f"Target location for {target!r} returned status: {loc['status']}",
                        "locate_status": loc["status"]}
                 return
-            # 定位成功：把坐标写进 instr（执行时不再重新定位），生成标注图
+            # 定位成功：把坐标写进 instr（执行时不再重新定位）
             cand = loc["candidates"][0]
             instr = dict(instr)
             instr["params"] = dict(instr["params"])
             instr["params"]["x"] = cand["x"]
             instr["params"]["y"] = cand["y"]
             instr["params"]["_located_label"] = cand.get("label", target)
-            annotated_image_path = self._annotate_screenshot(
-                loc.get("screenshot_ref", ""), cand["x"], cand["y"],
-                cand.get("label", target),
-            )
 
         # ── 授权检查 ──────────────────────────────────────────────────────
         _scope_key = _derive_auth_scope(vr.action, instr.get("params") or {})
@@ -396,7 +391,6 @@ class OSDispatcher:
                 "risk_reasons": vr.risk_reasons or [],
                 "reason": instr.get("reason", ""),
                 "params_summary": self._params_summary(vr.action, instr.get("params") or {}),
-                "annotated_image_path": annotated_image_path,
                 "_resolved_instr": instr,   # 已写入坐标的 instr，供 execute_after_confirm 使用
             }
             # 上层消费完 confirm_request 之后，必须通过 execute_after_confirm() 继续
@@ -539,49 +533,6 @@ class OSDispatcher:
             "aborted": bool(result.get("aborted")),
             "error": result.get("error", ""),
         }
-
-    def _annotate_screenshot(self, shot_ref: str, x: int, y: int, label: str) -> str:
-        """在定位截图上画标记（红圈+十字+标签），让用户确认时看到"要点哪"。
-
-        返回标注后图片的路径；失败返回原图路径或空串（不阻断主流程）。
-        """
-        if not shot_ref:
-            return ""
-        try:
-            import pathlib
-            from PIL import Image, ImageDraw, ImageFont
-            src = pathlib.Path(shot_ref)
-            if not src.exists():
-                return ""
-            img = Image.open(str(src)).convert("RGB")
-            draw = ImageDraw.Draw(img)
-            r = 28  # 圈半径
-            # 红色空心圆
-            draw.ellipse([x - r, y - r, x + r, y + r], outline=(239, 68, 68), width=4)
-            # 十字准星
-            draw.line([x - r - 8, y, x + r + 8, y], fill=(239, 68, 68), width=2)
-            draw.line([x, y - r - 8, x, y + r + 8], fill=(239, 68, 68), width=2)
-            # 标签底框 + 文字
-            txt = f"将点击: {label}"[:30]
-            try:
-                font = ImageFont.truetype("C:\\Windows\\Fonts\\msyh.ttc", 22)
-            except Exception:
-                font = ImageFont.load_default()
-            tx, ty = x + r + 12, y - r
-            try:
-                bbox = draw.textbbox((tx, ty), txt, font=font)
-                draw.rectangle([bbox[0] - 6, bbox[1] - 4, bbox[2] + 6, bbox[3] + 4],
-                               fill=(15, 17, 24))
-            except Exception:
-                pass
-            draw.text((tx, ty), txt, fill=(252, 165, 165), font=font)
-
-            out = src.parent / f"annotated_{src.name}"
-            img.save(str(out))
-            return str(out)
-        except Exception as e:
-            logger.warning(f"[OS-Dispatch] 截图标注失败（不阻断）: {e}")
-            return shot_ref  # 退而求其次用原图
 
     @staticmethod
     def _params_summary(action: str, params: Dict[str, Any]) -> str:
