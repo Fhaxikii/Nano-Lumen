@@ -2140,6 +2140,7 @@
 - Fixed the test suite reading and writing the user's real data (memory, runtime state, knowledge base index, settings, audit log).
 - Fixed the "Unprocessed message" card reappearing in the chat every time Nano started.
 - Fixed error cards with repair suggestions disappearing from the chat after context compaction or Reset conversation while the error still existed.
+- Fixed a Skill whose name matched a built-in tool passing the audit and installing, then never being available to Nano.
 
 ### Improvements
 - Redundant model copies (unusable .bin weights and duplicate download caches, about 4 GB) are removed automatically.
@@ -2150,6 +2151,7 @@
 - All runtime data paths are resolved in one place; the NANO_DATA_DIR environment variable sets the data directory. Tests run in a temporary data directory.
 - Tests are run with `python tests/run_all.py` (run_tests.sh removed). Tests that need a real desktop or real models are skipped unless `--live` is given; the run fails if anything under data/ changed.
 - Error cards with repair suggestions are removed from the chat once every capability they report is available again (confirmed by a successful call or a health probe of the capability itself).
+- Test cases moved to tests/cases/; the tests/ folder root holds only the runner and helper modules, with a README.
 
 
 ### 修复
@@ -2168,6 +2170,7 @@
 - 修复测试套件读写用户真实数据（记忆、运行时状态、知识库索引、设置、审计日志）的问题。
 - 修复「未处理的消息」卡片每次启动 Nano 都会再次出现的问题。
 - 修复错误仍然存在时，带修复建议的错误卡片在上下文压缩或「重置对话」后从聊天区消失的问题。
+- 修复与内置工具同名的 Skill 能通过审计并安装，但 Nano 始终无法使用它的问题。
 
 ### 优化
 - 自动清理多余的模型副本（无法使用的 .bin 权重与重复的下载缓存，约 4 GB）。
@@ -2178,5 +2181,6 @@
 - 所有运行期数据路径统一由一处解析；环境变量 NANO_DATA_DIR 可指定数据目录。测试在临时数据目录中运行。
 - 测试改用 `python tests/run_all.py` 运行（删除 run_tests.sh）。需要真实桌面或真实模型的测试默认跳过，加 `--live` 才运行；运行期间 data/ 下有任何改动即判为失败。
 - 带修复建议的错误卡片在其列出的能力全部恢复可用后自动从聊天区移除（以能力本身的真实调用成功或健康探针确认为准）。
+- 测试用例移至 tests/cases/，tests/ 根目录只放运行器与辅助模块，并附 README。
 
 ---

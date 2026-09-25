@@ -97,7 +97,7 @@ Single-file ingestion uses `index_single_file` (used right after uploads).
 3. Add a dispatch line in `_parse_file`.
 4. If the format has "structure" (sheets/sections), extend
    `_generate_schema_chunk`.
-5. Tests: beyond `tests/t_f4_catalog.py`, run `index_single_file` with a real
+5. Tests: beyond `tests/cases/t_f4_catalog.py`, run `index_single_file` with a real
    file and verify retrieval.
 
 **Case B: tune chunking**

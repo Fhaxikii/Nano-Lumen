@@ -93,7 +93,7 @@ twice":
 
 This page is a map and contains no logic to change. Verification lives at the
 end of each sub-page; full regression is still `bash run_tests.sh` (this
-layer's dedicated tests are the nine `tests/t_f5_*.py` files).
+layer's dedicated tests are the nine `tests/cases/t_f5_*.py` files).
 
 ---
 

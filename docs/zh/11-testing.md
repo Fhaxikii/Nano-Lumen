@@ -25,14 +25,14 @@ OK 真·全量 0 失败
 ## 运行单个测试
 
 ```
-python tests/t_xxx.py
+python tests/cases/t_xxx.py
 ```
 
 测试文件可以独立运行，不依赖测试框架。
 
 ## 组织方式
 
-测试全部位于 `tests/`，文件名以 `t_` 开头。每个文件对应一个功能领域，
+测试用例全部位于 `tests/cases/`，文件名以 `t_` 开头。每个文件对应一个功能领域，
 独立运行，不共享状态。
 
 测试不使用 pytest 或其他框架，而是普通脚本：定义一个 `check()` 函数
@@ -41,7 +41,7 @@ python tests/t_xxx.py
 不引入框架是刻意的：跑测试不应新增依赖；且崩溃恢复类用例需要 spawn
 子进程并在真实转移点 `os._exit`，裸脚本比绕开框架的输出捕获更直接。
 
-目录下 `_console.py`、`_win_window.py` 是辅助模块，不是测试；
+`tests/` 根目录只放运行器 `run_all.py` 与辅助模块（`_console.py`、`_sandbox.py`、`_src.py`、`_win_window.py`），不是测试；
 `_console.py` 负责控制台输出保护（见下一节第 2 步）。
 
 `run_tests.sh` 通过解析这一行汇总来判定成败。它同时接受两种汇总格式，
@@ -50,7 +50,7 @@ python tests/t_xxx.py
 
 ## 新增一个测试
 
-1. 在 `tests/` 下新建 `t_<领域>.py`。命名只要求 `t_` 前缀；
+1. 在 `tests/cases/` 下新建 `t_<领域>.py`。命名只要求 `t_` 前缀；
    这个测试验证什么，写在文件的头部 docstring 里。
 2. 第一行 `import tests._console`。Windows 的 cmd 默认是 GBK 编码，
    断言名里的 emoji / 特殊符号会让 `print` 抛 `UnicodeEncodeError`——
@@ -88,7 +88,7 @@ python tests/t_xxx.py
 
 ## 已知的失败项
 
-`tests/t_f5_live.py` 在内存不足时会以返回码 139 崩溃。
+`tests/cases/t_f5_live.py` 在内存不足时会以返回码 139 崩溃。
 它加载嵌入模型，而该模型需要一次性提交约 2.3 GB。
 这是环境问题，不是代码缺陷。判断方式：其余测试全部通过，
 且系统可用内存低于该值。

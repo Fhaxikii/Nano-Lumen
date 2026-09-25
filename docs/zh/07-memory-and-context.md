@@ -81,7 +81,7 @@ rebuild_projection  按权威账本重建投影（与重启水合是同一个函
 ## 怎么验证你改对了
 
 本页是地图，不含可改动的逻辑。验证方式见各子篇末尾；全量回归仍是
-`bash run_tests.sh`（本层专属测试为 `tests/t_f5_*.py` 九个文件）。
+`bash run_tests.sh`（本层专属测试为 `tests/cases/t_f5_*.py` 九个文件）。
 
 ---
 

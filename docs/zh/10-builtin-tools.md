@@ -126,7 +126,7 @@ ToolDefinition（D() 构造，builtin.py）
    （默认 DEFERRED）；availability 若依赖运行时状态，**与事实来源同条件**。
 2. handler 实现 + 路由（MAIN 必给；Subagent 需要则 `agent=True` 并想清权限）。
 3. 若它有"事实"（如新的一次性提示），确认注入条件与工具条件同源。
-4. 测试：`tests/t_f4_catalog.py`（目录形状）、相关作用域测试。
+4. 测试：`tests/cases/t_f4_catalog.py`（目录形状）、相关作用域测试。
 
 **场景 B：调整核心集**
 改 `preload` 时先想缓存前缀：进核心的工具在轮间是否稳定？带条件的核心工具

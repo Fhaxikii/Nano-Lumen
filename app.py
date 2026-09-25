@@ -479,7 +479,7 @@ _patch_webview_min_size()
 # ⚠️ 未知键**只记一条 warning，照旧存下来**，不抛异常。
 #    📌 一个会在用户面前崩溃的守卫，迟早会被人加上 try/except 绕过 ——
 #       而绕过之后它连 warning 都不剩了。
-# ⭐ 真正的闸在 `tests/t_f1_stage7_uiboundary.py`：**声明的字段集必须覆盖
+# ⭐ 真正的闸在 `tests/cases/t_f1_stage7_uiboundary.py`：**声明的字段集必须覆盖
 #    代码里出现过的每一个键**。运行时宽容，测试严格。
 #
 # ⚠️⚠️ **的边界在这里仍然成立**：这些字段一个都不许进 Kernel。
@@ -880,7 +880,7 @@ _STREAM_CURSOR = ' <span class="nano-cursor">▋</span>'
 #    而且**要等到有人重启并且恰好回看那一段才会发现**。
 #
 # 📌 所以修的不只是那一张图，而是把「每个上屏事件重启后还在不在」变成一个
-#    **必须显式回答的问题** —— `tests/t_replay_chat_events.py` 从 `app.py` 的
+#    **必须显式回答的问题** —— `tests/cases/t_replay_chat_events.py` 从 `app.py` 的
 #    真实分发链里数出所有事件名，凡是没被下面四张表之一认领的，测试当场红。
 #    📌 同 `_UI_TERMINAL_EVENTS` 那条判据：
 #       **常量表必须能被证明等于真实分发链，而不是靠人记得同步。**

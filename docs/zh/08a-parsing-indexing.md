@@ -88,7 +88,7 @@ XLSX 的 Sheet 名+列名、PDF/DOCX 的章节标题+表格标题、CSV 列名�
    生成/更新 report（状态、统计）。
 3. `_parse_file` 分发表加一行。
 4. 若格式有"结构"（Sheet/章节），在 `_generate_schema_chunk` 补提取规则。
-5. 测试：`tests/t_f4_catalog.py` 之外，用真实文件跑 `index_single_file`
+5. 测试：`tests/cases/t_f4_catalog.py` 之外，用真实文件跑 `index_single_file`
    并检索验证。
 
 **场景 B：调切块参数**

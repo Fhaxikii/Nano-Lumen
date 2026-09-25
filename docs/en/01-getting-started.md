@@ -90,7 +90,7 @@ Nano collects minimal necessary behavioral metadata for trajectory awareness: fo
 2. You can complete a conversation and receive a reply.
 3. Run the tests: `bash run_tests.sh`. The expected last line is
    `OK 真·全量 0 失败` (literally "OK — truly full suite, 0 failures"). If the
-   only failing test is `tests/t_f5_live.py` with return code 139, that is
+   only failing test is `tests/cases/t_f5_live.py` with return code 139, that is
    usually the embedding model load running out of memory and crashing the
    process — unrelated to your change.
 

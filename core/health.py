@@ -254,7 +254,7 @@ def unregister_capability(key: str) -> None:
 #
 # 📌 判据（本项目已栽过五次）：**一个需要「有人记得去做」才不会错的机制，
 #    等于没有这个机制。** 所以缺口不能只写在外部文档里 —— 它得在代码里有个位置，
-#    并且**新增能力时不填就会红**（见 `tests/t_d11_mcp_health.py`）。
+#    并且**新增能力时不填就会红**（见 `tests/cases/t_d11_mcp_health.py`）。
 #
 # ⚠️ 这是**白名单形状**，不是排除法：新增的 Cap 默认「缺探针且没解释」→ 红。
 #    📌 排除法欠账随时间增长，白名单不会。
@@ -823,7 +823,7 @@ def report_fault(capability: str, code: str, user_message: str, *,
                  detail: str = "", hint: str = "", hint_en: str = "",
                  severity: str = Severity.ERROR) -> None:
     """⚠️ 给了 `hint` 就必须给 `hint_en` —— 用户看中文那份，模型看英文那份。
-    `tests/t_d11_mcp_health.py` 会 AST 扫全仓，漏一个就红。"""
+    `tests/cases/t_d11_mcp_health.py` 会 AST 扫全仓，漏一个就红。"""
     get_health().report(capability, status=Status.UNAVAILABLE, severity=severity,
                         code=code, user_message=user_message,
                         recovery_hint=hint, recovery_hint_en=hint_en,

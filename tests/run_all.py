@@ -6,7 +6,7 @@
   py -3.10 tests\\run_all.py --live     连同 live 测试一起跑
   py -3.10 tests\\run_all.py t_f4 t_os  只跑文件名包含这些片段的测试
 
-- 每个 `tests/t_*.py` 在独立进程里运行；判定与原 run_tests.sh 相同：退出码非 0、
+- 每个 `tests/cases/t_*.py` 在独立进程里运行；判定与原 run_tests.sh 相同：退出码非 0、
   找不到汇总行、汇总里有失败、或「通过数 != 总数」都算失败。
 - 文件前 30 行里有 `# nano-test: live` 的是 live 测试（需要真实桌面、真实模型等），默认跳过。
 - **数据目录守卫**：运行前后各记一次仓库 `data/` 下所有文件的大小和修改时间，
@@ -23,7 +23,7 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-TESTS = ROOT / "tests"
+TESTS = ROOT / "tests" / "cases"
 DATA = ROOT / "data"
 LIVE_MARK = "# nano-test: live"
 _SUMMARY = re.compile(r"(\d+) passed, (\d+) failed|(\d+)/(\d+) (?:通过|passed)")

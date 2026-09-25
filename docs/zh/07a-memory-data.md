@@ -82,7 +82,7 @@ MemoryManager.storage（投影）
 1. `DecayStore.record` 的 INSERT 与表结构（`decay_store.py` 附近）加列。
 2. 检查 `get` / `load_session` / `active_entries` 三个读取方是否要带出新列。
 3. 老库迁移：SQLite 需 `ALTER TABLE ... ADD COLUMN`，放在 `__init__` 的建表逻辑旁。
-4. 测试：`tests/t_f5_decay_store.py`。
+4. 测试：`tests/cases/t_f5_decay_store.py`。
 
 **场景 B：改交换的切分规则**（比如让某类系统消息也开启一次交换）
 1. 只改 `exchange.py` 的 `_opens_exchange`（。
@@ -90,7 +90,7 @@ MemoryManager.storage（投影）
 3. 下游消费方确认：`decay.py` 与 `rebuild_projection` 都按 `split()` 分组，
    规则变了它们自动跟随，但**已入库的 `exchange_decay` 条目的 start_ordinal
    可能对不上新切分**——`is_stale` 会兜住一部分，跑一遍
-   `tests/t_f5_exchange.py` 并在真机上重启一次验证水合。
+   `tests/cases/t_f5_exchange.py` 并在真机上重启一次验证水合。
 
 **场景 C：改水合/重建行为**
 只改 `rebuild_projection` / `project_exchange` 一处，live 与水合自动同时生效。

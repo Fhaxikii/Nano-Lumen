@@ -26,14 +26,14 @@ file with its summary line.
 ## Running a single test
 
 ```
-python tests/t_xxx.py
+python tests/cases/t_xxx.py
 ```
 
 Test files run standalone; no test framework is needed.
 
 ## Organization
 
-All tests live in `tests/`, named `t_*`. Each file covers one functional
+All test cases live in `tests/cases/`, named `t_*`. Each file covers one functional
 area, runs standalone, and shares no state.
 
 There is no pytest or any framework — tests are plain scripts: a `check()`
@@ -45,8 +45,8 @@ dependencies, and crash-recovery cases need to spawn subprocesses and
 `os._exit` at real transition points — plain scripts beat fighting a
 framework's output capture.
 
-`_console.py` and `_win_window.py` in this directory are helpers, not
-tests; `_console.py` provides console output protection (see step 2 of the
+The `tests/` root holds only the runner `run_all.py` and helper modules
+(`_console.py`, `_sandbox.py`, `_src.py`, `_win_window.py`), not tests; `_console.py` provides console output protection (see step 2 of the
 next section).
 
 `run_tests.sh` judges success by parsing that summary line. It accepts two
@@ -55,7 +55,7 @@ failures" would let "77/79 passed" slip through.
 
 ## Adding a test
 
-1. Create `tests/t_<area>.py`. Naming only requires the `t_` prefix;
+1. Create `tests/cases/t_<area>.py`. Naming only requires the `t_` prefix;
    put what the test verifies into the file's header docstring.
 2. First line: `import tests._console`. On Windows the default console
    encoding is GBK; emoji or special symbols in assertion names make
@@ -100,7 +100,7 @@ Three disciplines from hard-won experience:
 
 ## Known failure
 
-`tests/t_f5_live.py` crashes with return code 139 when memory is
+`tests/cases/t_f5_live.py` crashes with return code 139 when memory is
 insufficient. It loads the embedding model, which commits about 2.3 GB at
 once. This is an environment problem, not a code defect. How to tell: every
 other test passes and available system memory is below that value.

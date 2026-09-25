@@ -2185,7 +2185,7 @@ def _parse_pdf_ocr(path: str, max_pages: int = 50) -> Tuple[str, int, int]:
     # 📌 而这一处和 `_get_collection` 那条健康上报同形：
     #    **一条「出事时才走」的路径上的错误，只会在出事的时候暴露 ——
     #    也就是最不该再出错的时候。**
-    # ⭐ 这两处都是 `tests/t_l23_missing_imports.py` 那个作用域检查器扫出来的，
+    # ⭐ 这两处都是 `tests/cases/t_l23_missing_imports.py` 那个作用域检查器扫出来的，
     #    不是看出来的。
     import concurrent.futures
 

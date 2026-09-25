@@ -631,7 +631,7 @@ The generated code must follow them strictly.
 #     （它结束在 `skill_preview` 上）；
 #   第二次补了 `sys_error` 仍然漏 `skill_preview` / `user_note_pending`。
 #
-# 所以不再手抄，而是用 `tests/t_exit_tool_card.py` 的 AST 不变量把它和
+# 所以不再手抄，而是用 `tests/cases/t_exit_tool_card.py` 的 AST 不变量把它和
 # `app.py` 里真实的 `if step.get("event") == X: … return` 绑死 ——
 # 以后谁加第五个终端事件，测试会先红。
 # 📌 判据：**常量表必须能被证明等于真实分发链，而不是靠人记得同步。**
@@ -1068,7 +1068,7 @@ def _rt_background_jobs(orch) -> str:
 #
 # ⚠️ 这张表**必须与「真的会走 OS 层的 handler」一一对应**，
 #    而那是可以从代码里数出来的（谁调用了 `_execute_dsl_step`）——
-#    `tests/t_os_capability_gate.py` 用 AST 数一遍并比对，多一个少一个都会红。
+#    `tests/cases/t_os_capability_gate.py` 用 AST 数一遍并比对，多一个少一个都会红。
 #    📌 一张手写的表，只有在有东西替你数它的时候才不会过期。
 _OS_BACKED_TOOLS: "dict[str, tuple]" = {
     # `os_execute` 覆盖全部 action —— 空元组表示"看这次调的是哪个 action"

@@ -156,7 +156,7 @@ guess.
    plus a permissions think-through).
 3. If it has "facts" (like a new one-shot notice), confirm the injection
    condition shares the tool's condition.
-4. Tests: `tests/t_f4_catalog.py` (registry shape) plus scope tests.
+4. Tests: `tests/cases/t_f4_catalog.py` (registry shape) plus scope tests.
 
 **Case B: adjust the core set**
 Before changing `preload`, think about the cache prefix: is the tool stable

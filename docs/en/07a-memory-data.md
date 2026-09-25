@@ -96,7 +96,7 @@ MemoryManager.storage (projection)
 2. Check the three readers (`get` / `load_session` / `active_entries`) for the new column.
 3. Old databases: SQLite needs `ALTER TABLE ... ADD COLUMN`, next to the create
    logic in `__init__`.
-4. Test: `tests/t_f5_decay_store.py`.
+4. Test: `tests/cases/t_f5_decay_store.py`.
 
 **Case B: change the split rule** (e.g. make a class of system notes open an exchange)
 1. Change only `_opens_exchange`（在 exchange.py 中按函数名搜索）.
@@ -104,7 +104,7 @@ MemoryManager.storage (projection)
 3. Confirm downstream: `decay.py` and `rebuild_projection` group via `split()`
    and follow automatically, but existing `exchange_decay` rows may have
    `start_ordinal` values that no longer match the new split — `is_stale` catches
-   part of it; run `tests/t_f5_exchange.py` and restart once on a real machine
+   part of it; run `tests/cases/t_f5_exchange.py` and restart once on a real machine
    to verify hydration.
 
 **Case C: change hydration/rebuild behavior**
