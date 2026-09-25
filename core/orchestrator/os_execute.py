@@ -571,6 +571,9 @@ class OsExecuteMixin:
             or _os_result.get("aborted")
             or _os_result.get("error") in ("用户已取消", "user cancelled")
         )
+        # 急停（Ctrl+` / 甩角 failsafe）结束 GUI 任务：收回临时授权，界面随后恢复窗口。
+        if _os_result.get("aborted"):
+            self._gui_task_end("emergency stop")
 
         # ⭐⭐ [ActionAttempt] 收尾。**这里有一个关键分叉：**
         #

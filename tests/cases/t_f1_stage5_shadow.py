@@ -139,17 +139,8 @@ def t_auto_mirror(tmp: pathlib.Path) -> None:
           "结束条件是明确事件（mini 窗关 / 任务结束），不是超时")
     check(L.grant_temp_auto("again") is None, "重复授权是幂等的（返回 None）")
 
-    L.shadow_compare_auto(True)
-    check(_obs(k)[-1][:2] == ("auto_match", 0), "一致")
-
     L.revoke_temp_auto()
     check(not L.temp_auto_authorized(k), "撤销后不再授权")
-    L.shadow_compare_auto(False)
-    check(_obs(k)[-1][:2] == ("auto_match", 0), "一致")
-
-    L.shadow_compare_auto(True)   # 旧 bool 说有、新权威说没有
-    check(_obs(k)[-1][:2] == ("auto_mismatch", 1),
-          "⭐ 不一致时能报出来（现在是拿旧 bool 验证新权威，方向与观测期相反）")
 
     # ⚠️⚠️ **fail-safe 方向**：读不出来必须当「没授权」→ 照常弹确认。
     #    反过来错的代价是**在用户没批准的情况下自动执行有副作用的 OS 动作**。
@@ -215,7 +206,7 @@ def t_never_breaks_main_flow() -> None:
 
     for fn in ("acquire_activity", "heartbeat_activity", "release_activity",
                "grant_temp_auto", "revoke_temp_auto",
-               "shadow_compare_auto", "open_gui_session", "close_gui_session"):
+               "open_gui_session", "close_gui_session"):
         check("except Exception" in _seg(fn), f"{fn} 吞异常")
 
     # ⚠️ 退役的那两个必须**真的没了**，不是留个空函数
@@ -279,8 +270,11 @@ def t_wiring_c_phase() -> None:
           "照它写 canary 会在 GUI 自动化跑到一半时抢前台焦点（canary 设计约束 ② 禁止）")
 
     # ── ④：GUI 模式接在 mini 窗两个边界上 ───────────────────────────────
-    check("open_gui_session(" in ac and "close_gui_session(" in ac,
-          "⭐ mini 窗的开/关都接了 GUI 模式租约")
+    _screen = chr(10).join(l for l in module_text("core.orchestrator").splitlines()
+                         if not l.strip().startswith("#"))
+    check("open_gui_session(" in _screen and "close_gui_session(" in _screen
+          and "open_gui_session(" not in ac and "close_gui_session(" not in ac,
+          "GUI 会话租约由后端随 GUI 任务开 / 关，界面的 mini 窗开关不碰它")
 
     # ── 权威已经是租约，`_temp_auto` 只剩对答案用 ──────────────────────
     #
@@ -294,9 +288,9 @@ def t_wiring_c_phase() -> None:
     check("auto_authorization_on()" in _ac_code,
           "⭐⭐ `_auto_on()` 读的是**授权租约**（`auto_authorization_on()`），"
           "不再是 `_temp_auto` 那个 bool")
-    check("_rt_auto_compare(bool(self._temp_auto))" in _ac_code,
-          "⭐ `_temp_auto` 只剩一个用途：喂给对答案。"
-          "📌 它是切写之前的回退路，删它是下一步的事")
+    check("_temp_auto" not in _ac_code and "_rt_auto_compare" not in _ac_code
+          and "def shadow_compare_auto" not in module_text("core.runtime.oslease"),
+          "旧的 `_temp_auto` bool 与对答案函数已删除")
 
 
 def main() -> int:

@@ -21,29 +21,6 @@ from contextlib import nullcontext
 # 第一版 `len(text) > 46` 让短中文误挂按钮（中文宽度是 ASCII 两倍），
 # 改成按东亚宽度折算也只是把误差变小 —— 真正的容量随窗口宽度变，
 # 同一句话窄窗截断、宽窗不截断，Python 侧根本算不出来。
-# ── AuthorizationLease 门面 ───────────────────
-# ⚠️ 这三个原来是**观测期的 shadow**（只观测、不影响行为）。现在 `os.temp_auto`
-#    已经是权威，`_auto_on()` 读的就是它 —— 所以这里不再是"观测门面"。
-# ⚠️ 仍然吞异常，但**吞掉之后的退化方向不同，必须分清**：
-#    · `grant` 失败 → 授权没发出去 → `_auto_on()` 为假 → **照常弹确认**（安全方向）
-#    · `revoke` 失败 → 授权可能还在 → 不该免确认时免了（危险方向）
-#      所以 `oslease.revoke_temp_auto` 里那条是 `warning` 级别留痕，不是安静吞。
-def _rt_auto_grant(reason: str = "") -> None:
-    try:
-        from core.runtime import oslease as _ol
-        _ol.grant_temp_auto(reason)
-    except Exception:
-        pass
-
-
-def _rt_auto_revoke() -> None:
-    try:
-        from core.runtime import oslease as _ol
-        _ol.revoke_temp_auto()
-    except Exception:
-        pass
-
-
 def _wire_check(event) -> None:
     """后端事件的可序列化检查（问题只记日志，不影响呈现）。"""
     try:
@@ -78,14 +55,6 @@ def _rt_auto_authorized() -> bool:
         return _ol.temp_auto_authorized()
     except Exception:
         return False
-
-
-def _rt_auto_compare(legacy: bool) -> None:
-    try:
-        from core.runtime import oslease as _ol
-        _ol.shadow_compare_auto(legacy)
-    except Exception:
-        pass
 
 
 # ── durable inbox 门面 ─────────────────────────────────────────
@@ -1022,11 +991,9 @@ class WebUI:
 
         # ── auto 模式（免逐动作确认）──────────────────────────────────────
         # global_auto：持久全局开关（输入框下方 Auto chip 切换，存 data/os_state.json）。
-        # temp_auto：本次屏幕任务临时授权，生命周期 = mini（缩窗前弹一次"同意/拒绝"，
-        #   mini 关即结束）。任一为真 → 所有 OS 确认弹窗自动通过（含 risk=3），
-        #   消除"中途弹窗偷焦点"。急停 Ctrl+` / 甩角 failsafe 仍生效。
+        # 临时 auto：GUI 任务期间的免确认授权，由后端随 GUI 任务开始 / 结束（授权租约）。
+        # 任一为真 → OS 确认自动通过。急停 Ctrl+` / 甩角 failsafe 仍生效。
         self._global_auto = self._load_global_auto()
-        self._temp_auto   = False
         # durable inbox 的内存侧：item_id → pipeline 参数（含 UI 句柄）
         # ⚠️ **库负责「不丢」，这个 dict 负责「接得上」** ——
         #    UI 句柄和图片字节只在本进程有意义，落库也没用。
@@ -5373,14 +5340,7 @@ class WebUI:
             if self._mini_hint: self._mini_hint.style('display:flex;')
             if self._mini_bar: self._mini_bar.style('display:flex;')
         self._mini_active = True
-        # ⭐⭐ mini 窗 = GUI 模式 = 被动挂起全量监控。三者绑定。
-        #    ⚠️ `_mini_active` 从此**只是投影**，权威在租约里 ——
-        #       否则作用域的判据落在一个 UI 标志上。
-        try:
-            from core.runtime import oslease as _ol_g
-            _ol_g.open_gui_session("mini 窗打开")
-        except Exception as _e:
-            logger.warning(f"[A3] 开 GUI 模式失败（不影响缩窗本身）: {_e}")
+        # 只改窗口形态：GUI 会话（被动挂起的监控范围）与临时授权由后端随 GUI 任务开始。
         self._mini_start_time = time.time()
         try:
             self._mini_timer_task = asyncio.create_task(self._mini_timer_loop())
@@ -5401,21 +5361,10 @@ class WebUI:
             await asyncio.sleep(1)
 
     async def _exit_mini(self):
-        """恢复全屏几何 + 还原布局 + 收起提示/胶囊。mini 关 = 本次临时 auto 结束。"""
+        """恢复全屏几何 + 还原布局 + 收起提示/胶囊。只改窗口形态：GUI 任务与临时授权由后端管理。"""
         if not self._mini_active:
             return
         self._mini_active = False
-        # ⚠️ 注意这条的失效条件：**一个 UI 事件**（mini 窗关掉）。
-        # 一条"授权还有没有效"的判断，答案取决于某个窗口开着没有 —— 这正是
-        # `AuthorizationLease` 要换掉的东西（授权该有自己的寿命）。观测期只镜像不改。
-        self._temp_auto = False   # 任何 mini 窗关 → 临时 auto 失效
-        _rt_auto_revoke()
-        # ⭐⭐ mini 窗关 = 退出 GUI 模式 = 被动挂起停止监控。
-        try:
-            from core.runtime import oslease as _ol_g
-            _ol_g.close_gui_session()
-        except Exception as _e:
-            logger.warning(f"[A3] 关 GUI 模式失败: {_e}")
         if self._mini_timer_task:
             try:
                 self._mini_timer_task.cancel()
@@ -5454,10 +5403,22 @@ class WebUI:
             if self._mini_hint: self._mini_hint.style('display:none;')
             if self._mini_bar: self._mini_bar.style('display:none;')
 
-    async def _exit_mini_if_active(self):
-        """turn 结束/报错/急停的兜底：若 Nano 忘了调 full，自动恢复全屏。"""
-        if self._mini_active:
-            await self._exit_mini()
+    async def _sync_window_with_gui_task(self):
+        """GUI 任务已结束（急停、停止、重置对话、空闲超时、重启收尾）而窗口仍是 mini 时恢复窗口。"""
+        if not self._mini_active:
+            return
+        # 缩窗先于后端开始 GUI 任务（授权回复送到后端要一小段时间）：刚缩窗的几秒内不判断。
+        if time.time() - (getattr(self, "_mini_start_time", 0) or 0) < 3.0:
+            return
+        try:
+            from core.runtime import oslease as _ol
+            from core.runtime.kernel import get_kernel as _gk
+            if _ol.gui_session_active(_gk()):
+                return
+        except Exception:
+            return
+        logger.info("[Window] GUI 任务已结束，恢复窗口")
+        await self._exit_mini()
 
     def _show_mini_auth_dialog(self, on_approve, on_reject):
         """缩窗前的临时 auto 授权窗：只"同意/拒绝"。同意→开本次临时 auto + 缩窗。"""
@@ -5483,8 +5444,6 @@ class WebUI:
 
                 async def _do_approve():
                     dialog.close()
-                    self._temp_auto = True           # 本次任务临时 auto（mini 关即失效）
-                    _rt_auto_grant("用户在 mini 窗批准了本次任务")   # shadow
                     await self._enter_mini()
                     if on_approve:
                         on_approve()
@@ -5527,28 +5486,12 @@ class WebUI:
             logger.warning(f"[Auto] 保存 auto_mode 失败: {e}")
 
     def _auto_on(self) -> bool:
-        """当前是否处于 auto（全局开 或 本次任务临时开）→ 所有 OS 确认自动通过。
+        """当前是否处于 auto（全局开，或 GUI 任务期间的临时授权）→ OS 确认自动通过。
 
-        ⭐⭐ **权威已从 `self._temp_auto` 换成授权租约。**
-
-        旧写法 `self._global_auto or self._temp_auto` 的问题**不是"这个 bool 会写错"**，
-        而是 `_temp_auto` 的**失效条件写在 UI 里**（`任何 mini 窗关 → False`）——
-        一条"用户还授权着吗"的判断，答案取决于某个窗口开着没有。
-        📌 点名的方向错误：**用 UI 形态当授权作用域的锚点。**
-
-        ⚠️ `_global_auto` **刻意不动**：它是用户在设置里显式拨的模式开关，
-           存在 `data/os_state.json` 里、跨重启存活、打开就能明显看到当前是什么模式。
-           📌 它没有生命周期问题，所以不在这次迁移范围内。
-
-        ⚠️ `_temp_auto` 仍在维护但**只读不作权威** —— 切写那一步删。
-           它是实测验证前的回退路，同 `_os_task_busy` 当时的处理。
+        `_global_auto` 是用户在界面上拨的持久开关（`data/os_state.json`）；临时授权以授权租约为准，
+        判断公式在 `dsl.auto_authorization_on()`（模型侧也读它）。`_global_auto` 仍参与，是因为
+        本进程刚拨过的值可能还没落盘。
         """
-        # 切读期的对答案点：拿旧 bool 验证新权威（方向与观测期相反）
-        _rt_auto_compare(bool(self._temp_auto))
-        # ⭐ 公式搬到 `dsl.auto_authorization_on()`（唯一出处）——
-        #    📌 模型侧也要读这个判断，而一个要被两层同时消费的判断，
-        #       不该只写在其中一层里：另一层要么读不到，要么照着自己的理解再写一遍。
-        #    ⚠️ `_global_A` 仍然参与：它是本进程刚拨过、可能还没落盘的那一半。
         try:
             from core.os_layer import dsl as _dsl_auto
             return bool(self._global_auto or _dsl_auto.auto_authorization_on())
@@ -15551,6 +15494,9 @@ class WebUI:
                 gui._refresh_takeover_bar()
             except Exception as e:
                 logger.debug(f"[A3] 接管状态条重画失败（忽略本跳）: {e}")
+            # GUI 任务结束后窗口仍是 mini 时恢复（按 GUI 会话租约判断，丢一跳只是晚一秒）。
+            if gui._mini_active:
+                asyncio.create_task(gui._sync_window_with_gui_task())
         ui.timer(1, _takeover_bar_tick)
 
         # 重启恢复：把上次会话遗留的 active 挂起在聊天区补一条提示，

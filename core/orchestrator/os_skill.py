@@ -459,6 +459,9 @@ class OsSkillMixin:
                 continue
 
             if result.get("aborted") or result.get("error") == "用户已取消":
+                if result.get("aborted"):
+                    # 急停结束 GUI 任务（收回临时授权；界面随后恢复窗口）。
+                    self._gui_task_end("emergency stop")
                 async for _ev in self._final_answer_or_fallback(
                         facts=("The user asked to stop mid-operation, so the current step was cut short ""and did not finish. Acknowledge briefly and say the step was left ""incomplete."),
                         # ⚠️ 兜底保留中文原文 —— 它只在模型不可用时登场（豁免④）

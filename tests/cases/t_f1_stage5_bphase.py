@@ -306,9 +306,8 @@ def t_wiring() -> None:
           "⚠️ 而 `_global_auto` **刻意保留** —— 用户显式拨的模式开关，"
           "存 `os_config.json`、跨重启存活、没有生命周期问题，"
           "不在本次迁移范围（迁移边界当时就划定了）")
-    check("self._temp_auto = True" in apc and "self._temp_auto = False" in apc,
-          "⚠️ 切写之前旧 bool 仍在**写** —— 它是实测验证前的回退路。"
-          "📌 只切读点而不留写点，会让回退变成「改回去」而不是「切回去」")
+    check("_temp_auto" not in apl,
+          "旧 bool `_temp_auto` 已删除：临时授权只以授权租约为准")
 
 
 def main() -> int:

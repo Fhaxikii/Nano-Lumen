@@ -693,30 +693,6 @@ class PromptContextMixin:
         # 固定使用说明已挪到稳定前缀 [Live Context Blocks]（Stage2），这里只发数据。
         return "\n\n[Recent Cross-Session Summaries]\n" + "\n".join(lines)
 
-    # ⭐⭐⭐ [2026-08-25 实测] **把「窗口现在是什么形态」注入给模型。**
-    #
-    # 🔴 实测：Nano **每一个气泡都要调一次 `set_window_mode('mini')`**。
-    #    查下来根因正如猜的那样 —— 全项目 grep「窗口当前是不是 mini」**零命中**，
-    #    **从来没有任何地方告诉过模型这件事**。
-    # 🔴 而 `look_at_screen` 的描述里那句是硬的：
-    #      「call set_window_mode('mini') BEFORE your first look_at_screen
-    #        in a task … **This one is not optional.**」
-    #    ⇒ 「算不算 in a task」只能它自己猜，而 `wait_for` 之后是新的一轮、
-    #      隔了一分钟 —— 猜不出来，按「not optional」就只能再调一次。
-    # 📌 **一个「不许省」的强规则，配上一个模型看不见的状态，
-    #    结果必然是每次都做。** 那不是它谨慎，是我们没给它判断的依据。
-    #
-    # ⭐ 这是「注入事实」这个模式的**第五个实例**：
-    #      健康态 → 预算态 → 上下文压力 → 记忆索引 → 本条
-    #    规律：**给模型注入它自己的状态，它就会自主调整行为。**
-    #
-    # ⚠️ 权威取 **租约**，不取 UI 的 `_mini_active` ——
-    #    `_enter_mini` 那段留痕写着「`_mini_active` 从此**只是投影**，
-    #    权威在租约里」。📌 读投影就是给自己造第二个权威。
-    # ⚠️ fail-safe 方向：读不到 → 说「full」。
-    #    说错成 full → 模型多缩一次窗（幂等，无害）；
-    #    说错成 mini → 模型**跳过缩窗直接操作屏幕**，而它正挡着屏幕。
-    #    📌 两边代价不对称时，往代价小的那边倒。
     # ⭐⭐⭐ **记忆摘要每轮无条件注入 —— 整个改造的核心。**
     #
     # 🔴 2026-08-05 的原话，根因当时就说对了：
@@ -925,19 +901,25 @@ class PromptContextMixin:
         return _block + self._mem_water_notice(_block)
 
     def _build_window_mode_injection(self) -> str:
-        try:
-            from core.runtime import oslease as _ol_wm
-            from core.runtime.kernel import get_kernel as _gk_wm
-            _mini = bool(_ol_wm.gui_session_active(_gk_wm()))
-        except Exception:
-            _mini = False
-        if _mini:
+        """每轮注入窗口形态与 GUI 任务状态，让模型不必猜「现在是不是 mini」。
+
+        三种状态：mini（任务进行中，不要再缩）/ 任务进行中但用户放大了（尊重，只在真的
+        挡住下一步时再缩并说明）/ full 且没有任务（操作屏幕前先缩窗开始任务；看屏幕不需要）。
+        """
+        if self._window_mode_now() == "mini":
             return ("\n\n[Window] Nano's own window is CURRENTLY MINI (small, "
-                    "top-right corner) — you already shrank it. Do NOT call "
+                    "top-right corner) and a screen-operation task is in progress. Do NOT call "
                     "set_window_mode('mini') again; it is already done.")
-        return ("\n\n[Window] Nano's own window is CURRENTLY FULL SIZE. If you are "
-                "about to look at or operate the screen, shrink it first with "
-                "set_window_mode('mini').")
+        if self._gui_task_active():
+            return ("\n\n[Window] A screen-operation task is in progress, but the user enlarged "
+                    "Nano's window - respect that. Shrink again only if the window truly blocks "
+                    "the next step (a drag across it, or a target hidden under it); looking at the "
+                    "screen is never a reason. If you shrink, say in one short sentence why, then "
+                    "continue. No new authorization is needed.")
+        return ("\n\n[Window] Nano's own window is CURRENTLY FULL SIZE. Before operating the "
+                "screen with mouse or keyboard (computer_use), call set_window_mode('mini'): it "
+                "starts a screen-operation task that the user approves once. Looking at the "
+                "screen does not require it (look_at_screen hides Nano by itself).")
 
     def _build_ambient_injection(self) -> str:
         """Ambient Memory Phase 1: inject a lightweight rule-based activity snapshot.

@@ -335,13 +335,13 @@ class TurnMixin:
         self._attach_turn_inputs(temp_file_hint, image_parts)
 
         try:
-            async for _react_ev in self._run_react_loop(
+            async for _react_ev in self._gui_task_track_turn(self._run_react_loop(
                 tools_manifest=list(self._core_manifest),   # 核心常驻 + load_tools；其余按需加载
                 system_guide=system_guide,
                 base_guide=base_guide,
                 realtime_callback=realtime_callback,
                 event_queue=event_queue,
-            ):
+            )):
                 yield _react_ev
         except RuntimeError as fatal_err:
             if "API 调用链路全线熔断" in str(fatal_err):

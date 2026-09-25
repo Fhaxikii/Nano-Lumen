@@ -489,13 +489,13 @@ class LongTaskMixin:
         # 旧字段没了 —— sweep 现在自己从 Span 判断，不需要外部喂旧值。
         _rt_sweep_stale_spans(self, None)
         try:
-            async for ev in self._run_react_loop(
+            async for ev in self._gui_task_track_turn(self._run_react_loop(
                 tools_manifest=regular_skills,
                 system_guide=system_guide,
                 base_guide=base_guide,
                 realtime_callback=realtime_callback,
                 event_queue=event_queue,
-            ):
+            )):
                 yield ev
         except Exception as core_err:
             logger.critical(f"[Suspension] 唤醒 turn 异常: {core_err}\n{traceback.format_exc()}")

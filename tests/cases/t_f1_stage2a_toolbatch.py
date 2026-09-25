@@ -433,7 +433,7 @@ def t_orchestrator_wiring(tmp):
 
     # resume_suspension 是 _run_react_loop 的第二个调用方，必须同样设 turn_id + sweep
     i_resume = src.index("async def resume_suspension")
-    i_loop2 = src.index("async for ev in self._run_react_loop(", i_resume)
+    i_loop2 = src.index("self._run_react_loop(", i_resume)
     seg = src[i_resume:i_loop2]
     check("self._rt_turn_id = " in seg, "resume_suspension 也设了新的 turn_id")
 

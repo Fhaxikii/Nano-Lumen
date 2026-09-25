@@ -476,6 +476,8 @@ class ToolDispatchMixin:
         # ⚠️ 不在 GUI 模式时**完全不查**（一次数据库读都不多花）——
         #    纯命令行 / 纯对话的一轮完全不受影响。
         _gui_waited = 0.0
+        if name in ("computer_use", "look_at_screen", "set_window_mode"):
+            self._gui_task_touch()
         try:
             from core.runtime import oslease as _ol_gw
             from core.runtime.kernel import get_kernel as _gk_gw
@@ -1198,6 +1200,10 @@ class ToolDispatchMixin:
         if _pn:
             self._a3_pause_note = ""
             result_text = f"{_pn}\n\n---\n{result_text}"
+        # 用户在 GUI 任务中途放大了窗口：一次性说明附在工具结果后面。
+        _wn = self._take_window_note()
+        if _wn:
+            result_text = f"{result_text}\n\n{_wn}"
 
         return ToolExecution(
             call=call,

@@ -919,15 +919,15 @@ _SET_WINDOW_MODE_MANIFEST = {
     "description": (
         "Control Nano's own window mode: mini or full.\n"
         "Call mini BEFORE any computer_use mouse/keyboard/window action - your own window is on "
-        "the screen you are about to operate. That one is required.\n"
-        # ⚠️ 2026-08-23：遮罩已删，这句原来写「your window is blacked out of the image」——
-        #    那已经不成立了。📌 一句描述一个已经不存在的机制的话，比没有更坏。
-        "For screenshots it usually helps too — Nano minimizes itself out of the shot, "
-        "so at full size you would otherwise be covering a large part of the screen. "
-        "But decide case by case: skip it when you are clearly not in the way.\n"
+        "the screen you are about to operate. That one is required. mini starts a screen-operation "
+        "task that the user authorizes once; the task can span several turns.\n"
+        "Looking at the screen does not need mini: look_at_screen hides Nano by itself.\n"
         "Do not use for pure command-line work, file-only work, KB/memory queries, or normal chat.\n"
         "Do not use mini when the task is to observe or operate Nano's own UI.\n"
-        "Use full after screen operations when appropriate; the system may also restore full mode at turn end.\n"
+        "IMPORTANT: call full as soon as the screen work is done. full is what ends the task and "
+        "revokes the temporary automatic authorization - the task does NOT end with the turn. If you "
+        "forget, the authorization stays active and your window stays small until the task times out "
+        "after 15 idle minutes.\n"
         "This is a standalone tool, not an os_execute or computer_use action."
     ),
     "parameters": {
@@ -1000,11 +1000,8 @@ _LOOK_AT_SCREEN_MANIFEST = {
         "Put the exact items in purpose (contact/file name, list item, icon, button). "
         "The tool scans the full screen and auto zoom/crops, so you rarely need a region. "
         "If it reports an item was not found, treat it as not found.\n"
-        "⚠️ FIRST shrink yourself: call set_window_mode('mini') BEFORE your first "
-        "look_at_screen in a task. Nano's own window sits on that same screen and at normal "
-        "size it covers a large part of it. Shrink first and one look is enough; do not "
-        "look, then shrink, then look again.\n"
-        "If Nano is in the way of what you need to see, shrink it with set_window_mode('mini')."
+        "Nano's own window is hidden automatically while the screen is captured (minimized, "
+        "then restored), so you do not need to shrink before looking."
     ),
     "parameters": {
         "type": "object",
@@ -2056,18 +2053,11 @@ _COMPUTER_USE_MANIFEST = {
         "⚠️ BEFORE your first mouse/keyboard/window action in a task, call "
         "set_window_mode('mini'). Nano's own window sits on the same screen you are about "
         "to operate; at normal size it covers a large part of it and you will click the "
-        "wrong thing. This one is not optional.\n"
-        # 🔴🔴 [2026-08-24] 这里原来写「Nano 的窗口会被涂黑」—— 遮罩已于 08-23 删除。
-        #    ⚠️ 上一轮**声称已经扫过所有提示词**，实际只改了 `set_window_mode` 那一处，
-        #       **漏了两处**（本处 + 下面 `_OS_AWARENESS` 那处）。
-        #    📌 **一句描述一个已经不存在的机制的话，比没有这句更坏** ——
-        #       它不报错，只是让模型按一个假的前提做决定（「反正会被涂黑，那就缩」）。
-        #    📌 而这次漏掉的教训更具体：**「扫过了」不是证据，`grep` 的结果才是。**
-        "For screenshots the same shrink usually helps — Nano minimizes itself out of the "
-        "shot, and at normal size it would otherwise cover a large part of the screen. "
-        "But judge it yourself: if Nano is not covering what you need to see (the target "
-        "app is fullscreen in front, or it is on another monitor), just take the shot. "
-        "Do not shrink as a ritual.\n"
+        "wrong thing. This one is not optional. When the screen work is done, call "
+        "set_window_mode('full'): that ends the screen-operation task and revokes the "
+        "temporary authorization.\n"
+        "Looking is never a reason to shrink: look_at_screen hides Nano by itself. (The "
+        "screenshot action here only saves a file and does not hide Nano.)\n"
         # ⭐ 反向指引：把模型劝回更可靠的那条路。
         "⭐ Driving the GUI is the last resort. If the same job can be done with a command, "
         "a file write, or launching an app directly, use os_execute instead — it is faster "

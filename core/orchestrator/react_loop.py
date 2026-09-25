@@ -75,11 +75,11 @@ _OS_CAPABILITY_PROMPT = (
     "  - Mouse, keyboard, or window actions: call set_window_mode('mini') FIRST. Your own "
     "window sits on the screen you are about to operate, and you will hit the wrong thing. "
     "This one is not optional.\n"
-    # 🔴 [2026-08-24] 同上，遮罩已删。这是漏掉的第二处。
-    "  - Screenshots: shrinking usually helps, because Nano minimizes itself out of the "
-    "shot and at full size it would otherwise cover a large part of the screen. But judge it "
-    "yourself: if you are not covering what matters (the target app is fullscreen in front, "
-    "or on another monitor), just take the shot. Do not shrink as a ritual.\n"
+    "  - Looking: look_at_screen hides Nano by itself (minimize, capture, restore), so looking "
+    "is never a reason to shrink. (The computer_use screenshot action does not hide Nano.)\n"
+    "  - mini starts a screen-operation task that the user authorizes once and that can span "
+    "several turns. Call set_window_mode('full') as soon as the screen work is done - that is "
+    "what ends the task and revokes the temporary authorization.\n"
     "Never shrink for pure command-line work, file-only work, KB queries, or memory "
     "queries - and never when the task is to observe or operate Nano's own UI.\n"
 

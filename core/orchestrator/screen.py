@@ -3,6 +3,7 @@
 
 import asyncio
 import re
+import time
 from typing import Optional
 
 from loguru import logger
@@ -32,6 +33,9 @@ def _vision_model_for_os() -> Optional[str]:
 
 class ScreenMixin:
     """看屏幕与视觉：截图、视觉模型问答、图片记录与回看、窗口模式。"""
+
+    # GUI 任务的空闲兜底时长（没有进行中的轮、没有待唤醒的挂起时，空闲这么久就结束任务）。
+    _GUI_TASK_IDLE_SEC = 15 * 60
 
     _LOOK_FRACS = {
         "left": (0, 0, 0.5, 1), "right": (0.5, 0, 1, 1),
@@ -590,51 +594,40 @@ class ScreenMixin:
         _wm_mode = (args.get("mode") or "").strip().lower()
         if _wm_mode not in ("mini", "full"):
             _wm_mode = "mini"
-        # ⭐⭐⭐ [2026-08-25] **已经是 mini 了还调 mini —— 直接报错，不执行。**
-        #
-        # 🔴 问题：注入了 `[Window] … CURRENTLY MINI` 之后，Nano **还是**每轮重复调它。
-        #    而这个动作**不是幂等的对用户而言**：缩窗前要过一次「临时 auto」授权，
-        #    于是**用户被反复弹窗打扰**。
-        # 📌 **注入的是事实，事实只能劝；这道闸才是判据。**
-        #    今晚已经反复见到同一个形状：一条只靠模型自觉的规则，
-        #    挡不住一个每次都觉得自己有理由的模型（`look_at_screen` 那条
-        #    「not a safety ritual」写着也没用）。
-        # ⭐ 而且报错**要说清现状**（「直接告诉 nano 目前就是在 mini 状态」）——
-        #    📌 一个只说「不许」的错误，会让它换个说法再试一次；
-        #       说清「已经是了」，它才知道该往下走。
-        #
-        # ⚠️⚠️ **闸只加在 mini 这一侧，`full` 永远放行。** 两边不对称：
-        #      · 多缩一次 mini  → 弹窗打扰用户   ⇒ 该挡
-        #      · 多复原一次 full → 什么都不打扰   ⇒ 挡它反而危险：
-        #        万一租约状态和真实窗口漂移了，挡住 `full` 会把 Nano **锁死在 mini**。
-        #    📌 闸只加在「多做一次会打扰用户」的那一侧；
-        #       另一侧多做一次是无害的，而错误地挡住它是有害的。
-        #
-        # ⚠️ fail-safe 方向：**读不到状态就放行**（与 `_build_window_mode_injection`
-        #    同向）。误挡的代价是「Nano 挡着屏幕却缩不了窗」，比多弹一次窗糟得多。
-        if _wm_mode == "mini":
-            try:
-                from core.runtime import oslease as _ol_wg
-                from core.runtime.kernel import get_kernel as _gk_wg
-                _already_mini = bool(_ol_wg.gui_session_active(_gk_wg()))
-            except Exception:
-                _already_mini = False
-            if _already_mini:
-                logger.info("[F8] 已经是 mini 了，拦下这次 set_window_mode('mini')"
-                            "（避免重复弹临时授权窗）")
-                return ToolOutcome(
-                    "Nano's window is ALREADY in mini mode - this call was rejected and "
-                    "nothing happened. You do not need to shrink again; the window stays "
-                    "mini for the rest of this task. Go straight to what you wanted to do.",
-                    True,
-                )
-
+        # 窗口形态与「GUI 任务」分开：
+        #   · GUI 任务 = GUI 会话租约 + 临时免确认授权，由后端开始 / 结束；
+        #   · 窗口形态（mini / full）只是呈现，用户手动放大不结束任务。
+        # 结束点：这里的 full、非挂起的轮结束（turn.py）、重启收尾。
         if _wm_mode == "full":
+            self._gui_task_end("set_window_mode('full')")
             await event_queue.put({"event": "window_mode", "mode": "full"})
-            return "Nano's window has been restored to full mode."
-        # mini：缩窗【前】先过一次"临时 auto"授权（全局 auto 已开则 UI 端
-        # 直接放行不弹窗）。授权在缩窗前弹 = 那时目标窗口没有瞬态 UI 可丢，
-        # 点授权偷焦点也无害；授权后整段连续操作不再弹窗 → 焦点链不断。
+            return ("The screen-operation task has ended: the temporary automatic authorization "
+                    "is revoked and Nano's window has been restored to full mode.")
+
+        # 已经是 mini：拒绝重复缩窗（不执行，并说清现状）。
+        if self._window_mode_now() == "mini":
+            logger.info("[Window] 已经是 mini，拒绝重复的 set_window_mode('mini')")
+            return ToolOutcome(
+                "Nano's window is ALREADY in mini mode - this call was rejected and "
+                "nothing happened. You do not need to shrink again; the window stays "
+                "mini for the rest of this task. Go straight to what you wanted to do.",
+                True,
+            )
+
+        # GUI 任务仍在（用户中途放大了窗口）：同一个任务，不重新授权，直接缩回。
+        if self._gui_task_active():
+            self._set_window_mode("mini")
+            self._window_note = ""
+            await event_queue.put({"event": "window_mode", "mode": "mini"})
+            return (
+                "Nano's window is mini again. The screen-operation task was still active, so "
+                "no new authorization was needed. The user had enlarged the window earlier: "
+                "tell them in one short sentence why you shrank it (what it was blocking), "
+                "then continue the task - do not stop to ask."
+            )
+
+        # 没有 GUI 任务：缩窗前先请用户授权本次任务（全局 auto 已开时界面直接放行）。
+        # 授权在缩窗前弹：那时目标窗口没有瞬态 UI 可丢，点授权偷焦点也无害。
         _ev = asyncio.Event()
         _approved = [False]
         _loop = asyncio.get_running_loop()
@@ -654,8 +647,7 @@ class ScreenMixin:
             "reply_id": _rid, "actions": ["approve", "reject"],
         })
         from core.runtime import inbox as _ib6
-        # ⭐ 缩窗授权也走双路。⚠️ fail-safe 方向是**不授权** ——
-        #    用户打字打断一个「要不要让我操作你的屏幕」，绝不能当成同意。
+        # 用户打字打断授权请求按「不授权」处理。
         try:
             _oc_mini = await _ib6.wait_confirm_or_user_message(_ev, 300)
         finally:
@@ -663,12 +655,146 @@ class ScreenMixin:
         if _oc_mini != _ib6.ConfirmOutcome.CONFIRMED:
             _approved[0] = False
         if _approved[0]:
+            self._gui_task_begin("set_window_mode('mini') approved")
+            self._set_window_mode("mini")
             return (
                 "Nano has been minimized to the top-right mini window and the user authorized automatic screen operation for this task. "
                 "You may now continue operating the user's screen without repeated confirmation prompts. "
-                "When finished, call set_window_mode('full') to restore the window; it will also auto-restore at turn end if you do not."
+                "IMPORTANT: when the screen work is done, call set_window_mode('full'). That call is what ends the task and "
+                "revokes this temporary authorization. The task does NOT end with the turn; if you forget, the authorization "
+                "stays active and your window stays small until the task times out after 15 idle minutes."
             )
         return (
             "The user rejected this screen-operation authorization or the request timed out. "
             "Do not operate the screen again. Tell the user that authorization is needed to continue, or suggest completing it manually."
         )
+
+    # ── GUI 任务与窗口形态 ────────────────────────────────────────────
+
+    def _window_mode_now(self) -> str:
+        """后端记录的窗口形态：'mini' / 'full'（启动时为 full）。"""
+        return getattr(self, "_window_mode", "full")
+
+    def _set_window_mode(self, mode: str) -> None:
+        self._window_mode = "mini" if mode == "mini" else "full"
+
+    @staticmethod
+    def _gui_task_active() -> bool:
+        """GUI 任务是否进行中（以 GUI 会话租约为准；读不到按「没有」处理）。"""
+        try:
+            from core.runtime import oslease as _ol
+            from core.runtime.kernel import get_kernel as _gk
+            return bool(_ol.gui_session_active(_gk()))
+        except Exception:
+            return False
+
+    def _gui_task_begin(self, reason: str) -> None:
+        """开始 GUI 任务：先开 GUI 会话（建 Task），再发绑定到该 Task 的临时免确认授权。"""
+        try:
+            from core.runtime import oslease as _ol
+            _ol.open_gui_session(reason)
+            _ol.grant_temp_auto(reason)
+        except Exception as e:
+            logger.warning(f"[Window] 开始 GUI 任务失败: {e}")
+        self._gui_task_touch()
+
+    def _gui_task_end(self, reason: str) -> None:
+        """结束 GUI 任务：收回临时免确认授权、关 GUI 会话；窗口形态记为 full。幂等。"""
+        try:
+            from core.runtime import oslease as _ol
+            if self._gui_task_active():
+                logger.info(f"[Window] GUI 任务结束（{reason}）")
+            _ol.revoke_temp_auto()
+            _ol.close_gui_session()
+        except Exception as e:
+            logger.warning(f"[Window] 结束 GUI 任务失败（授权可能仍有效）: {e}")
+        self._set_window_mode("full")
+        self._window_note = ""
+
+    def notify_window_enlarged_by_user(self) -> None:
+        """界面报告：用户手动把窗口放大了。只改窗口形态，GUI 任务与授权不变；
+        下一个工具结果会附上一段说明。"""
+        self._set_window_mode("full")
+        if self._gui_task_active():
+            self._window_note = (
+                "[Window] The user just enlarged Nano's window while this screen-operation "
+                "task is running. They want the window large - respect that. The task and its "
+                "authorization are unchanged. Before each next step, ask yourself whether the "
+                "window size really gets in the way: a drag across the area it covers, or a "
+                "click / typing target hidden under it. Looking at the screen is never a reason "
+                "(look_at_screen hides Nano by itself). Only if it truly blocks the next step, "
+                "call set_window_mode('mini') and say in one short sentence why; then continue "
+                "without stopping to ask.")
+
+    def _gui_task_touch(self) -> None:
+        """记一次屏幕相关活动（空闲兜底从这里起算）。"""
+        self._gui_last_activity = time.monotonic()
+
+    async def _gui_task_track_turn(self, events):
+        """包住一轮 ReAct 的事件流：记录「轮进行中 / 本轮是否以挂起结束」，
+        用户按停止时结束 GUI 任务。GUI 任务本身不随轮结束。"""
+        suspended = False
+        self._turn_running = True
+        try:
+            async for ev in events:
+                if isinstance(ev, dict):
+                    kind = ev.get("event")
+                    if kind == "suspend_waiting":
+                        suspended = True
+                    elif kind == "turn_interrupted" and ev.get("stopped"):
+                        self._gui_task_end("user stopped the turn")
+                yield ev
+        finally:
+            self._turn_running = False
+            self._last_turn_suspended = suspended
+            # 轮结束也算一次活动：空闲从轮结束时起算，而不是从最后一个屏幕动作起算。
+            if self._gui_task_active():
+                self._gui_task_touch()
+
+    def _gui_task_idle_check(self, now: float | None = None) -> bool:
+        """GUI 任务的空闲兜底：没有进行中的轮、没有等待唤醒的挂起、且空闲满
+        `_GUI_TASK_IDLE_SEC`，就结束任务（界面随后恢复窗口）。返回是否结束了任务。"""
+        if not self._gui_task_active():
+            return False
+        if getattr(self, "_turn_running", False):
+            return False
+        if getattr(self, "_last_turn_suspended", False) and self._live_suspension_exists():
+            return False
+        last = getattr(self, "_gui_last_activity", None)
+        now = time.monotonic() if now is None else now
+        if last is None:
+            # 进程内没有记录（任务由别处开始）：从第一次检查起算。
+            self._gui_last_activity = now
+            return False
+        if now - last < self._GUI_TASK_IDLE_SEC:
+            return False
+        self._gui_task_end(f"idle for {int(now - last)}s")
+        return True
+
+    @staticmethod
+    def _live_suspension_exists() -> bool:
+        try:
+            from core.runtime import waitcond as _wc
+            from core.runtime.kernel import get_kernel as _gk
+            return bool(_wc.list_live(_gk()))
+        except Exception:
+            return False
+
+    def _install_gui_task_idle_tick(self) -> None:
+        """把空闲兜底登记为 runtime reconcile 的周期步骤（同名登记会覆盖，可重复调用）。"""
+        try:
+            from core.runtime import reconciler as _rec
+
+            def _tick(_kernel, report) -> None:
+                if self._gui_task_idle_check():
+                    report.extra["gui_task_idle_ended"] = 1
+
+            _rec.register_tick_step("gui_task_idle", _tick)
+        except Exception as e:
+            logger.warning(f"[Window] 登记 GUI 任务空闲兜底失败: {e}")
+
+    def _take_window_note(self) -> str:
+        """取出并清空待附在工具结果上的窗口说明。"""
+        note = getattr(self, "_window_note", "")
+        self._window_note = ""
+        return note

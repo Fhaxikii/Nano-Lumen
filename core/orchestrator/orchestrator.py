@@ -89,6 +89,8 @@ class Orchestrator(
         # () -> Nano 主窗口对象（有 minimize / restore），由 app.py 注入；core 不直接依赖 UI 框架。
         # 看屏幕前用它把自己最小化让开；没有注入时（测试、无界面运行）不让开。
         self._native_window = None
+        # GUI 任务的空闲兜底挂在 runtime reconcile 的周期 tick 上。
+        self._install_gui_task_idle_tick()
 
         # 本会话是否已经提示过"当前模型不适合写 Skill，建议切换"
         self._model_switch_suggested_this_session: bool = False
@@ -292,6 +294,8 @@ class Orchestrator(
                 self._os_safety.reset()
             except Exception as _e:
                 logger.warning(f"[Reset] 清理 OS 预授权失败（不影响重置）: {_e}")
+        # 重置对话结束进行中的 GUI 任务（收回临时授权；界面随后恢复窗口）。
+        self._gui_task_end("conversation reset")
 
         logger.info(
             f"[Reset] 对话已重置（memory={had_memory}, "

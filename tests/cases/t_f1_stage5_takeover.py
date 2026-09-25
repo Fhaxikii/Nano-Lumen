@@ -397,12 +397,12 @@ def t_armed_by_gui_mode_not_by_mouse(tmp: pathlib.Path) -> None:
     # ⑤ GUI 模式是权威状态，不是 UI 标志
     src = module_text("app")
     ac = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
-    check("open_gui_session(" in ac and "close_gui_session(" in ac,
-          "⭐ mini 窗的两个边界都接了 GUI 模式租约")
-    i_open, i_mini = ac.find("open_gui_session("), ac.find("self._mini_active = True")
-    check(0 < i_mini and 0 < i_open and abs(i_open - i_mini) < 600,
-          "⚠️ 开 GUI 模式紧挨着 `_mini_active = True` —— 两者必须同生同死",
-          f"距 {abs(i_open - i_mini)} 字符")
+    osrc = chr(10).join(l for l in module_text("core.orchestrator").splitlines()
+                      if not l.strip().startswith("#"))
+    check("open_gui_session(" in osrc and "close_gui_session(" in osrc,
+          "GUI 模式租约由后端随 GUI 任务开 / 关")
+    check("open_gui_session(" not in ac and "close_gui_session(" not in ac,
+          "界面的 mini 窗开关只改窗口形态，不碰 GUI 模式租约（用户放大窗口不结束任务）")
     tsrc = module_text("core.proactive.takeover")
     tc = "\n".join(l for l in tsrc.splitlines() if not l.strip().startswith("#"))
     check("gui_session_active(" in tc,

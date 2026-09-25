@@ -1133,25 +1133,6 @@ def revoke_temp_auto() -> None:
         logger.warning(f"[OSLease] 收回临时授权失败（授权可能仍有效！）: {e}")
 
 
-def shadow_compare_auto(legacy_temp_auto: bool) -> None:
-    """对答案点：**旧 bool 已降级成从属，新租约是权威。**
-
-    ⚠️ 名字里还有 `shadow` 但方向反了 —— 现在是拿旧 bool 来**验证新权威**，
-       而不是拿新的验证旧的。留着它是因为旧 bool 还在维护，
-       它是那条**回退路**的健康检查。
-    📌 删的标准是「还有没有人写它」，不是「名字里有没有 shadow」。
-    """
-    try:
-        new_auto = temp_auto_authorized()
-        if legacy_temp_auto == new_auto:
-            shadow_note("auto_match", f"temp_auto={legacy_temp_auto}")
-        else:
-            shadow_note("auto_mismatch",
-                        f"旧bool={legacy_temp_auto} 新权威={new_auto}", diverged=True)
-    except Exception as e:
-        logger.debug(f"[Shadow] 对答案失败（忽略）: {e}")
-
-
 def expire_tick(kernel: RuntimeKernel, now: float | None = None) -> int:
     """到期回收。level-triggered，每跳重算。"""
     t = kernel.now() if now is None else now
