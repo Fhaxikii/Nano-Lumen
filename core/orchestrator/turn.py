@@ -538,6 +538,13 @@ class TurnMixin:
         _core_cond = [d for d in _advertised
                       if d.preload is Preload.CORE and d.availability is not _ALWAYS_AV]
         self._core_manifest = [d.manifest for d in _core_always + _core_cond]
+        # GUI 任务进行中（跨轮）：屏幕工具这一簇直接随本轮下发。`load_tools` 的加载不跨轮，
+        # 否则每个新轮的第一次 computer_use 都会被拒、白费一次往返。放在带条件那一段（断点之后）。
+        if self._gui_task_active():
+            for _n in ("computer_use", "set_window_mode", "look_at_screen"):
+                _m = self._tool_pool.get(_n)
+                if _m is not None and _m not in self._core_manifest:
+                    self._core_manifest.append(_m)
         # ⭐ 稳定段长度 —— 发请求时告诉 provider 断点该打在哪。
         #    ⚠️ 它必须跟着 `_core_manifest` 一起算，**不能在别处重新数** ——
         #       📌 一个「这份名单的前 N 个」的数字，和那份名单必须同源，

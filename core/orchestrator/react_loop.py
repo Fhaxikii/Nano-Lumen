@@ -64,10 +64,13 @@ _OS_CAPABILITY_PROMPT = (
     "than driving the screen. Use computer_use when there is genuinely no other way.\n"
     "Normally call one action at a time, observe the result, then decide the next step. "
     "They may be combined with other tools.\n"
-    "Exception for computer_use: when one look already settled several steps (several "
-    "buttons to press, a field to click and then text to type), send those computer_use "
-    "calls together in one reply - up to 4. They run in order; if one fails, the rest "
-    "of that batch are skipped so you can re-plan.\n"
+    "Exception for computer_use: steps you can already do reliably without seeing their "
+    "result go out together as several computer_use calls in one reply - there is no "
+    "count limit (pressing 100 calculator keys is one batch). End a batch at the first "
+    "point where the outcome is uncertain and you would need to check the real state "
+    "before going on (a few strokes into a drawing, a dialog that may or may not appear); "
+    "check it, then continue. The calls run in order; if one fails, the rest of that "
+    "batch are skipped so you can re-plan.\n"
 
     # ⚠️⚠️ **两条绑定关系，强度不同 —— 拆开说**。
     #    🔴 旧文把 click / typing / screenshot / app launch / window switching

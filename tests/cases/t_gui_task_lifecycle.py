@@ -156,6 +156,8 @@ def t_set_window_mode(tmp: pathlib.Path) -> None:
         check(o._window_mode_now() == "mini" and _active(k) == (True, True), "仍是同一个任务")
         inj = o._build_window_mode_injection()
         check("CURRENTLY MINI" in inj, "每轮注入：mini")
+        check("Between your turns" in inj and "win_switch" in inj,
+              "任务进行中：提醒两轮之间焦点可能变了，动手前先把目标窗口切到前台")
 
         txt, evs = await _call_mode(o, "full")
         check(_active(k) == (False, False)
@@ -164,6 +166,7 @@ def t_set_window_mode(tmp: pathlib.Path) -> None:
         inj = o._build_window_mode_injection()
         check("CURRENTLY FULL SIZE" in inj and "does not require it" in inj,
               "每轮注入：full 且没有任务；看屏幕不需要缩窗")
+        check("Between your turns" not in inj, "没有任务时不提这句")
 
     asyncio.run(run())
 
@@ -296,9 +299,18 @@ def t_batch_and_end_tool(tmp: pathlib.Path) -> None:
                                        realtime_callback=None, event_queue=_Q()))
     check(ran == ["c1", "c2", "c3", "c4"], "全部成功时按顺序全部执行")
     from core.orchestrator.react_loop import _OS_CAPABILITY_PROMPT as _P
-    check("send those computer_use calls together in one reply - up to 4" in _P
-          and "the rest of that batch are skipped" in _P,
-          "系统提示允许一次看清后连发多步（上限 4，失败即停）")
+    check("there is no count limit" in _P and "outcome is uncertain" in _P
+          and "the rest of that batch are skipped" in _P and "up to 4" not in _P,
+          "系统提示：连发多少步不设数字上限，由「哪里需要中途核对真实状态」决定；失败即停")
+    ran.clear()
+    many = [ToolCall(name="computer_use", args={}, tool_use_id=f"k{i}", index=i) for i in range(10)]
+    others = [ToolCall(name="load_full_file", args={}, tool_use_id=f"f{i}", index=10 + i) for i in range(6)]
+    res2 = asyncio.run(o._execute_tool_batch(many + others, used_model="m", base_guide="", system_guide="",
+                                              realtime_callback=None, event_queue=_Q()))
+    check([r for r in ran if r.startswith("k")] == [f"k{i}" for i in range(10)],
+          "10 个 computer_use 连发全部执行（不受每轮 4 个的上限）", str(len(ran)))
+    check([r for r in ran if r.startswith("f")] == ["f0", "f1", "f2", "f3"]
+          and all(not x.ok for x in res2[14:]), "其他工具仍按每轮 4 个限制，超出的给出未执行结果")
 
     o2 = make_orch()
     o2._gui_task_begin("test")
@@ -402,6 +414,9 @@ def t_wiring() -> None:
           "普通轮经过 _gui_task_track_turn")
     check(osrc.count("_gui_task_track_turn(self._run_react_loop(") == 2, "唤醒轮也经过 _gui_task_track_turn")
     check("self._take_window_note()" in osrc, "工具结果附窗口说明")
+    plan = S.def_text("core.orchestrator", "_turn_tool_plan", owner="Orchestrator")
+    check("self._gui_task_active()" in plan and '"computer_use", "set_window_mode", "look_at_screen"' in plan,
+          "GUI 任务进行中：屏幕工具这一簇随每一轮下发（load_tools 不跨轮）")
     check('register_tick_step("gui_task_idle"' in osrc and "self._install_gui_task_idle_tick()" in osrc,
           "空闲兜底登记在 runtime reconcile 周期 tick 上")
 

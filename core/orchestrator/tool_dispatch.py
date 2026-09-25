@@ -1236,8 +1236,17 @@ class ToolDispatchMixin:
         - 结果按原始顺序排列。
         """
         original_calls = list(calls)
-        executable_calls = original_calls[:self.MAX_TOOLS_PER_ROUND]
-        skipped_calls = original_calls[self.MAX_TOOLS_PER_ROUND:]
+        # 每轮上限只数非 computer_use 的调用：一批屏幕动作连发多少步由模型按「哪里需要
+        # 中途核对真实状态」判断，不设数字上限（失败即停见下面的串行段）。
+        executable_calls, skipped_calls, _n_counted = [], [], 0
+        for _c in original_calls:
+            if _c.name == "computer_use":
+                executable_calls.append(_c)
+            elif _n_counted < self.MAX_TOOLS_PER_ROUND:
+                executable_calls.append(_c)
+                _n_counted += 1
+            else:
+                skipped_calls.append(_c)
 
         results_by_key: dict[str, ToolExecution] = {}
 

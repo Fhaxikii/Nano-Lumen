@@ -90,7 +90,8 @@ def t_stream() -> None:
         stops = []
         me = types.SimpleNamespace(
             agent=types.SimpleNamespace(request_stop=lambda src="": stops.append(src)),
-            _resp_state=rs, pipeline_lock=lock, _refresh_send_btn=lambda: None)
+            _resp_state=rs, pipeline_lock=lock, _refresh_send_btn=lambda: None,
+            _dismiss_confirms_of=lambda *a, **k: None)
         check(turn_running(me) is True, "按终止之前：锁在、按钮是终止")
         t_stop = time.monotonic()
         request_stop(me)
@@ -164,7 +165,8 @@ def t_stop_cancels_pending_confirms() -> None:
     check(rs.get("reply_ids") == [(rid, ["confirm", "cancel"])], "记下了本回应期显示过的确认", str(rs.get("reply_ids")))
     other = R.register({"confirm": lambda: got.append("sub-confirm"), "cancel": lambda: got.append("sub-cancel")})
     me = types.SimpleNamespace(agent=types.SimpleNamespace(request_stop=lambda src="": None),
-                               _resp_state=rs, _refresh_send_btn=lambda: None)
+                               _resp_state=rs, _refresh_send_btn=lambda: None,
+                               _dismiss_confirms_of=lambda *a, **k: None)
     me._discard_after_stop = lambda step: discard(me, step)
     request_stop(me)
     check(got == ["cancel"], "按终止：本轮等待中的确认回「取消」（后端不必等到超时）", str(got))
@@ -172,6 +174,65 @@ def t_stop_cancels_pending_confirms() -> None:
           "不属于本回应期的确认（如 Subagent 的）不受影响")
     R.discard(rid)
     R.discard(other)
+
+
+class _Elem:
+    def __init__(self):
+        self.visible = True
+        self.text = ""
+        self.closed = False
+        self.deleted = False
+
+    def set_visibility(self, v):
+        self.visible = v
+
+    def set_text(self, s):
+        self.text = s
+
+    def style(self, *_a, **_k):
+        return self
+
+    def close(self):
+        self.closed = True
+
+    def delete(self):
+        self.deleted = True
+
+
+def t_stop_cleans_ui() -> None:
+    print("\n▶ 终止后界面不留残骸：工具行转圈停下、本回应期的确认卡收掉")
+    import contextlib
+    register = _load("_register_pending_confirm")
+    dismiss_of = _load("_dismiss_confirms_of")
+    discard = _load("_discard_after_stop")
+    VS = _view_session_cls()
+    rs, other_rs = VS(), VS()
+    me = types.SimpleNamespace(_ui_scope=contextlib.nullcontext, _pending_confirm_dialogs=None)
+    d_mine, d_sub, d_other = _Elem(), _Elem(), _Elem()
+    chip = _Elem()
+    me._confirm_owner = rs
+    register(me, d_mine, {"chip": chip})
+    me._confirm_owner = None                 # 轮外队列（Subagent）弹出的
+    register(me, d_sub, {"chip": None})
+    me._confirm_owner = other_rs
+    register(me, d_other, {"chip": None})
+    dismiss_of(me, rs, "test")
+    check(d_mine.closed and chip.deleted, "本回应期的确认卡连同最小化悬浮条一起收掉")
+    check(not d_sub.closed and not d_other.closed, "Subagent / 其他回应期的确认卡不动")
+    check([e[0] for e in me._pending_confirm_dialogs] == [d_sub, d_other], "登记表里只摘掉本回应期的")
+
+    spin, done = _Elem(), _Elem()
+    rs["action_refs"] = {"a1": {"spin": spin, "done": done}}
+    settled = []
+    me._settle_tool_pill = lambda r: settled.append(r.get("batch_fail_count"))
+    discard(me, {"event": "tool_end", "action_id": "a1", "ok": False}, rs)
+    check(not spin.visible and done.text == "✕", "终止后到达的 tool_end 仍然停掉那一行的转圈并画上结果")
+    check(settled == [1], "工具失败时 pill 重新定型为失败", str(settled))
+    rq = S.def_text("app", "_request_stop", owner="WebUI")
+    check("self._dismiss_confirms_of(_rs_now" in rq, "终止按钮收掉本回应期的确认卡")
+    app = S.module_text("app")
+    check("self._confirm_owner = _rs" in app and "self._confirm_owner = None" in app,
+          "轮内事件流弹出的确认归本回应期，轮外队列的不归")
 
 
 def t_wiring() -> None:
@@ -182,7 +243,7 @@ def t_wiring() -> None:
     rq = S.def_text("app", "_request_stop", owner="WebUI")
     check('_rs_now["stop_clicked"] = True' in rq and "_evt.set()" in rq, "终止按钮置标志并唤醒包装器")
     check("async for step in self._stoppable_stream(_stream, _rs):" in app, "navigate_pipeline 走包装后的事件流")
-    check('if _rs.get("ui_stopped"):' in app and "self._discard_after_stop(step)" in app,
+    check('if _rs.get("ui_stopped"):' in app and "self._discard_after_stop(step, _rs)" in app,
           "界面收尾后到达的事件不再显示")
     code = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
     check("the user pressed Stop" not in code, "界面不再写终止事实")
@@ -197,6 +258,7 @@ if __name__ == "__main__":
     t_stream()
     t_discard()
     t_stop_cancels_pending_confirms()
+    t_stop_cleans_ui()
     t_wiring()
 
     _ok = sum(1 for r in _results if r[0])

@@ -905,17 +905,23 @@ class PromptContextMixin:
 
         三种状态：mini（任务进行中，不要再缩）/ 任务进行中但用户放大了（尊重，只在真的
         挡住下一步时再缩并说明）/ full 且没有任务（操作屏幕前先缩窗开始任务；看屏幕不需要）。
+        任务进行中时（跨轮），再提醒一句：两轮之间用户可能用过电脑，焦点不一定还在原处。
         """
+        _between_turns = (
+            " Between your turns the user may have used the computer (switched windows, typed, "
+            "closed something), so focus may no longer be where you left it. Before your first "
+            "mouse/keyboard action in this turn, bring the target window to the front "
+            "(computer_use win_switch with its title) or check what is in front.")
         if self._window_mode_now() == "mini":
             return ("\n\n[Window] Nano's own window is CURRENTLY MINI (small, "
                     "top-right corner) and a screen-operation task is in progress. Do NOT call "
-                    "set_window_mode('mini') again; it is already done.")
+                    "set_window_mode('mini') again; it is already done." + _between_turns)
         if self._gui_task_active():
             return ("\n\n[Window] A screen-operation task is in progress, but the user enlarged "
                     "Nano's window - respect that. Shrink again only if the window truly blocks "
                     "the next step (a drag across it, or a target hidden under it); looking at the "
                     "screen is never a reason. If you shrink, say in one short sentence why, then "
-                    "continue. No new authorization is needed.")
+                    "continue. No new authorization is needed." + _between_turns)
         return ("\n\n[Window] Nano's own window is CURRENTLY FULL SIZE. Before operating the "
                 "screen with mouse or keyboard (computer_use), call set_window_mode('mini'): it "
                 "starts a screen-operation task that the user approves once. Looking at the "

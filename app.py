@@ -2499,7 +2499,13 @@ class WebUI:
                 _wire_check(_ev or {})
                 _kind = (_ev or {}).get("event", "")
                 if _kind == "os_action_confirm":
-                    self._present_os_confirm(_ev)
+                    # 轮外（Subagent）的确认不属于任何回应期：终止按钮不收它
+                    _prev_owner = getattr(self, "_confirm_owner", None)
+                    self._confirm_owner = None
+                    try:
+                        self._present_os_confirm(_ev)
+                    finally:
+                        self._confirm_owner = _prev_owner
                 elif _kind == "confirm_dismiss":
                     self._dismiss_pending_confirms(_ev.get("why", ""))
                 else:
@@ -2513,7 +2519,8 @@ class WebUI:
         if not _reg:
             return
         self._pending_confirm_dialogs = []
-        for _d, _holder in _reg:
+        for _entry in _reg:
+            _d, _holder = _entry[0], _entry[1]
             try:
                 with self._ui_scope():
                     if _d is not None:
@@ -2547,7 +2554,32 @@ class WebUI:
         _reg = getattr(self, "_pending_confirm_dialogs", None)
         if _reg is None:
             _reg = self._pending_confirm_dialogs = []
-        _reg.append((dialog, chip_holder))
+        # 第三项：它属于哪个回应期（轮内事件流弹出的 = 当前回应期；轮外队列弹出的 = None），
+        # 终止按钮只收本回应期的确认（`_dismiss_confirms_of`）。
+        _reg.append((dialog, chip_holder, getattr(self, "_confirm_owner", None)))
+
+    def _dismiss_confirms_of(self, owner, why: str = "") -> None:
+        """收掉属于某个回应期的确认弹窗（含最小化后的悬浮条）。**永不抛。**"""
+        if owner is None:
+            return
+        _reg = getattr(self, "_pending_confirm_dialogs", None) or []
+        mine = [e for e in _reg if len(e) > 2 and e[2] is owner]
+        if not mine:
+            return
+        self._pending_confirm_dialogs = [e for e in _reg if not (len(e) > 2 and e[2] is owner)]
+        for _d, _holder, _o in mine:
+            try:
+                with self._ui_scope():
+                    if _d is not None:
+                        _d.close()
+                    _chip = (_holder or {}).get("chip") if isinstance(_holder, dict) else None
+                    if _chip is not None:
+                        _chip.delete()
+                        _holder["chip"] = None
+            except Exception as e:
+                logger.debug(f"[Confirm] 收弹窗失败: {e}")
+        if why:
+            logger.info(f"[Confirm] 已收掉本回应期 {len(mine)} 个还挂着的确认弹窗（{why}）")
 
     def _show_os_action_confirm_dialog(self, action: str, effective_risk: int,
                                         params_summary: str, reason: str,
@@ -3618,10 +3650,11 @@ class WebUI:
         async for step in self._stoppable_stream(_stream, _rs):
             _wire_check(step)
             self._note_reply_ids(_rs, step)
+            self._confirm_owner = _rs            # 这一步弹出的确认归本回应期
             # 用户已按终止、界面已收尾：后端剩下的事件照常消费（让它在动作边界停下、
             # 期间一直持有 pipeline_lock），但不再画到界面上；等待回复的确认一律回「取消」。
             if _rs.get("ui_stopped"):
-                self._discard_after_stop(step)
+                self._discard_after_stop(step, _rs)
                 continue
 
             # ── 统一文字流：思考文字和最终答案同字体同样式直接流入内容区 ───
@@ -5735,8 +5768,30 @@ class WebUI:
         except Exception:
             pass
 
-    def _discard_after_stop(self, step: dict) -> None:
-        """终止后到达的后端事件：不显示；等待回复的确认 / 选择卡一律回「取消」。"""
+    def _discard_after_stop(self, step: dict, rs=None) -> None:
+        """终止后到达的后端事件：不显示；等待回复的确认 / 选择卡一律回「取消」。
+
+        例外：`tool_end` 仍然收掉那一行工具的转圈并画上结果（工具真的结束了才停转；
+        失败时 pill 重新定型为失败），否则那一行会永远转下去。
+        """
+        if rs is not None and step.get("event") == "tool_end" and step.get("action_id"):
+            try:
+                _ref = (rs.get("action_refs") or {}).get(step["action_id"])
+                if _ref:
+                    with self._ui_scope():
+                        _ref["spin"].set_visibility(False)
+                        if step.get("ok") is False:
+                            _ref["done"].set_text("✕")
+                            _ref["done"].style('font-size:var(--nano-fs-sm); color:var(--nano-danger); '
+                                               'font-weight:500; font-family:var(--nano-mono);')
+                        else:
+                            _ref["done"].set_text("✓")
+                if step.get("ok") is False:
+                    rs["batch_fail_count"] = (rs.get("batch_fail_count") or 0) + 1
+                    rs["pill_settled"] = False
+                    self._settle_tool_pill(rs)
+            except Exception as e:
+                logger.debug(f"[Stop] 终止后收尾工具行失败: {e}")
         try:
             from core.runtime.replies import resolve
             for it in [step] + list(step.get("cards") or []):
@@ -5822,6 +5877,7 @@ class WebUI:
             # 不碰 Subagent 的；已显示的弹窗留着，之后点它只会关掉自己。
             for _rid, _acts in list(_rs_now.get("reply_ids") or []):
                 self._discard_after_stop({"reply_id": _rid, "actions": _acts})
+            self._dismiss_confirms_of(_rs_now, "用户终止")
         self._refresh_send_btn()
 
     def _handoff_response_epoch(self, predecessor: dict, successor: dict) -> None:
