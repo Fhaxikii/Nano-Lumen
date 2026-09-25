@@ -355,13 +355,8 @@ except Exception as _e:  # pragma: no cover
 
 
 def _real_manifests() -> dict:
-    out = {}
-    for k in dir(O):
-        if k.endswith("_MANIFEST"):
-            v = getattr(O, k)
-            if isinstance(v, dict) and v.get("name"):
-                out[v["name"]] = v
-    return out
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    return dict(BUILTIN_MANIFESTS)
 
 
 # ── [10] 真实的 25 条内置声明：能构造 + binding 真实存在 ──────────────────
@@ -1165,7 +1160,8 @@ def t_create_new_skill_contract():
     if O is None:
         check(False, "无法导入 orchestrator"); return
     import inspect as _i
-    m = O._CREATE_NEW_SKILL_MANIFEST
+    from core.tools import manifests as _MF
+    m = _MF._CREATE_NEW_SKILL_MANIFEST
     props = m["parameters"]["properties"]
     req = set(m["parameters"]["required"])
 
@@ -1211,14 +1207,16 @@ def t_os_enum_derived():
 
     print("\n[OS-ENUM] enum 从 _ACTIONS 派生，不是手抄")
 
-    _os = _O._OS_MANIFEST["parameters"]["properties"]["action"]["enum"]
-    _cu = _O._COMPUTER_USE_MANIFEST["parameters"]["properties"]["action"]["enum"]
+    from core.tools import manifests as _MF
+    _os = _MF._OS_MANIFEST["parameters"]["properties"]["action"]["enum"]
+    _cu = _MF._COMPUTER_USE_MANIFEST["parameters"]["properties"]["action"]["enum"]
     _impl = set(_routed) | set(_d.CONTROL_FLOW_ACTIONS)
 
     # ① 冻结常量必须已经消失（只看会执行的代码 —— 注释里提它是合法留痕）
     #    ⚠️ 这条断言的第一版直接在源码文本里搜，**打中了本文件自己写的注释**。
     #       📌 「在源码里搜一个名字」必须先剥掉注释 —— 否则留痕本身会把断言打红。
-    _code = _ast.unparse(_ast.parse(_i.getsource(_O)))
+    _code = "\n".join(_ast.unparse(_ast.parse(module_text(_m)))
+                      for _m in ("core.orchestrator", "core.tools.manifests"))
     check("_OS_ENUM_FROZEN_36" not in _code,
           "⭐⭐⭐ 冻结常量在**代码**里已无引用（注释保留是留痕，不算）")
 
@@ -1274,8 +1272,8 @@ def t_os_enum_derived():
           "⚠️ 它就是路由表本身，没有第二份")
 
     # ⑨ 🔴 遮罩残留：描述里不许再声称截图会把 Nano 涂黑（08-23 已删除该机制）
-    for _name, _m in (("os_execute", _O._OS_MANIFEST),
-                      ("computer_use", _O._COMPUTER_USE_MANIFEST)):
+    for _name, _m in (("os_execute", _MF._OS_MANIFEST),
+                      ("computer_use", _MF._COMPUTER_USE_MANIFEST)):
         check("blacked out" not in _m["description"],
               f"🔴 `{_name}` 的描述里没有「blacked out」—— "
               "📌 一句描述一个已经不存在的机制的话，比没有这句更坏")

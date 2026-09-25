@@ -77,11 +77,11 @@ def _method_source(action: str) -> str:
 
 
 def t_examples() -> None:
-    from core import orchestrator as O
+    from core.tools import manifests as _MF
     from core.os_layer import dispatch as D
     seen = 0
     for mname in ("_OS_MANIFEST", "_COMPUTER_USE_MANIFEST"):
-        man = getattr(O, mname)
+        man = getattr(_MF, mname)
         desc = man["parameters"]["properties"]["params"]["description"]
         ex = _examples(desc)
         print(f"\n▶ {man['name']}：{len(ex)} 条示例")

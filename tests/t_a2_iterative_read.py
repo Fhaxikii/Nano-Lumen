@@ -242,7 +242,8 @@ def t_scratchpad_and_compression() -> None:
     from core.schema import ChatMessage, ToolResultBlock
     from memory.manager import MemoryManager
 
-    props = O._LOAD_FULL_FILE_MANIFEST["parameters"]["properties"]
+    from core.tools import manifests as _MF
+    props = _MF._LOAD_FULL_FILE_MANIFEST["parameters"]["properties"]
     check("notes" in props,
           "⭐ scratchpad 的载体是**工具参数** —— 原设计要模型「在特定 "
           "XML/Markdown 块中输出」，那依赖模型愿意在调工具时同时写正文，"
@@ -360,9 +361,9 @@ def t_read_tool_prompts() -> None:
       📌 连作者本人都被这段措辞带偏了 —— 模型没有理由不被带偏。
     """
     print("\n▶ 读文件三工具的互指")
-    from core.orchestrator import (Orchestrator as _O,
-                                   _LOAD_FULL_FILE_MANIFEST as _LFM,
-                                   _OS_MANIFEST as _OSM)
+    from core.orchestrator import Orchestrator as _O
+    from core.tools.manifests import (_LOAD_FULL_FILE_MANIFEST as _LFM,
+                                      _OS_MANIFEST as _OSM)
     from memory.manager import MemoryManager as _MM
 
     _lf = _LFM["description"]

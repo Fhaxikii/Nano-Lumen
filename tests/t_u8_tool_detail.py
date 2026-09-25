@@ -163,10 +163,8 @@ def t_all_builtin_tools_have_detail() -> None:
     import core.orchestrator as O
     from core.tools.builtin import build_builtin_definitions
     from core.schema import ToolResultBlock
-    mans = {k: v for k, v in
-            ((kk, vv) for kk, vv in vars(O).items()
-             if kk.endswith("_MANIFEST") and isinstance(vv, dict) and vv.get("name"))}
-    mans = {v["name"]: v for v in mans.values()}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    mans = dict(BUILTIN_MANIFESTS)
     defs = build_builtin_definitions(mans)
     r = ToolResultBlock(name="x", tool_use_id="u", content="有结果")
     empty = [d.name for d in defs

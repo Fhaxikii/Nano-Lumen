@@ -300,7 +300,8 @@ def t_recall_is_reachable_by_model() -> None:
     import core.orchestrator as O
     from core.tools.builtin import build_builtin_definitions
 
-    _m = getattr(O, "_RECALL_CONVERSATION_MANIFEST", None)
+    from core.tools import manifests as _MF
+    _m = getattr(_MF, "_RECALL_CONVERSATION_MANIFEST", None)
     check(isinstance(_m, dict) and _m.get("name") == "recall_conversation",
           "⭐⭐ manifest 存在（`*_MANIFEST` 全局会被自动收集）")
     check(hasattr(O.NanoAgent if hasattr(O, "NanoAgent") else O.Orchestrator
@@ -309,8 +310,8 @@ def t_recall_is_reachable_by_model() -> None:
           or any("_handle_recall_conversation" in n for n in dir(O)),
           "⭐⭐ handler 方法真实存在（binding 写错的话运行时才炸）")
 
-    _mans = {v["name"]: v for k, v in vars(O).items()
-             if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _mans = dict(BUILTIN_MANIFESTS)
     defs = {d.name: d for d in build_builtin_definitions(_mans)}
     check("recall_conversation" in defs, "⭐⭐⭐ **注册进了工具目录**")
     _d = defs.get("recall_conversation")

@@ -35,7 +35,8 @@ from loguru import logger
 logger.remove()
 
 import core.orchestrator as orch_mod
-from core.orchestrator import Orchestrator, _CREATE_NEW_SKILL_MANIFEST
+from core.orchestrator import Orchestrator
+from core.tools.manifests import _CREATE_NEW_SKILL_MANIFEST
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -102,8 +103,8 @@ def t_single_entry() -> None:
     from core.tools import ToolScope as _TS
     from core.tools.builtin import build_builtin_definitions as _bbd
     import core.orchestrator as _om
-    _mans = {v["name"]: v for k, v in vars(_om).items()
-             if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _mans = dict(BUILTIN_MANIFESTS)
     _d = {d.name: d for d in _bbd(_mans)}["create_new_skill"]
     _ref = _d.bindings[_TS.MAIN]
     check(bool(_ref), "元工具 create_new_skill 在主决策里解析得到 handler", _ref)
@@ -135,8 +136,8 @@ def t_awareness_not_truncated() -> None:
     #    ⑥ 删掉关键词快路径之后，「写个 skill 做 XX」唯一的入口就是它。
     from core.tools.builtin import build_builtin_definitions as _bbd
     import core.orchestrator as _om
-    _mans = {v["name"]: v for k, v in vars(_om).items()
-             if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _mans = dict(BUILTIN_MANIFESTS)
     defs = {d.name: d for d in _bbd(_mans)}
 
     _body = defs["create_new_skill"].awareness
@@ -159,8 +160,8 @@ def t_awareness_set_is_deliberate() -> None:
     # ⭐ 顺带比旧断言强一点：旧的只验名单长度，新的直接量**每个工具真实的那一行**。
     from core.tools.builtin import build_builtin_definitions as _bbd
     import core.orchestrator as _om
-    _mans = {v["name"]: v for k, v in vars(_om).items()
-             if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _mans = dict(BUILTIN_MANIFESTS)
     defs = {d.name: d for d in _bbd(_mans)}
 
     _long = sorted(n for n, d in defs.items() if len(d.awareness) > 120)

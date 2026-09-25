@@ -396,7 +396,8 @@ def t_summary_is_not_the_answer() -> None:
     """⚠️ 用户用两个例子说透的坑：摘要 ≠ 答案。它必须写在**模型读得到的地方**。"""
     print("\n[8] ⭐⭐ 「摘要不是答案」写进了工具描述和提示段，不是只留在注释里")
     import core.orchestrator as O
-    desc = O._NOTE_IMAGE_MANIFEST["description"]
+    from core.tools import manifests as _MF
+    desc = _MF._NOTE_IMAGE_MANIFEST["description"]
     check("NOT YOUR ANSWER" in desc.upper(),
           "⭐⭐ 工具描述里明写「摘要不是你的答案」")
     check("1+1" in desc,
@@ -406,7 +407,7 @@ def t_summary_is_not_the_answer() -> None:
           "⚠️ 明说摘要要独立于用户的问题来写")
 
     # 回看那条阶梯同样要在模型读得到的地方
-    vdesc = O._VIEW_PAST_IMAGE_MANIFEST["description"]
+    vdesc = _MF._VIEW_PAST_IMAGE_MANIFEST["description"]
     check("RESTRAINT" in vdesc.upper() and vdesc.upper().index("RESTRAINT") < len(vdesc) // 2,
           "⭐⭐ 回看工具**先说什么时候别用**，再说怎么用 —— "
           "📌 顺序反了那句『少用』没人听 —— 摘要够用就别回看，不是提到图片就回看")

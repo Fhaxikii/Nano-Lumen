@@ -161,8 +161,8 @@ def t_not_in_os_execute() -> None:
     from core.tools.builtin import build_builtin_definitions
     from core.tools.catalog import Preload, ToolScope
 
-    mans = {v["name"]: v for k, v in vars(O).items()
-            if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    mans = dict(BUILTIN_MANIFESTS)
     defs = {d.name: d for d in build_builtin_definitions(mans)}
     _sf = defs.get("search_files")
     check(_sf is not None, "⚠️ [L5] 前置：工具存在")
@@ -257,8 +257,8 @@ def t_edit_goes_through_the_safety_net() -> None:
     import core.orchestrator as O
     from core.tools.builtin import build_builtin_definitions
     from core.tools.catalog import Preload, ToolScope
-    mans = {v["name"]: v for k, v in vars(O).items()
-            if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    mans = dict(BUILTIN_MANIFESTS)
     defs = {d.name: d for d in build_builtin_definitions(mans)}
     _ef = defs.get("edit_file")
     check(_ef is not None and _ef.preload is Preload.CORE,

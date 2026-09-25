@@ -89,7 +89,7 @@ _ROUTE_SPEC: Dict[str, tuple] = {
     "scroll":            ("_action", "scroll"),
 }
 
-# ⭐ 「真的挂了执行器」的权威答案。`orchestrator._os_actions_for` 派生 enum 时读它。
+# ⭐ 「真的挂了执行器」的权威答案。`core.tools.manifests._os_actions_for` 派生 enum 时读它。
 # ⚠️ `read_screen_region` **不在这里**，而且那是**对的** —— 它没有执行器
 #    （只有鼠标键盘档才接 VisionLocator，低档位在校验层就该拒掉它）。
 #    📌 派生规则不能是「把 `_ACTIONS` 全抄一遍」，那会把一个**没实现的动作**

@@ -106,7 +106,7 @@ def t_schema_forces_next_step() -> None:
     print("")
     print("[1] ⭐⭐⭐ `next_step` 是**必填**，而它就是「手头的活」那个判据")
     import core.orchestrator as O
-    m = O._DONT_WAIT_MANIFEST
+    from core.tools.manifests import _DONT_WAIT_MANIFEST as m
     check(m["parameters"].get("required") == ["next_step"],
           "⭐⭐⭐ **`next_step` 必填** —— 📌「不等它」只有在「我有别的事要做」时"
           "才成立；把那个前提做成必填字段，模型就没法含糊过去",
@@ -250,12 +250,8 @@ def t_dont_wait_only_appears_when_there_is_a_carrier(tmp: pathlib.Path) -> None:
     # ⭐ 非回看轮不常驻（否则模型会拿它去「不等」一件不存在的事）
     from core.tools.builtin import build_builtin_definitions
     # ⚠️ 键是**工具名**，不是变量名 —— `build_builtin_definitions` 按工具名查。
-    _mans = {}
-    for _k in dir(O):
-        if _k.endswith("_MANIFEST"):
-            _v = getattr(O, _k)
-            if isinstance(_v, dict) and _v.get("name"):
-                _mans[_v["name"]] = _v
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _mans = dict(BUILTIN_MANIFESTS)
     _defs = {d.name: d for d in build_builtin_definitions(_mans)}
     _dw = _defs.get("dont_wait")
     check(_dw is not None, "⚠️ 前置：`dont_wait` 在工具目录里")

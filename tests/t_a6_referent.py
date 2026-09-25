@@ -279,8 +279,8 @@ def t_tool() -> None:
 def t_wiring() -> None:
     """接线：注入标记、稳定前缀、目录常驻、转发。"""
     print("\n▶ 接线")
-    from core.orchestrator import (Orchestrator as O, _ambient_parse_title,
-                                   _RESOLVE_AMBIENT_REFERENT_MANIFEST as M)
+    from core.orchestrator import Orchestrator as O, _ambient_parse_title
+    from core.tools.manifests import _RESOLVE_AMBIENT_REFERENT_MANIFEST as M
     from core.proactive import referent as R
 
     check(_ambient_parse_title("notepad", "a.txt - 记事本")
@@ -313,8 +313,8 @@ def t_wiring() -> None:
 
     import core.orchestrator as _orc
     from core.tools.builtin import build_builtin_definitions
-    _mans = {v["name"]: v for k, v in vars(_orc).items()
-             if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _mans = dict(BUILTIN_MANIFESTS)
     _d = {d.name: d for d in build_builtin_definitions(_mans)}
     from core.tools.catalog import Preload
     check("resolve_ambient_referent" in _d, "⭐ 工具已登记")

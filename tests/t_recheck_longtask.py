@@ -563,8 +563,8 @@ def t_source_wiring() -> None:
     from core.tools import Preload as _PL, Scheduling as _SC, ToolCatalog as _TC, ToolScope as _TS
     from core.tools.builtin import build_builtin_definitions as _bbd
     import core.orchestrator as _om2
-    _mans = {v["name"]: v for k, v in vars(_om2).items()
-             if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _mans = dict(BUILTIN_MANIFESTS)
     _defs = {d.name: d for d in _bbd(_mans)}
     _snc = _defs["set_next_checkin"]
 
@@ -598,7 +598,8 @@ def t_source_wiring() -> None:
           f"{body.count('_recheck_sid')} 处")
 
     # ⑦ 模型不该被要求提供系统已经知道的东西
-    man = orc[orc.index("_SET_NEXT_CHECKIN_MANIFEST = {"):]
+    _mt = module_text("core.tools.manifests")
+    man = _mt[_mt.index("_SET_NEXT_CHECKIN_MANIFEST = {"):]
     man = man[:man.index("\n}")]
     check("suspension" not in man and "wait_id" not in man,
           "⭐⭐ 工具**不要模型传 id** —— 回看轮里只有一个对象。"
@@ -874,8 +875,9 @@ def t_waiting_intent_keeps_user_controls_off_system_rechecks() -> None:
 
     check("at most one user-facing status conclusion" in orch,
           "回看协议要求决定后只给用户一次状态结论，不在工具前后复述")
-    check("User-requested scheduled plan" in orch and
-          "At the scheduled time, perform the requested action or reminder." in orch,
+    _mt = module_text("core.tools.manifests")
+    check("User-requested scheduled plan" in _mt and
+          "At the scheduled time, perform the requested action or reminder." in _mt,
           "wait_for 的总说明明确允许用户定时计划，并说明到点即执行/提醒")
 
 
@@ -921,7 +923,7 @@ def t_cancelled_handback_still_closes_its_original_action() -> None:
     check("_settle_cancelled_handback_actions(ref)" in app and
           '"bg_ref": bg_ref' in app,
           "取消后的完成通知仍能按 carrier ref 找到原 action")
-    check("does not cancel a process" in orch,
+    check("does not cancel a process" in module_text("core.tools.manifests"),
           "cancel_wait 明示仅取消等待，不误导模型把它当成终止命令")
 
 

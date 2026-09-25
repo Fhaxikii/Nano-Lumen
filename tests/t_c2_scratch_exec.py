@@ -105,7 +105,7 @@ def _run(coro):
 def t_name_has_no_ecosystem_owner() -> None:
     print("\n[1] 🔴🔴 名字不许撞生态（`WebSearch` 那个坑刚栽过）")
     import core.orchestrator as O
-    m = O._RUN_SCRATCH_CODE_MANIFEST
+    from core.tools.manifests import _RUN_SCRATCH_CODE_MANIFEST as m
     check(m["name"] == "run_scratch_code", "叫 run_scratch_code", m["name"])
     # 🔴 2026-08-25：那个 Skill 叫 `WebSearch` 时模型**每一次**都发空参数，
     #    只改名字就好了 —— 因为 Anthropic 有一个**服务端**同名工具（客户端不传参）。
@@ -206,8 +206,8 @@ def t_tool_card_always_shows_the_code() -> None:
     print("\n[4b] ⭐⭐ 工具卡里**每一次**都能展开看到那段代码")
     import core.orchestrator as O
     from core.tools.builtin import build_builtin_definitions
-    mans = {v["name"]: v for k, v in vars(O).items()
-            if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    mans = dict(BUILTIN_MANIFESTS)
     d = {x.name: x for x in build_builtin_definitions(mans)}["run_scratch_code"]
     code = "xs = [1, 2, 3]\nprint(sum(xs) / len(xs))"
     args_for_detail = {"purpose": "算平均值", "code": code}
@@ -355,8 +355,8 @@ def t_mechanical_guard_against_shadowing_skills() -> None:
     import core.orchestrator as O
     from core.tools.builtin import build_builtin_definitions
     from core.tools import Preload
-    mans = {v["name"]: v for k, v in vars(O).items()
-            if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    mans = dict(BUILTIN_MANIFESTS)
     d = {x.name: x for x in build_builtin_definitions(mans)}["run_scratch_code"]
     # ⭐ DEFERRED ⇒ 模型必须先 load_tools，而 load_tools 的搜索**本来就会
     #    一起返回匹配的现成 Skill** ⇒ 两者同时摆在眼前让它选。

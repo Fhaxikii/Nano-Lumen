@@ -49,8 +49,8 @@ from core.tools.builtin import build_builtin_definitions as _bbd
 
 def _expl_defs() -> dict:
     """内置声明表（按名字索引）。之后这就是探索作用域的**唯一**权威。"""
-    _mans = {v["name"]: v for k, v in vars(orch_mod).items()
-             if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    _mans = dict(BUILTIN_MANIFESTS)
     return {d.name: d for d in _bbd(_mans)}
 
 

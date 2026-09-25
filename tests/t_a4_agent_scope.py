@@ -48,8 +48,8 @@ def check(ok: bool, name: str, note: str = "") -> None:
 def _defs():
     import core.orchestrator as O
     from core.tools.builtin import build_builtin_definitions
-    mans = {v["name"]: v for k, v in vars(O).items()
-            if k.endswith("_MANIFEST") and isinstance(v, dict) and v.get("name")}
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    mans = dict(BUILTIN_MANIFESTS)
     return {d.name: d for d in build_builtin_definitions(mans)}
 
 

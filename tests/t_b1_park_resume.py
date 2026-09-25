@@ -294,14 +294,15 @@ def t_the_tool_really_runs(tmp: pathlib.Path) -> None:
     k = get_kernel()
 
     # ── manifest 真的把新动作给出去了（模型只看得到 schema）──────────────
-    _enum = (O._TASK_BOUNDARY_MANIFEST["parameters"]["properties"]
+    from core.tools import manifests as _MF
+    _enum = (_MF._TASK_BOUNDARY_MANIFEST["parameters"]["properties"]
              ["action"]["enum"])
     check(set(_enum) == {"finish", "start", "resume"},
           "⭐⭐ schema 的 enum 就是这三个 —— `park` 已随「Task 抛后台」那个"
           "概念一起退役（2026-08-20）。"
           "📌 那条的镜像：**给不出去的执行得了也没用**；"
           "而它的反面同样要守：**给出去的必须还在**", str(_enum))
-    check("task_id" in O._TASK_BOUNDARY_MANIFEST["parameters"]["properties"],
+    check("task_id" in _MF._TASK_BOUNDARY_MANIFEST["parameters"]["properties"],
           "⭐ 而 resume 需要的 `task_id` 也在 schema 里 —— "
           "🔴 少了它模型说得出 resume 却指不出接哪个")
 

@@ -6,7 +6,7 @@
 改造前，一个内置工具的事实散在 **11 处**，漏一处各有各的坏法且**都不报错**。
 这份文件把它们收成一条 `ToolDefinition`：
 
-    manifest      ← 原来的 `_XXX_MANIFEST` 字面量（唯一 schema 权威）
+    manifest      ← `core/tools/manifests.py` 的 `_XXX_MANIFEST` 字面量（唯一 schema 权威）
     awareness     ← 原来的 `_BUILTIN_TOOLS_AWARENESS` + `_build_deferred_awareness` 的 `[:28]`
     presentation  ← 原来的 `_tool_action_display` **与** `_describe_decision_for_user` 两张表
     scheduling    ← 原来的 `_REACT_SERIAL_TOOLS` / `_REACT_PARALLEL_SAFE_TOOLS`
