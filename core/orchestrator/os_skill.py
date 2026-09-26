@@ -40,7 +40,10 @@ class OsSkillMixin:
 
     async def _auto_gate_verdict(self, action: str, params: dict,
                                  main_model: str = "") -> tuple:
-        """auto 模式下这一步能不能自动放行。返回 `(auto_ok, gate_by, reason)`。
+        """auto 模式下这一步能不能自动放行。返回 `(auto_ok, blocked_kind, reason)`。
+
+        `blocked_kind`：放行时为空；C 为 `"mismatch"`，D（含判定器异常）为 `"undecidable"`。
+        确认弹窗按它显示对应的拦截说明；`reason` 只写日志。
 
         ⭐⭐ 四态：
         ```
@@ -75,12 +78,12 @@ class OsSkillMixin:
             )
         except Exception as e:
             logger.warning(f"[CmdClassifier] 判定异常，按需要确认处理: {e}")
-            return (False, "classifier", f"判定器异常（{type(e).__name__}）")
+            return (False, "undecidable", f"判定器异常（{type(e).__name__}）")
         if _v == _cc.ALLOW:
             return (True, "", "")            # B
         if _v == _cc.BLOCK:
-            return (False, "classifier", _why or "这条命令与你的要求对不上")   # C
-        return (False, "classifier", _why or "无法判断这条命令是否符合你的要求")  # D
+            return (False, "mismatch", _why or "这条命令与你的要求对不上")   # C
+        return (False, "undecidable", _why or "无法判断这条命令是否符合你的要求")  # D
 
     async def _execute_dsl_step(self, instr: dict, dispatcher, safety, used_model: str):
         """执行一条 DSL 指令，处理两段式确认流程（risk=1 直接放行，risk>=2 弹窗）。
@@ -169,7 +172,7 @@ class OsSkillMixin:
                 except Exception as _e_g:
                     # 🔴 连"要不要判"都判不了 → 当作需要确认（fail-safe）
                     logger.warning(f"[CmdClassifier] 闸前置异常: {_e_g}")
-                    _auto_ok, _gate_by, _gate_why = False, "classifier", "判定前置异常"
+                    _auto_ok, _gate_by, _gate_why = False, "undecidable", "判定前置异常"
                 from core.runtime import inbox as _ib6
                 # auto 开着且这一步被判定为可自动放行 → 后端直接放行，不发确认事件。
                 # 判据是「明确为 True」：判定漏给结果时照常弹窗，不静默执行。
@@ -181,10 +184,11 @@ class OsSkillMixin:
                     _oc6 = _ib6.ConfirmOutcome.CONFIRMED
                 else:
                     _reasons = list(ev.get("risk_reasons", []) or [])
-                    if _gate_why:
-                        # ⭐ 复用弹窗现成的「风险原因」那一栏 —— 不新增 UI 通道。
-                        #    📌 一个只多一行文字的需求，不该换来一条新的展示管线。
-                        _reasons.append(f"[自动放行被拦下] {_gate_why}")
+                    # Auto 下被危险判定拦下：事件带拦截类型，弹窗据此显示红色拦截说明
+                    # （与 Ask 下的普通确认区分开）；判定器给的具体理由只写日志。
+                    _auto_blocked = _gate_by if (_auto_now and _gate_by) else ""
+                    if _auto_blocked:
+                        logger.info(f"[Auto] 危险判定拦下 {action}（{_auto_blocked}）：{_gate_why}")
                     from core.runtime import replies as _replies
                     _rid = _replies.register({"confirm": _on_confirm, "always": _on_always,
                                               "cancel": _on_cancel})
@@ -192,6 +196,7 @@ class OsSkillMixin:
                         "event": "os_action_confirm",
                         "action": action, "effective_risk": risk,
                         "risk_reasons": _reasons,
+                        "auto_blocked": _auto_blocked,
                         "params_summary": p_summary, "reason": reason,
                         "params_raw": _raw_params,
                         "agent_label": _agent_label,

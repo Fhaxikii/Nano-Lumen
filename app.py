@@ -2441,6 +2441,7 @@ class WebUI:
                 on_always=_reply_cb(step, "always") or (lambda: None),
                 on_cancel=_reply_cb(step, "cancel") or (lambda: None),
                 agent_label=step.get("agent_label", ""),
+                auto_blocked=step.get("auto_blocked", ""),
             )
 
     async def _drain_oob_events(self) -> None:
@@ -2553,15 +2554,24 @@ class WebUI:
         if why:
             logger.info(f"[Confirm] 已收掉本回应期 {len(mine)} 个还挂着的确认弹窗（{why}）")
 
+    # Auto 下被危险判定拦下时，确认弹窗最上方的红色说明（按拦截类型）。
+    _AUTO_BLOCKED_NOTES = {
+        "mismatch": "原因：Nano所执行的操作被安全模型判定为与你的意图不符的危险指令，请人工二次核查。",
+        "undecidable": "原因：安全模型无法判断这条命令是否符合你的意图，请人工二次核查。",
+    }
+
     def _show_os_action_confirm_dialog(self, action: str, effective_risk: int,
                                         params_summary: str, reason: str,
                                         on_confirm, on_always, on_cancel,
                                         params_raw: dict = None,
-                                        agent_label: str = ""):
+                                        agent_label: str = "",
+                                        auto_blocked: str = ""):
         """OS 操作授权弹窗。
 
         risk=2 → 黄色标准卡片（可选"始终允许"）
         risk=3 → 红色 + 5秒倒计时（确认按钮倒计时内禁用，不可"始终允许"）
+        auto_blocked 非空（Auto 下被危险判定拦下）→ 标题改为「Nano操作被系统拦截」，
+        详情区最上方加红色拦截说明，与 Ask 下的普通确认区分开。
         """
         client = self._ui_client
         if client is None:
@@ -2572,6 +2582,13 @@ class WebUI:
         icon_name    = "dangerous" if is_high_risk else "security"
         title_color  = "var(--nano-danger)" if is_high_risk else "var(--nano-warn)"
         title_text   = "高危操作确认" if is_high_risk else "操作授权"
+        _blocked_note = ""
+        if auto_blocked:
+            title_text = "Nano操作被系统拦截 · 需要你确认"
+            title_color = icon_color = "var(--nano-danger)"
+            border_color = "rgba(var(--nano-danger-rgb),0.4)"
+            _blocked_note = self._AUTO_BLOCKED_NOTES.get(
+                auto_blocked, self._AUTO_BLOCKED_NOTES["undecidable"])
 
         # ⭐ **先算代码预览，宽度才能跟着内容走**（2026-08-15：
         #    「脚本内容框也太窄了，右侧明明有那么多可占用的空间」）。
@@ -2649,7 +2666,8 @@ class WebUI:
                     _minimize = self._make_minimizable(
                         client, dialog,
                         (f'nano agent · ' if agent_label else '')
-                        + f'{title_text}待确认 · {action}')
+                        + (f'Nano操作被系统拦截 · {action}' if auto_blocked
+                           else f'{title_text}待确认 · {action}'))
                     ui.button(icon='remove').props('flat round dense').style(
                         'color:var(--nano-fg-soft);'
                     ).on('click', _minimize)
@@ -2663,6 +2681,12 @@ class WebUI:
                     #    人先看出"这块不属于这里"，再看出它是什么颜色。
                     'width:100%; padding:16px 20px; gap:8px; background:var(--nano-panel);'
                 ):
+                    if _blocked_note:
+                        ui.label(_blocked_note).classes('w-full').style(
+                            'font-size:var(--nano-fs-md); color:var(--nano-danger); line-height:1.6; '
+                            'border-left:3px solid var(--nano-danger); '
+                            'background:rgba(var(--nano-danger-rgb),0.07); '
+                            'border-radius:6px; padding:8px 12px; margin-bottom:4px;')
                     if reason:
                         ui.label(reason).style('font-size:var(--nano-fs-md); color:var(--nano-fg-soft);')
 

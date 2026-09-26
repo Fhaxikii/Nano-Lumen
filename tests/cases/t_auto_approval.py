@@ -3,7 +3,8 @@
 
 - Ask / Auto 的读写走 `dsl.user_auto_mode_on` / `dsl.set_user_auto_mode`（保留 os_state.json 其它字段）。
 - OS 动作确认：Auto 开着且危险判定明确放行 → 后端直接放行、不发 `os_action_confirm`，
-  结果记 `authorized_by="auto"`；判定拦下 → 照常发确认事件（带拦下理由，没有 auto 动作）；
+  结果记 `authorized_by="auto"`；判定拦下 → 照常发确认事件（带拦截类型 mismatch / undecidable，没有 auto 动作），
+  弹窗标题与红色说明按类型显示（D49）；
   Auto 关着 → 发确认事件、不调判定。
 - 执行确认（临时代码 / Skill / MCP 不可逆）：Auto 下不发 `execution_confirm` 直接执行；
   否则发事件，取消则不执行。
@@ -163,11 +164,12 @@ def t_os_action_confirm(tmp: pathlib.Path) -> None:
         # ② Auto + 判定拦下 → 照常发确认，带理由，没有 auto 动作；用户取消 → 不执行
         with _AutoState(any_auto=True):
             evs, res, calls, disp = await _run_step(
-                o, (False, "classifier", "这条命令与你的要求对不上"), reply="cancel")
+                o, (False, "mismatch", "这条命令与你的要求对不上"), reply="cancel")
         ev = next((e for e in evs if e.get("event") == "os_action_confirm"), {})
         check(bool(ev), "Auto + 判定拦下：照常发 os_action_confirm")
-        check(any("[自动放行被拦下]" in r for r in ev.get("risk_reasons", [])),
-              "事件带拦下理由", str(ev.get("risk_reasons")))
+        check(ev.get("auto_blocked") == "mismatch"
+              and not any("拦下" in r for r in ev.get("risk_reasons", [])),
+              "事件带拦截类型字段（不塞进风险原因文本）", str(ev.get("auto_blocked")))
         check(ev.get("actions") == ["confirm", "always", "cancel"] and "auto_ok" not in ev,
               "事件没有 auto 动作、不带 auto_ok（界面不做放行判断）", str(ev.get("actions")))
         check(disp.after == [False] and res and res.get("ok") is False
@@ -179,6 +181,8 @@ def t_os_action_confirm(tmp: pathlib.Path) -> None:
             evs, res, calls, disp = await _run_step(o, (True, "", ""), reply="confirm")
         check(any(e.get("event") == "os_action_confirm" for e in evs) and calls == [],
               "Ask：发确认事件，不调危险判定")
+        ev = next((e for e in evs if e.get("event") == "os_action_confirm"), {})
+        check(ev.get("auto_blocked") == "", "Ask 下的普通确认不带拦截类型（弹窗照旧）")
         check(disp.after == [True] and res.get("authorized_by") == "user_once",
               "用户同意 → 执行，记 user_once", str(res))
 
@@ -274,6 +278,52 @@ def t_mini_auth(tmp: pathlib.Path) -> None:
           "界面按事件的 preapproved 决定弹不弹，不自己读 Auto")
 
 
+def t_blocked_kind_and_dialog(tmp: pathlib.Path) -> None:
+    print("\n▶ D49：拦截类型与弹窗说明")
+    from core.os_layer import cmd_classifier as CC
+    o = make_orch()
+    o.memory = None
+    o.provider = None
+
+    async def verdict(ret=None, exc=None):
+        orig = CC.classify
+
+        async def fake(*a, **k):
+            if exc:
+                raise exc
+            return ret
+        CC.classify = fake
+        try:
+            return await o._auto_gate_verdict("run_command", {"command": "x"}, "m")
+        finally:
+            CC.classify = orig
+
+    check(asyncio.run(verdict((CC.ALLOW, "")))[:2] == (True, ""), "判定安全 → 放行，无拦截类型")
+    check(asyncio.run(verdict((CC.BLOCK, "r")))[:2] == (False, "mismatch"), "判定危险 → mismatch")
+    check(asyncio.run(verdict((CC.UNKNOWN, "r")))[:2] == (False, "undecidable"), "判不了 → undecidable")
+    check(asyncio.run(verdict(exc=RuntimeError("x")))[:2] == (False, "undecidable"),
+          "判定器异常 → undecidable（照常弹窗）")
+
+    from app import WebUI
+    notes = WebUI._AUTO_BLOCKED_NOTES
+    check(notes.get("mismatch") ==
+          "原因：Nano所执行的操作被安全模型判定为与你的意图不符的危险指令，请人工二次核查。",
+          "mismatch 的说明文字（koala 定稿）")
+    check(notes.get("undecidable") ==
+          "原因：安全模型无法判断这条命令是否符合你的意图，请人工二次核查。",
+          "undecidable 的说明文字（koala 定稿）")
+    app = S.module_text("app")
+    dlg = app.split("def _show_os_action_confirm_dialog")[1].split("\n    def ")[0]
+    check('"Nano操作被系统拦截 · 需要你确认"' in dlg, "被拦截时标题改为「Nano操作被系统拦截 · 需要你确认」")
+    check("ui.label(_blocked_note)" in dlg and "var(--nano-danger)" in dlg
+          and dlg.index("ui.label(_blocked_note)") < dlg.index("if reason:"),
+          "红色说明画在详情区最上方（在 Nano 给的理由之前）")
+    check("Nano操作被系统拦截 · {action}" in dlg, "收起后的悬浮条也标明被拦截")
+    check("risk_reasons" not in dlg, "风险等级的计算依据继续不显示（只在审计日志）")
+    pres = app.split("def _present_os_confirm")[1].split("\n    def ")[0]
+    check('auto_blocked=step.get("auto_blocked", "")' in pres, "呈现入口把拦截类型传给弹窗")
+
+
 def t_ui_has_no_auto_decision() -> None:
     print("\n▶ 界面不做 Auto 放行判断")
     code = "\n".join(l for l in S.module_text("app").splitlines()
@@ -292,6 +342,7 @@ def main() -> int:
         t_os_action_confirm(tmp)
         t_execution_confirm(tmp)
         t_mini_auth(tmp)
+        t_blocked_kind_and_dialog(tmp)
         t_ui_has_no_auto_decision()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)

@@ -266,9 +266,8 @@ def t_wiring() -> None:
           "🔴 连「要不要判」都判不了时 → 需要确认（fail-safe）")
     check('if action != "run_command":' in _orc,
           "⭐ A 态：不是 run_command 就压根不算，零 token")
-    check("[自动放行被拦下]" in _orc,
-          "⭐ 理由复用弹窗现成的「风险原因」栏 —— "
-          "📌 一个只多一行文字的需求，不该换来一条新的展示管线")
+    check('"auto_blocked": _auto_blocked' in _orc and "[自动放行被拦下]" not in _orc,
+          "⭐ 拦截类型作为事件字段带给界面（mismatch / undecidable），不塞进风险原因文本")
 
     # ⭐ 「始终允许」那条约束是**自动满足**的，不是我们特意去掉的
     check("risk=2：标准卡片，可\"始终允许\"" in _app,
