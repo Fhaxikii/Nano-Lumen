@@ -620,7 +620,25 @@ class SkillLifecycleMixin:
                    "current_skill": None, "rag_hit": False, "full_file_hit": False}
             return
 
-        # 挂 pending_action，走原有二次确认流
+        if _op in ("disable", "enable"):
+            # 禁用 / 启用可逆，直接执行、不二次确认；只有删除确认（koala 2026-09-26）。
+            try:
+                _r = (self.registry.disable_skill(_skill) if _op == "disable"
+                      else self.registry.enable_skill(_skill))
+                _facts = (f"Operation {_op!r} on Skill {_skill!r} completed "
+                          f"(ok={(_r or {}).get('ok', True)}). Raw system message, as evidence: "
+                          + repr((_r or {}).get("msg") or "") + ". Tell the user it is done, "
+                          "in your own words.")
+            except Exception as e:
+                logger.error(f"[Skill] {_op} {_skill} 失败: {e}")
+                _facts = (f"Operation {_op!r} on Skill {_skill!r} failed with: {e}. Report it "
+                          "as-is - do not replace it with a vague \"something went wrong\".")
+            from core import skill_watch as _skw
+            _skw.request_reload(f"Skill 管理操作 {_op}")
+            yield _defer(_facts, f"{_op} Skill「{_skill}」已直接执行，措辞交回模型。")
+            return
+
+        # 删除：挂 pending_action，走二次确认流
         # ⚠️ 返回值（那句「将要删除 Skill「xxx」…」）**故意不再使用** ——
         #    只留它的副作用：设 `_pending_action` + 登记 Interaction。
         #    📌 2026-08-28 专门问过这句是不是固定文案：**是**，现在不再出现在气泡里。

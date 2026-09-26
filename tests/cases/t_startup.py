@@ -216,8 +216,15 @@ def t_skill_watch():
     check(SW.suppressed(), "自己写文件时可抑制监听")
     SW._reset_for_tests()
     orch = S.module_text("core.orchestrator")
-    check("request_skill_refresh" not in orch and orch.count("_skw.request_reload(") == 2,
+    check("request_skill_refresh" not in orch and orch.count("_skw.request_reload(") == 3,
           "管理操作完成后直接请求重载（原来的 `self.request_skill_refresh` 在 orchestrator 上不存在，静默不生效）")
+    seg = orch.split('if _op in ("disable", "enable"):')[1].split("# 删除：挂 pending_action")[0] \
+        if 'if _op in ("disable", "enable"):' in orch else ""
+    check("disable_skill(_skill)" in seg and "enable_skill(_skill)" in seg
+          and "_request_management_confirmation" not in seg,
+          "禁用 / 启用直接执行、不二次确认；只有删除走确认（koala 2026-09-26）")
+    check("Disable and enable take effect immediately" in S.module_text("core.tools.manifests"),
+          "工具说明同步：禁用 / 启用立即生效，删除才确认")
 
 
 def t_init_progress():

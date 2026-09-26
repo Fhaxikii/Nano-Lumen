@@ -318,7 +318,11 @@ def t_blocked_kind_and_dialog(tmp: pathlib.Path) -> None:
     check("ui.label(_blocked_note)" in dlg and "var(--nano-danger)" in dlg
           and dlg.index("ui.label(_blocked_note)") < dlg.index("if reason:"),
           "红色说明画在详情区最上方（在 Nano 给的理由之前）")
-    check("Nano操作被系统拦截 · {action}" in dlg, "收起后的悬浮条也标明被拦截")
+    check("Nano操作被系统拦截 · {action}" in dlg and "danger=bool(auto_blocked)" in dlg,
+          "收起后的悬浮条也标明被拦截，并用红字（与普通确认区分）")
+    mm = app.split("def _make_minimizable")[1].split("\n    def ")[0]
+    check("danger: bool = False" in mm and "'var(--nano-danger);' if danger" in mm,
+          "悬浮条支持红字（边框 / 图标 / 文字）")
     check("risk_reasons" not in dlg, "风险等级的计算依据继续不显示（只在审计日志）")
     pres = app.split("def _present_os_confirm")[1].split("\n    def ")[0]
     check('auto_blocked=step.get("auto_blocked", "")' in pres, "呈现入口把拦截类型传给弹窗")

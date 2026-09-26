@@ -1700,8 +1700,9 @@ _MANAGE_MCP_MANIFEST = {
 _MANAGE_EXISTING_SKILL_MANIFEST = {
     "name": "manage_existing_skill",
     "description": (
-        "Request delete, disable, or enable for an already deployed Nano Skill. "
-        "This is a meta-tool: it starts a second confirmation flow and does not change files immediately.\n\n"
+        "Delete, disable, or enable an already deployed Nano Skill. "
+        "Disable and enable take effect immediately (they are reversible). Delete starts a "
+        "confirmation flow and does not remove anything until the user confirms.\n\n"
         "Use when:\n"
         "- The user clearly wants to delete or remove an existing Skill.\n"
         "- The user clearly wants to disable, stop, or turn off a Skill tool itself, not a UI panel.\n"

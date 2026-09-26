@@ -2108,7 +2108,7 @@ class WebUI:
         ))
 
     def _make_minimizable(self, client, dialog, chip_label: str, chip_icon: str = 'expand_more',
-                          on_restore=None, chip: bool = True):
+                          on_restore=None, chip: bool = True, danger: bool = False):
         """一条硬性 UI 要求：弹窗/卡片不能强制遮挡背后的内容（包括正在
         显示的思考块），必须提供收起/最小化控件。这是通用实现，给所有"待确认"类
         弹窗（操作授权/副作用确认/Skill审计）复用，不要各自重新发明一套。
@@ -2172,11 +2172,16 @@ class WebUI:
                 with ui.row().style(
                     'position:fixed; bottom:90px; right:24px; z-index:9999; '
                     'align-items:center; gap:8px; padding:10px 16px; '
-                    'background:var(--nano-panel-2); border:1px solid rgba(var(--nano-warn-rgb),0.4); '
-                    'border-radius:999px; cursor:pointer; box-shadow:0 4px 16px rgba(var(--nano-ink-rgb), 0.35);'
+                    'background:var(--nano-panel-2); '
+                    + ('border:1px solid rgba(var(--nano-danger-rgb),0.5); ' if danger
+                       else 'border:1px solid rgba(var(--nano-warn-rgb),0.4); ')
+                    + 'border-radius:999px; cursor:pointer; box-shadow:0 4px 16px rgba(var(--nano-ink-rgb), 0.35);'
                 ).on('click', _restore) as chip_el:
-                    ui.icon(chip_icon).style('font-size:var(--nano-fs-2xl); color:var(--nano-amber);')
-                    ui.label(chip_label).style('font-size:var(--nano-fs-base); color:var(--nano-fg); font-weight:600;')
+                    # danger：Auto 下被安全检查拦下的确认 —— 红字，与普通确认一眼区分
+                    ui.icon(chip_icon).style('font-size:var(--nano-fs-2xl); color:'
+                                             + ('var(--nano-danger);' if danger else 'var(--nano-amber);'))
+                    ui.label(chip_label).style('font-size:var(--nano-fs-base); font-weight:600; color:'
+                                               + ('var(--nano-danger);' if danger else 'var(--nano-fg);'))
                 holder["chip"] = chip_el
 
         return _minimize
@@ -2591,7 +2596,8 @@ class WebUI:
                         client, dialog,
                         (f'nano agent · ' if agent_label else '')
                         + (f'Nano操作被系统拦截 · {action}' if auto_blocked
-                           else f'{title_text}待确认 · {action}'))
+                           else f'{title_text}待确认 · {action}'),
+                        danger=bool(auto_blocked))
                     ui.button(icon='remove').props('flat round dense').style(
                         'color:var(--nano-fg-soft);'
                     ).on('click', _minimize)
