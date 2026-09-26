@@ -1255,10 +1255,11 @@ def t_l14_present_not_execute(tmp: pathlib.Path) -> None:
     # ④ 接线（AST，只看会执行的代码）
     src = module_text("app")
     fn = _ast.parse(src)
-    _m = next((n for n in _ast.walk(fn)
-               if isinstance(n, _ast.AsyncFunctionDef)
-               and n.name == "_startup_present_unsent"), None)
-    check(_m is not None, "⭐ `_startup_present_unsent` 存在")
+    _st_src = module_text("core.startup")
+    _m = next((n for n in _ast.walk(_ast.parse(_st_src))
+               if isinstance(n, _ast.FunctionDef)
+               and n.name == "_present_unsent"), None)
+    check(_m is not None, "⭐ `_present_unsent` 存在（后端 core.startup）")
     if _m is not None:
         body = _ast.unparse(_m)
         check("add_system_note" not in body and "add_message" not in body,
@@ -1271,8 +1272,10 @@ def t_l14_present_not_execute(tmp: pathlib.Path) -> None:
               "⭐⭐ 呈现之后**真的丢弃** —— 留着 PENDING 的话下次 drain 会执行它")
         check("WAKE_INTENT" in body or "USER_MESSAGE" in body,
               "⚠️ 按 kind 分流：`WAKE_INTENT` 不呈现（那不是用户打的字，"
-              "「上个进程有没干完的活」归 [B1] `_startup_resume_offer` 问）")
-        check("render_unsent_user_card" in body, "呈现时画出这张卡")
+              "「上个进程有没干完的活」归 [B1] `_present_resume_offer` 问）")
+        check("unsent_message" in body and 'elif _kind == "unsent_message":' in src
+              and "render_unsent_user_card(" in src.split('elif _kind == "unsent_message":')[1][:600],
+              "呈现：后端发 unsent_message，界面画出这张卡")
 
     # ⑤ 重放：旧版本写进记录的 inbox_unsent 一律跳过，不再画出来
     check(src.count("def render_unsent_user_card") == 1, "渲染器只有一份")
@@ -1283,10 +1286,11 @@ def t_l14_present_not_execute(tmp: pathlib.Path) -> None:
           "重放认得旧的 `inbox_unsent` 记录并跳过，不画这张卡")
 
     # ⑥ ⚠️ 顺序：呈现排在「要不要接着做」之前
-    _i_present = src.index("self._startup_present_unsent, once=True")
-    _i_offer = src.index("self._startup_resume_offer, once=True")
+    _ps = _st_src.split("async def present_startup")[1]
+    _i_present = _ps.index("_present_unsent")
+    _i_offer = _ps.index("_present_resume_offer")
     check(_i_present < _i_offer,
-          "⚠️ 呈现排在 `_startup_resume_offer` **之前** —— "
+          "⚠️ 呈现排在 `_present_resume_offer` **之前** —— "
           "📌 「你上次还有话没说完」该出现在「要不要接着做那件活」之前："
           "前者是事实回放，后者是基于事实的提问")
 

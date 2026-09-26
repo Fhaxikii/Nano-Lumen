@@ -51,6 +51,7 @@ APP = module_text("app")
 SCHED = module_text("core.runtime.scheduler")
 ORCH = module_text("core.orchestrator")
 RECON = module_text("core.runtime.reconciler")
+STARTUP = module_text("core.startup")
 SCHED = module_text("core.runtime.scheduler")
 
 BASE_T = 1_000_000.0
@@ -81,10 +82,10 @@ def t_restart_path_is_a_different_thing() -> None:
     check("wait for their answer" in msg,
           "⭐⭐ 明说先别动手 —— 提醒不是自动续上")
 
-    fn = _fn(APP, "_startup_resume_offer")
-    check(fn is not None, "存在 `_startup_resume_offer`")
-    src = ast.get_source_segment(APP, fn) or ""
-    check("_proactive_push" in src,
+    fn = _fn(STARTUP, "_present_resume_offer")
+    check(fn is not None, "存在 `_present_resume_offer`（后端 core.startup）")
+    src = ast.get_source_segment(STARTUP, fn) or ""
+    check("await speak(content)" in src,
           "⭐⭐ 走主动开口 → **新气泡**（合并进老气泡会非常奇怪）")
     check("language_clause" in src, "⭐ 语言注入走 i18n 那个唯一出处")
     # 🔴 拆掉的那条债不许在这里复活
@@ -95,8 +96,7 @@ def t_restart_path_is_a_different_thing() -> None:
     _handlers = [h for h in ast.walk(fn) if isinstance(h, ast.ExceptHandler)]
     _pushes_in_except = [
         c for h in _handlers for c in ast.walk(h)
-        if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-        and c.func.attr == "_proactive_push"]
+        if isinstance(c, ast.Call) and getattr(c.func, "id", getattr(c.func, "attr", "")) == "speak"]
     check(_handlers and not _pushes_in_except,
           "⭐⭐⭐ **异常路径上一句话都不说** —— API 调不通意味着它此刻不能思考，"
           "这时蹦一句写死的话是在谎报它的状态")
@@ -119,8 +119,8 @@ def t_startup_terminates_and_still_speaks() -> None:
     #       不是「有人写错了变量」。**
     # ⭐ 而 `t_l23_missing_imports` 那个作用域检查器**本该抓到却没抓到** ——
     #    因为 `self`/`cls` 当时在它的 `_BUILTINS` 豁免表里（已摘掉，见那边留痕）。
-    check("_STARTUP_INTERRUPTED: list = []" in APP,
-          "⭐⭐ 用模块级变量接住（那段代码本来就在模块级）")
+    check("_startup.set_interrupted(" in APP and "def set_interrupted" in STARTUP,
+          "⭐⭐ 启动恢复认定的「被中断的活」交给后端 core.startup（那段代码本来就在模块级）")
     # ⚠️ 按 **AST 判有没有那次属性访问**，不在源码里搜字符串 ——
     #    上面那段留痕注释里就逐字写着它。📌 本项目第六次栽在
     #    「按字符串出现过核，不算核」上。
@@ -131,11 +131,12 @@ def t_startup_terminates_and_still_speaks() -> None:
     import t_l23_missing_imports as _M
     check("self" not in _M._BUILTINS and "cls" not in _M._BUILTINS,
           "⭐⭐⭐ 作用域检查器不再豁免 self/cls —— 下次这种错它能抓到")
-    check("ui.timer(4.0, self._startup_resume_offer, once=True)" in APP,
-          "⭐ 启动后会开口问")
+    check('register_once("startup_presentation"' in module_text("core.backend"),
+          "⭐ 启动后会开口问（后端启动呈现）")
     # 顺序：系统陈述事实在前，Nano 开口在后
-    i_crash = APP.find("ui.timer(2.5, self._crash_journal_tick")
-    i_offer = APP.find("ui.timer(4.0, self._startup_resume_offer")
+    _ps = ast.get_source_segment(STARTUP, _fn(STARTUP, "present_startup")) or ""
+    i_crash = _ps.find("_present_crash_journal")
+    i_offer = _ps.find("_present_resume_offer")
     check(0 < i_crash < i_offer,
           "⭐ 崩溃留痕在前、Nano 开口在后（顺序反了会像 Nano 在替系统解释）")
     # 🔴 第一版那套「关闭=放弃」的论证已经被推翻，不该还留在代码里

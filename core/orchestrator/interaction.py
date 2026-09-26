@@ -317,7 +317,8 @@ class InteractionMixin:
                        + repr(_res.get("msg") or "") + ". Tell them it is in place."
                    ),
                    "log": f"审计 {iid} 经模型工具批准部署。"}
-            self.request_skill_refresh() if hasattr(self, "request_skill_refresh") else None
+            from core import skill_watch as _skw
+            _skw.request_reload("审计经模型工具批准部署")
             return
 
         if rec.kind == _it.Kind.MCP_MANAGE:
@@ -416,7 +417,8 @@ class InteractionMixin:
                     f"Operation {_op!r} on Skill {_sk!r} failed with: {e}. "
                     f"Report it as-is - do not replace it with a vague "
                     f"\"something went wrong\".")
-            self.request_skill_refresh() if hasattr(self, "request_skill_refresh") else None
+            from core import skill_watch as _skw
+            _skw.request_reload(f"Skill 管理操作 {_op}")
             yield {"event": "exit_flow_defer_to_model",
                    "tool_result": (
                        _skill_manage_facts

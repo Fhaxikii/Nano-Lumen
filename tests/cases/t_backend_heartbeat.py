@@ -85,6 +85,8 @@ EXPECTED = {
     "intel_tick": 20, "cpu_sample": 60, "ambient_trail": 240,
     # 后台载体心跳（原挂在抽屉 2 秒刷新里，S6-6b 第 3 步移入后端；orphan 判定是 30 分钟）
     "carrier_heartbeat": 30,
+    # S6-6b 第 7 步：Skill 热重载（原界面 0.5 秒 timer）、健康登记表消费（原界面 1 秒 timer）
+    "skill_reload": 0.5, "health_consumer": 1,
 }
 
 
@@ -141,7 +143,8 @@ def t_app_no_longer_drives_them() -> None:
             "_intel_tick", "_cpu_sample", "_ambient_trail_tick", "_runtime_reconcile_tick", "_mcp_startup"]
     left = [g for g in gone if any(g in c for c in cbs)]
     check(not left, "这些回调不再挂在 ui.timer 上", ", ".join(left))
-    check(len(cbs) == 26, "app.py 剩 26 个 ui.timer（原 34，去 9 加 1 个用量警示刷新）", str(len(cbs)))
+    check(len(cbs) == 21, "app.py 剩 21 个 ui.timer（原 34；A 类去 9 加用量警示 1；业务状态下沉去 6、"
+          "加事件消费者 1 与监控面板重画 1）", str(len(cbs)))
     check("_nicegui_app.on_startup(lambda: _start_backend_services(gui))" in src,
           "启动时调用 start_backend_services")
     check("def _capability_probe_tick" not in src and "def _budget_health_tick" not in src,

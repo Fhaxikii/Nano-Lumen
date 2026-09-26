@@ -133,9 +133,10 @@ def t_wiring() -> None:
     sync = ast.unparse(_func(tree, "_sync_evicted_after_turn"))
     check(sync.find("_replay_durable_conversation()") < sync.find("_redraw_live_faults()"),
           "压缩同步：先重放历史，再把故障卡画到末尾")
-    tick = ast.unparse(_func(tree, "_health_consumer_tick"))
-    check("_recovered.add(" in tick and "self._retire_fault_cards(_recovered)" in tick,
-          "健康检查收到 RECOVERED 时调用撤卡")
+    tick = module_text("core.startup").split("def health_tick")[1].split("\n# ── ")[0]
+    check("recovered.append(" in tick and '"faults_recovered"' in tick
+          and 'self._retire_fault_cards(set(_ev.get("capabilities") or []))' in src,
+          "健康检查收到 RECOVERED 时发 faults_recovered，界面据此撤卡")
     check(tick.count("capabilities=") == 2, "两处发故障卡都带上能力清单（单卡 / 合并卡）",
           f"n={tick.count('capabilities=')}")
     n_clear = src.count("self.chat_container.clear()")

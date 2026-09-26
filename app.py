@@ -74,13 +74,7 @@ def _rt_auto_authorized() -> bool:
 
 
 
-#: 上个进程留下的、被启动恢复终止掉的那些活。
-#: ⚠️ **模块级**，因为写它的那段启动恢复代码本身就在模块级（不在任何函数里）。
-#:    📌 第一版写成 `self._startup_interrupted` → `NameError: self`，
-#:       而它被那段 `except` 吞成一句「启动恢复失败（不影响启动）」——
-#:       **一条被吞掉的 NameError，表现成的是「恢复失败」，不是「有人写错了变量」。**
-#: ⚠️ 重启即清（进程级），正好对上「那些活不活过重启」的语义。
-_STARTUP_INTERRUPTED: list = []
+
 
 
 from core.session import inbox_pending as _rt_inbox_pending  # noqa: E402
@@ -88,8 +82,6 @@ from core.session import inbox_pending as _rt_inbox_pending  # noqa: E402
 
 from dotenv import load_dotenv
 from nicegui import ui, events
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 from loguru import logger
 load_dotenv()
 
@@ -764,49 +756,6 @@ FAVICON_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fil
 </svg>'''
 
 
-# ── Skill 目录文件变更监听（热重载） ─────────────────────────────────────
-class SkillWatcher(FileSystemEventHandler):
-    def __init__(self, web_ui):
-        self.web_ui = web_ui
-
-    def on_modified(self, event):
-        if not event.src_path.endswith(".py"):
-            return
-        if time.time() < getattr(self.web_ui, "_suppress_skill_watcher_until", 0):
-            logger.info(f"✨ 技能代码变更由 SkillWriter 触发，已抑制二次热重载: {event.src_path}")
-            return
-        logger.info(f"✨ 技能代码变更，标记等待 UI 主上下文刷新: {event.src_path}")
-        self.web_ui.request_skill_refresh()
-
-    def on_deleted(self, event):
-        # 删除/禁用 Skill 会把 .py 移出 skills/，触发 on_deleted（聊天确认流
-        # 删除、disable 移到 skills/disabled 等都走这里）。on_modified 收不到
-        # 文件移出事件，边栏不会刷新——补上删除/移动监听。
-        if event.is_directory or not str(event.src_path).endswith(".py"):
-            return
-        logger.info(f"✨ 技能文件删除/移出，标记等待 UI 刷新: {event.src_path}")
-        self.web_ui.request_skill_refresh()
-
-    def on_moved(self, event):
-        # 文件在监听树内移动会触发 on_moved。
-        _src = str(getattr(event, "src_path", ""))
-        _dst = str(getattr(event, "dest_path", ""))
-        if event.is_directory or not (_src.endswith(".py") or _dst.endswith(".py")):
-            return
-        logger.info(f"✨ 技能文件移动，标记等待 UI 刷新: {_src} → {_dst}")
-        self.web_ui.request_skill_refresh()
-
-    def on_created(self, event):
-        # enable（从 skills/disabled 移回 skills/）时文件移入监听目录，
-        # 源在监听树外，watchdog 报 on_created 而非 on_moved。
-        if event.is_directory or not str(event.src_path).endswith(".py"):
-            return
-        if time.time() < getattr(self.web_ui, "_suppress_skill_watcher_until", 0):
-            return
-        logger.info(f"✨ 技能文件新增/启用，标记等待 UI 刷新: {event.src_path}")
-        self.web_ui.request_skill_refresh()
-
-
 # 流式输出末尾的终端闪烁光标（答完由 final_result 的干净 set_content 覆盖清掉）
 _STREAM_CURSOR = ' <span class="nano-cursor">▋</span>'
 
@@ -987,6 +936,10 @@ class WebUI:
         from core.runtime import events as _events
         self._events_q = _events.subscribe()
         self._turn_queues: dict = {}      # turn_id → 这一轮还没被渲染取走的事件
+        # 初始化遮罩的数据（来自后端事件 init_facts / init_stage / init_ready）
+        self._init_facts: dict | None = None
+        self._init_stages: list = []
+        self._init_ready: bool = False
         self.drawer         = None
         # 之前是 3 个独立的 ui.right_drawer 抢同一个布局槽位——怀疑（也是
         # 目前最合理的解释）NiceGUI/Quasar 的 q-layout 假设一侧只有一个
@@ -1057,8 +1010,6 @@ class WebUI:
         self._save_app_config()  # 立即写入当前状态
 
         self._ui_client    = None
-        self._suppress_skill_watcher_until = 0.0
-        self._skill_refresh_requested = False
 
         # ── 统一出口的就绪状态 ──────────────────────────────────────────
         # _ui_ready 在 render() 结尾置 True。在此之前发生的事件【入队不丢弃】——
@@ -1584,20 +1535,6 @@ class WebUI:
             logger.warning(f"[UI] 读取 CodeMirror 内容失败: {e}")
             return fallback or ""
 
-
-    def request_skill_refresh(self):
-        self._skill_refresh_requested = True
-
-    def _consume_skill_refresh_request(self):
-        if not self._skill_refresh_requested:
-            return
-        self._skill_refresh_requested = False
-        try:
-            registry.reload_all()
-            self.refresh_skill_list()
-            logger.info("🔄 已在 UI 主上下文刷新 Skill 列表")
-        except Exception as e:
-            logger.error(f"[UI] Skill 刷新失败: {e}")
 
     # ── Skill 审计弹窗 ────────────────────────────────────────────────────
 
@@ -2401,6 +2338,21 @@ class WebUI:
                     self._confirm_owner = _prev_owner
             elif _kind == "confirm_dismiss":
                 self._dismiss_pending_confirms(_ev.get("why", ""))
+            elif _kind == "unsent_message":
+                # 关软件时还排在队列里的用户消息（后端按启动呈现的顺序发来）：只呈现，不执行
+                import json as _j_us
+                with self._ui_scope():
+                    with self.chat_container:
+                        render_unsent_user_card(_j_us.dumps(
+                            {"text": _ev.get("text", ""), "had_image": bool(_ev.get("had_image"))},
+                            ensure_ascii=False))
+            elif _kind == "faults_recovered":
+                self._retire_fault_cards(set(_ev.get("capabilities") or []))
+            elif _kind == "skills_reloaded":
+                with self._ui_scope():
+                    self.refresh_skill_list()
+            elif _kind in ("init_facts", "init_stage", "init_ready"):
+                self._on_init_event(_ev)
             elif _kind == "chat_message":
                 # 聊天区的异步产出（主动开口 / 故障卡 …，`core.backend.emit_chat_event`）
                 self.emit_chat(**{k: _ev.get(k) for k in (
@@ -2410,6 +2362,16 @@ class WebUI:
                 logger.warning(f"[OOB] 轮外通道收到不认识的事件：{_kind}")
         except Exception as e:
             logger.warning(f"[OOB] 轮外事件处理失败（{_ev.get('event','?')}）: {e}")
+
+    def _on_init_event(self, ev: dict) -> None:
+        """初始化进度事件 → 遮罩读的状态（`_run_init_sequence`）。"""
+        k = ev.get("event")
+        if k == "init_facts":
+            self._init_facts = dict(ev)
+        elif k == "init_stage":
+            self._init_stages.append(str(ev.get("stage") or ""))
+        elif k == "init_ready":
+            self._init_ready = True
 
     def _turn_queue(self, turn_id: str) -> asyncio.Queue:
         q = self._turn_queues.get(turn_id)
@@ -3353,7 +3315,8 @@ class WebUI:
         if not self._validate_skill_code(current_code, validation_lbl):
             ui.notify('代码存在问题，请修复后再部署', type='negative')
             return
-        self._suppress_skill_watcher_until = time.time() + 2.5
+        from core import skill_watch as _skw
+        _skw.suppress(2.5)
         result = self.agent.apply_pending_skill(filename)
         if result["ok"]:
             dialog.close()
@@ -7323,80 +7286,9 @@ class WebUI:
         await speak(content, intervention_id)
 
     # ── 健康登记表的唯一 UI 消费者 ────────────────────────────────────────
-    async def _health_consumer_tick(self):
-        """定时 drain 状态转移队列。
-
-        为什么是"登记 + 轮询"而不是 callback：故障可能发生在事件循环存在之前
-        （core.rag.start_background_index 跑在普通 threading.Thread 里，且 WebUI() 构造早于 ui.run()），
-        也可能发生在 UI 尚未构建完成时。项目里已有同款范式：rag_engine._init_stage_log
-        线程写、UI 轮询读。
-        """
-        try:
-            from core.health import get_health, get_system_events, Transition, Status, Severity
-        except Exception:
-            return
-        _h = get_health()
-        _events = _h.drain_transitions()
-        if not _events:
-            # 没有新转移也要重画一次：一轮对话结束时 navigate_pipeline 会写活动态，
-            # 万一哪条路径漏了健康判断，1 秒内会被这里纠正回来（自愈，不靠调用方自觉）。
-            try:
-                self._refresh_monitor_health()
-            except Exception:
-                pass
-            return
-
-        _sys = get_system_events()
-        _to_card = []
-        _recovered = set()
-        for _t in _events:
-            _st = _t.state
-            _spec_label = _st.snapshot().get("label", _st.capability)
-            # 事件流（给模型看）：所有转移都记，含 degraded 与 recovered
-            if _t.kind == Transition.RECOVERED:
-                _recovered.add(_st.capability)
-                _sys.add(f"{_spec_label} recovered and is available again.")
-            elif _st.status == Status.DEGRADED:
-                _sys.add(f"{_spec_label} degraded: {_st.user_message}")
-            else:
-                _sys.add(f"{_spec_label} became unavailable: {_st.user_message}")
-
-            # 聊天区（给用户看）：只有【不可用】才出卡，degraded 只进监控面板。
-            # 用户的论证："致命报错就算不看 cmd，只看 UI 也一定能感知到不对劲；
-            # 但降级如果不做，不靠 cmd 你可能一辈子都发现不了。"——所以降级要做，
-            # 但落点是让监控卡说真话，不是往聊天区塞。
-            if _t.kind in (Transition.OPENED, Transition.UPDATED) and \
-               _st.status == Status.UNAVAILABLE and _st.presented_at is None:
-                if _h.mark_presented(_st.capability, _st.generation):
-                    _to_card.append(_st)
-
-        if _recovered:
-            self._retire_fault_cards(_recovered)
-
-        # 多个组件同时失败时归并成一张卡，不连发三到十张故障卡片
-        if _to_card:
-            _to_card.sort(key=lambda s: Severity.rank(s.severity), reverse=True)
-            if len(_to_card) == 1:
-                _s = _to_card[0]
-                self.emit_chat(
-                    category="fault",
-                    title=f"{_s.snapshot().get('label', _s.capability)} 不可用",
-                    lines=[_s.user_message],
-                    hints=[_s.recovery_hint],
-                    dedupe_key=_s.fingerprint,
-                    capabilities=[_s.capability],
-                )
-            else:
-                self.emit_chat(
-                    category="fault",
-                    title=f"检测到 {len(_to_card)} 项能力不可用",
-                    lines=[f"{s.snapshot().get('label', s.capability)}：{s.user_message}"
-                           for s in _to_card],
-                    hints=[s.recovery_hint for s in _to_card],
-                    dedupe_key="|".join(s.fingerprint for s in _to_card),
-                    capabilities=[s.capability for s in _to_card],
-                )
-
+    def _refresh_monitor_health_safe(self) -> None:
+        """1 秒重画一次监控面板的可用性（一轮对话结束时活动态被写过；漏了健康判断的路径
+        在这里 1 秒内被纠正回来）。健康登记表本身由后端消费（`core.startup.health_tick`）。"""
         try:
             self._refresh_monitor_health()
         except Exception as e:
@@ -7624,137 +7516,6 @@ class WebUI:
         else:
             _worst = "FAULT" if any(s.status == Status.UNAVAILABLE for s in _orphan) else "DEGRADED"
             self._paint_card(_env_dot, _env_lbl, _worst, f"{len(_orphan)} 项降级")
-
-    async def _startup_present_unsent(self):
-        """关软件时还排在队列里的用户消息 —— **呈现，不执行**。
-
-        ═══ 2026-08-24 定下来的 ═══
-            inbox 的立意：用户的话永不丢
-            关软件那条：关闭软件 = 用户默认放弃这次协同（一律 TERMINAL）
-                   ├─ 重新【呈现】→ 两条都满足 ✅
-                   └─ 自动【执行】→ 违反后一条 ❌
-        📌 **「不丢」和「替用户做决定」是两件事。**
-
-        ═══ 三个刻意的选择 ═══
-        ⚠️ **呈现完必须丢弃。** 留着 PENDING 的话，下一次排空（`TurnScheduler.drain`）会把它
-           捡起来真的执行 —— 那正是被否掉的那一支。
-           📌 **「不执行」不是靠没人去执行它，是靠它不再处于可被执行的状态。**
-        ⚠️ 只画在界面上：不进模型上下文（模型看见一条没人处理的用户请求会去做，
-           「呈现」和「执行」的界限就没了），也不写进聊天记录（它说明的是「上次关闭时
-           的状态」，重启后、或所在上下文被压缩移出后都不再有意义，所以不重放）。
-        ⚠️ `WAKE_INTENT` 不呈现（只丢弃）：那不是用户打的字，是系统的唤醒信号；
-           「上个进程有没干完的活」由 `_startup_resume_offer` 负责问。
-           📌 两条路各答各的问题，别让一件事在两个地方说两遍。
-
-        ⚠️ 整段吞异常：它是补一条历史，不该有能力挡住启动。
-        """
-        try:
-            from core.runtime import inbox as _ib
-            items = _ib.list_unfinished(limit=50)
-        except Exception as e:
-            logger.warning(f"[L14] 读未处理队列失败（跳过）: {e}")
-            return
-        if not items:
-            return
-        import json as _j
-        _shown = 0
-        for it in items:
-            try:
-                if getattr(it, "kind", "") != _ib.ItemKind.USER_MESSAGE:
-                    _ib.discard(it.item_id, "重启后丢弃（非用户消息）")
-                    continue
-                _d = it.detail or {}
-                _payload = _j.dumps({"text": it.body or "",
-                                     "had_image": bool(_d.get("had_image"))},
-                                    ensure_ascii=False)
-                # 只在本次启动呈现一次，不写进聊天记录：它说明的是「上次关闭时的状态」，
-                # 重启后、或所在的上下文被压缩移出后都不再有意义。
-                with self._ui_scope():
-                    with self.chat_container:
-                        render_unsent_user_card(_payload)
-                _ib.discard(it.item_id, "重启后已呈现给用户")
-                _shown += 1
-            except Exception as e:
-                logger.warning(f"[L14] 呈现 {getattr(it, 'item_id', '?')} 失败: {e}")
-        if _shown:
-            logger.info(f"[L14] 重启后呈现了 {_shown} 条未处理的消息（未执行，已出队）")
-
-
-    async def _startup_resume_offer(self):
-        """重启后：上个进程留下的活，由 Nano **主动开口**问一句。
-
-        🔴 它绕开的是一个**分不开的三岔口**：运行中崩溃（该接）/ 非运行中崩溃 /
-           正常关闭（都不用管）。本机上分不清 —— 见 `reconciler` 里那段留痕。
-           而第一版「按关闭 = 放弃，一律不提」只是把一个不可靠的推断换成了另一个
-           （**误触了关闭按钮呢？**）。
-        ⭐ 正解是**不推断**：把事实说出来，让用户答。
-           📌 **温和提醒本身是无害的**（只是一段话，不是强制继续）——
-              「问错了」代价接近零，「猜错了」会丢掉用户真正想接着做的事。
-              **两边代价不对称时，往代价小的那边倒。**
-
-        ⚠️ **新气泡**（走 `_proactive_push`）—— 「这是关闭后说的新一句话，
-           合并老气泡会非常奇怪」。与本次运行内那条提醒（挂进下一轮）规则相反，
-           因为它们在对话里的位置不同：一个是重新见面的第一句，一个是话说到一半顺带提。
-
-        ⚠️ **气泡里的话由模型生成**（早先第五条：文字出现在哪里，
-           决定它是不是「Nano 在说话」）。系统只交出事实。
-        ⚠️ **生成失败就什么都不说**：
-           API 调不通意味着 Nano 此刻恰恰不能思考，这时蹦一句写死的话是在谎报它的状态。
-        """
-        details = list(_STARTUP_INTERRUPTED or [])
-        if not details:
-            return                      # 没有可问的 → 一个字都不说
-        try:
-            from core.runtime.scheduler import startup_resume_notice
-            facts = startup_resume_notice(details)
-            if not facts:
-                return                  # 都说不出「是什么」→ 不提（提了也是噪音）
-            from core.i18n import language_clause
-            content, _ = await self.agent.provider.chat_without_tools(
-                context=[{"role": "user", "content": facts}],
-                system_guide=("You are Nano. Speak in your own voice, "
-                              "1-2 short sentences.\n"
-                              + language_clause("your line") + "\n"),
-            )
-            content = (content or "").strip()
-            if not content:
-                return
-            await self._proactive_push(content)
-            logger.info(f"[B1] 重启后已就 {len(details)} 件未完成的活开口询问")
-        except Exception as e:
-            # 📌 fail-safe 朝「少说一句」：宁可不问，也不拿写死的话顶上。
-            logger.warning(f"[B1] 重启后询问生成失败 → 本次不开口: {e}")
-
-    async def _crash_journal_tick(self):
-        """启动后展示上一个进程的崩溃留痕（一次性）。
-
-        进程级登记表只能处理"异常被 Python 捕获、进程还活着"。它处理不了原生库崩溃、
-        segfault、os._exit、启动早期 import 终止——而那恰是本项目实际遇到过的崩溃形态
-        （系统内存耗尽时加载模型 / 写向量库的 segfault，见 core/crash_journal.py）。
-        那些靠 write-ahead breadcrumb 留痕，在这里读出来。
-        """
-        try:
-            from core import crash_journal
-            _recs = crash_journal.startup_scan()
-        except Exception as e:
-            logger.debug(f"[CrashJournal] 启动扫描跳过: {e}")
-            return
-        if not _recs:
-            return
-        self.emit_chat(
-            category="fault",
-            title="上次运行没有正常退出",
-            lines=[r.get("summary", "") for r in _recs[:5]],
-            hints=["这是上一个进程的记录，当前这次的能力状态以本次重新探测为准。"],
-            dedupe_key="crash:" + ",".join(r.get("id", "") for r in _recs[:5]),
-        )
-        try:
-            from core.health import get_system_events
-            for r in _recs[:5]:
-                get_system_events().add(r.get("summary", ""))
-            crash_journal.mark_presented([r.get("id", "") for r in _recs])
-        except Exception:
-            pass
 
     def _refresh_takeover_bar(self):
         """重画接管状态条。**整体重画，不做增量。**
@@ -14334,7 +14095,6 @@ class WebUI:
 </script>''')
 
 
-        ui.timer(0.5, self._consume_skill_refresh_request)
 
         # ── 未决交互卡片的唯一驱动 ────────────────────────
         # **level-triggered**：每次重新读 `interaction` 表算一遍，
@@ -14351,23 +14111,10 @@ class WebUI:
         #    订阅在 __init__ 里就建好了：界面起来之前发出的事件在队列里等着，不丢。
         ui.timer(0.01, lambda: asyncio.ensure_future(self._event_router()), once=True)
 
-        # ── 健康登记表的唯一 UI 消费者 ────────────────────────────────
-        # 1 秒一跳。轮询本身极廉价（drain 一个 SimpleQueue，正常情况下空转），
-        # 但它是"事件循环存在之前发生的故障"唯一能被看见的通道——RAG 初始化线程
-        # 在 WebUI() 构造时就启动了，比 ui.run() 还早，callback 那条路走不通。
-        ui.timer(1.0, self._health_consumer_tick)
-        # 上一个进程的崩溃留痕，启动后展示一次（segfault / os._exit 靠 breadcrumb 留痕）
-        ui.timer(2.5, self._crash_journal_tick, once=True)
-        # ⭐ 重启后问一句「那几件没做完的要不要重做」。
-        #    ⚠️ 排在崩溃留痕之后：上次真崩了的话，用户该**先**看到那条系统提示，
-        #       再听 Nano 说话。📌 系统陈述事实在前、Nano 开口在后 ——
-        #       顺序反了会让人以为 Nano 在替系统解释。
-        # ⭐ **排在 `_startup_resume_offer` 前面** ——
-        #    📌 「你上次还有话没说完」应该出现在「要不要接着做那件活」**之前**：
-        #       前者是事实回放，后者是基于事实的提问。顺序反了，Nano 会在
-        #       用户还没看到自己那条消息时就先问要不要继续。
-        ui.timer(2.5, self._startup_present_unsent, once=True)
-        ui.timer(4.0, self._startup_resume_offer, once=True)
+        # 健康登记表的消费（故障卡出 / 撤）、启动呈现（崩溃留痕 → 未发消息 → 重启前还在等 →
+        # 续做询问）都在后端（`core.startup`），作为轮外事件回到这里渲染。
+        # 这里只按 1 秒重画监控面板（C 类：界面读后端状态）。
+        ui.timer(1.0, self._refresh_monitor_health_safe)
         # 顶部用量警示随预算变化刷新（预算状态本身由后端心跳同步，见 core.backend）。
         ui.timer(20.0, self._update_cost_warning)
 
@@ -14433,23 +14180,7 @@ class WebUI:
                 logger.debug(f"[Auto] 芯片刷新失败（忽略本跳）: {e}")
         ui.timer(1, _takeover_bar_tick)
 
-        # 重启恢复：把上次会话遗留的 active 挂起在聊天区补一条提示，
-        # 让用户知道 Nano 重启后仍记得在等什么（定时源由上面的 poller 接管，
-        # 用户源在用户下次说话时由 orchestrator 自动恢复）。
-        async def _restore_suspensions():
-            try:
-                from core.runtime.kernel import get_kernel
-                from core.runtime import waitcond as _wc
-                _left = _wc.list_live(get_kernel(), oldest_first=True)
-            except Exception:
-                _left = []
-            if _left:
-                _txt = "、".join(r.reason for r in _left)
-                # 这句话从产品上线至今【从未真正显示过】：它在启动 2 秒后跑，那一刻
-                # _last_reply_inner_col 必定为 None，旧 _proactive_push 开头就 return 了。
-                # 走统一出口后，容器和 client 上下文都不再是前提。
-                await gui._proactive_push(f"（我重启前还挂着在等：{_txt}。需要的话直接跟我说一声就能接着来。）")
-        ui.timer(2, _restore_suspensions, once=True)
+
 
         # 互联网检索卡片：周期反映当前联网类 MCP 能力（fetch 等连上→ONLINE，关掉→OFFLINE）
         ui.timer(3, self._update_net_status)
@@ -14457,15 +14188,15 @@ class WebUI:
         # ── 初始化中遮罩 ──────────────────────────────────────────────
         # 后台 RAG 索引(嵌入模型加载、BM25构建)在 core.rag.start_background_index 里跑，
         # 不阻塞页面渲染，但用户此时看到的UI其实还不能正常工作。
-        # 用 self.agent._rag_ready(threading.Event) 作为最终就绪信号，
-        # 遮罩盖住整个页面，就绪后自动隐藏。
+        # 就绪信号与阶段进度由后端发事件（`core.startup.watch_init_progress`：
+        # init_facts / init_stage / init_ready），遮罩盖住整个页面，就绪后自动隐藏。
         #
         # 文案分两类：
         # - "瞬时事实"：render() 时已经能读到的真实数据（技能数、代理、
         #   知识库块数等），按固定节奏依次渐隐展示，制造"在动"的感觉，
         #   即使这些事实其实早就为真。
-        # - "真实异步阶段"：嵌入模型加载/BM25索引等，通过
-        #   rag_engine.get_init_stage_log() 轮询，真正完成才推进；
+        # - "真实异步阶段"：嵌入模型加载/BM25索引等，等对应的 init_stage 事件，
+        #   真正完成才推进；
         #   耗时不定的那一条（嵌入模型）用呼吸动画占位，不装样子分段。
         with ui.element('div').classes(
             'fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-3'
@@ -14481,7 +14212,16 @@ class WebUI:
             )
 
         async def _run_init_sequence():
+            # 数据全部来自后端事件（`core.startup.watch_init_progress`）：
+            # `init_facts`（启动时已能读到的真实数据）/ `init_stage`（RAG 初始化阶段）/
+            # `init_ready`（整体就绪），由 `_on_init_event` 累积到 `self._init_*`。
             STAGE_MIN_MS = 500
+
+            def _ready() -> bool:
+                return self._init_ready
+
+            def _stages() -> list:
+                return list(self._init_stages)
 
             async def _show(text: str, min_ms: int = STAGE_MIN_MS):
                 init_stage_label.set_content(text)
@@ -14490,26 +14230,20 @@ class WebUI:
                 init_stage_label.classes(add='fade-out')
                 await asyncio.sleep(0.35)  # 等渐隐动画播完，再切下一条文案
 
-            # ── 1. 瞬时事实：render() 时已能读到的真实数据 ──────────────
-            try:
-                _skill_count = len(self.agent.registry.get_all_manifests())
-            except Exception:
-                _skill_count = 0
+            # ── 1. 瞬时事实：启动时已能读到的真实数据（等 init_facts 到，最多 ~1 秒）──
+            for _ in range(10):
+                if self._init_facts is not None or _ready():
+                    break
+                await asyncio.sleep(0.1)
+            _facts = self._init_facts or {}
+            _skill_count = int(_facts.get("skill_count") or 0)
+            _proxy = bool(_facts.get("proxy"))
+            _chunk_count = int(_facts.get("chunk_count") or 0)
 
-            _proxy = os.getenv("AI_PROXY") or os.getenv("HTTPS_PROXY")
-
-            try:
-                _kb_stats = rag_engine.get_stats()
-                _chunk_count = _kb_stats.get("total_chunks", 0)
-            except Exception:
-                _chunk_count = 0
-
-            # temp_cleaned 由后台线程写入 _init_stage_log，是近乎瞬时的操作，
-            # 但严格来说仍是异步的——短等一下，等不到就用不带数字的通用文案。
+            # temp_cleaned 由后台线程写入阶段日志，近乎瞬时——短等一下，等不到就用通用文案。
             _temp_cleaned_text = "🧹 临时文件检查完成 ✓"
             for _ in range(5):  # 最多等 ~0.5s
-                _stages = rag_engine.get_init_stage_log()
-                _hit = next((s for s in _stages if s.startswith("temp_cleaned:")), None)
+                _hit = next((st for st in _stages() if st.startswith("temp_cleaned:")), None)
                 if _hit:
                     _n = int(_hit.split(":")[1])
                     _temp_cleaned_text = (
@@ -14529,24 +14263,23 @@ class WebUI:
             ]
 
             for _text in instant_items:
-                if self.agent._rag_ready.is_set():
+                if _ready():
                     break  # 极端情况：索引早已就绪，不必继续播放
                 await _show(_text)
 
-            # ── 2. 真实异步阶段：轮询 rag_engine 的初始化阶段日志 ────────
+            # ── 2. 真实异步阶段：等对应的 init_stage 事件 ────────
             async def _wait_stage(prefix_or_name: str, ready_text: str,
-                                   loading_text: str | None = None):
+                                  loading_text: str | None = None):
                 """等待某个真实阶段标记出现，再展示对应文案。"""
-                if self.agent._rag_ready.is_set():
+                if _ready():
                     return
                 if loading_text:
                     init_stage_label.set_content(loading_text)
                     init_stage_label.classes(remove='fade-out')
                 while True:
-                    _stages = rag_engine.get_init_stage_log()
-                    if any(s.startswith(prefix_or_name) for s in _stages):
+                    if any(st.startswith(prefix_or_name) for st in _stages()):
                         break
-                    if self.agent._rag_ready.is_set():
+                    if _ready():
                         return  # 整体已就绪(比如极快完成)，不再单独展示这条
                     await asyncio.sleep(0.15)
                 await _show(ready_text)
@@ -14557,22 +14290,22 @@ class WebUI:
             )
 
             # bm25_ready / bm25_unavailable 二选一（互斥，只会出现其中一个）
-            if not self.agent._rag_ready.is_set():
+            if not _ready():
                 init_stage_label.set_content("🔍 准备检索引擎中")
                 init_stage_label.classes(remove='fade-out')
                 _bm25_ok = False
                 while True:
-                    _stages = rag_engine.get_init_stage_log()
-                    if "bm25_ready" in _stages:
+                    _st_now = _stages()
+                    if "bm25_ready" in _st_now:
                         _bm25_ok = True
                         break
-                    if "bm25_unavailable" in _stages:
+                    if "bm25_unavailable" in _st_now:
                         _bm25_ok = False
                         break
-                    if self.agent._rag_ready.is_set():
+                    if _ready():
                         break
                     await asyncio.sleep(0.15)
-                if not self.agent._rag_ready.is_set():
+                if not _ready():
                     _text = "🔍 混合检索引擎已启用 ✓" if _bm25_ok else "🔍 向量检索已启用 ✓"
                     await _show(_text)
 
@@ -14581,15 +14314,14 @@ class WebUI:
             )
 
             # ── 3. 最终完成 ───────────────────────────────────────────
-            while not self.agent._rag_ready.is_set():
-                _stages = rag_engine.get_init_stage_log()
-                _done = next((s for s in _stages if s.startswith("done:")), None)
-                if _done:
+            while not _ready():
+                if any(st.startswith("done:") for st in _stages()):
                     break
                 await asyncio.sleep(0.15)
+            # 就绪事件之后可能还补发了最后几个阶段（同一批事件，稍等一拍）
+            await asyncio.sleep(0.05)
 
-            _stages = rag_engine.get_init_stage_log()
-            _done = next((s for s in _stages if s.startswith("done:")), None)
+            _done = next((st for st in _stages() if st.startswith("done:")), None)
             if _done:
                 _, _indexed, _skipped, _errors = _done.split(":")
                 init_stage_label.set_content(
@@ -15667,8 +15399,8 @@ if __name__ == "__main__":
             #    表现成的是「恢复失败」，而不是「有人写错了变量」。
             # ⚠️ 这里**本来就在模块作用域**，不需要（也不能）写 `global` ——
             #    它上面那条声明带类型标注，`global` 一个带标注的名字是 SyntaxError。
-            _STARTUP_INTERRUPTED = list(
-                getattr(_rt_rep, "interrupted_details", []) or [])
+            from core import startup as _startup
+            _startup.set_interrupted(getattr(_rt_rep, "interrupted_details", []) or [])
             # 被中断的事项由 Nano 在界面上询问用户是否继续，控制台只在 DEBUG 下记录。
             if _rt_rep.did_anything or any((_rt_rep.extra or {}).values()):
                 logger.debug(f"[Runtime] 启动恢复：{_rt_rep.summary()} extra={_rt_rep.extra}")
@@ -15695,14 +15427,7 @@ if __name__ == "__main__":
 
         gui = WebUI()
         
-        observer = Observer()
-        observer.schedule(
-            SkillWatcher(gui),
-            path=str(pathlib.Path("skills").absolute()),
-            recursive=False
-        )
-        observer.daemon = True
-        observer.start()
+        # Skill 目录热重载由后端监听（`core.skill_watch`，在 start_backend_services 里启动）。
 
         from nicegui import app as _nicegui_app
 

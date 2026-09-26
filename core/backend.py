@@ -7,7 +7,9 @@
 周期心跳（间隔秒）：
   runtime_reconcile 5 · suspension_poll 5 · capability_probe 15 · budget_health 20 · intel_tick 20 · carrier_heartbeat 30 ·
   cpu_sample 60 · ambient_trail 240 · canary 300
-一次性：asyncio 崩溃处理器（立即）· mcp_startup（1.5 秒后）
+  skill_reload 0.5 · health_consumer 1（`core.skill_watch` / `core.startup`）
+一次性：asyncio 崩溃处理器（立即）· init_progress（立即）· mcp_startup（1.5 秒后）·
+  startup_presentation（2.5 秒后，`core.startup.present_startup`）
 
 聊天区的异步产出（不属于任何一轮）也从这里发出：主动开口（`speak`）与故障卡等
 （`emit_chat_event`），作为轮外事件发到事件总线（`core.runtime.events`），由界面渲染。
@@ -150,4 +152,16 @@ def start_backend_services(agent: Any, intel_engine: Optional[Any] = None) -> No
     # 每约 4 分钟把当前现场追加进持久轨迹（跨会话 / 重启留存）
     heartbeat.register("ambient_trail", 240, agent.record_ambient_trail)
     heartbeat.register_once("mcp_startup", 1.5, _mcp_startup)
+    # Skill 目录热重载：监听线程只做标记，这里 0.5 秒合并重载一次并通知界面
+    from core import skill_watch, startup
+    try:
+        skill_watch.start_watching()
+    except Exception as e:
+        logger.error(f"[Skill] 目录监听没起来（热重载不可用）: {e}")
+    heartbeat.register("skill_reload", 0.5, skill_watch.reload_tick)
+    # 健康登记表的状态转移 → 系统事件 / 故障卡 / 撤卡（1 秒；故障可能发生在事件循环之前）
+    heartbeat.register("health_consumer", 1, startup.health_tick)
+    heartbeat.register_once("init_progress", 0, lambda: startup.watch_init_progress(agent))
+    # 启动呈现：崩溃留痕 → 未发消息 → 重启前还在等 → 续做询问（按顺序，界面起来前的事件在订阅队列里等）
+    heartbeat.register_once("startup_presentation", 2.5, lambda: startup.present_startup(agent))
     heartbeat.start()
