@@ -2200,6 +2200,7 @@
 - The Stop button takes effect in the interface immediately and no longer ends the screen task.
 - Nano can send several screen steps at once; if one fails, the rest are skipped.
 - Disabling or enabling a Skill takes effect right away; only deleting one asks for confirmation.
+- The status line shows "connecting" while waiting for the model service, and "thinking" only once the model has started.
 - Clicks are located by the real control name or ID from the window's control tree.
 - Internal restructuring (no behaviour change): confirmation dialogs reply by ID, background heartbeats run outside the UI timers, one module decides which windows are Nano's own, Auto approval is decided by the core instead of the interface, background tasks are held by the core, messages and wake-ups are scheduled by the core, all core-to-interface events go through one channel, proactive speech, startup messages, fault cards and Skill reloading are produced by the core, and unused code for the old proactive speech was removed.
 
@@ -2232,6 +2233,7 @@
 - 终止按钮在界面上即时生效，且不再结束屏幕操作任务。
 - Nano 可一次连发多步屏幕操作，某步失败则跳过剩余步骤。
 - 禁用或启用 Skill 立即生效，只有删除才需要确认。
+- 状态行在等待模型服务时显示 connecting，模型真正开始处理后才显示 thinking。
 - 点击优先按窗口控件树中的真实名称或 ID 定位。
 - 内部结构调整（行为不变）：确认弹窗改为按编号回复，后台心跳移出界面定时器，统一判断哪些窗口属于 Nano 自己，Auto 放行改由核心判定而非界面，后台任务改由核心持有，消息与唤醒改由核心调度，核心发给界面的事件统一走一条通道，主动开口、启动提示、故障卡与 Skill 重载改由核心发出，删除旧主动开口机制的无用代码。
 
