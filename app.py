@@ -991,10 +991,10 @@ class WebUI:
         self._takeover_bar      = None
         self._takeover_lbl      = None
         self._cost_warning_lbl  = None
-        # ⭐ 轮外 UI 事件通道。**由 app 建、由 orchestrator 写、由 app 读** ——
-        #    📌 建在 app 是因为消费它的是 UI；而它必须在 orchestrator 拿得到的
-        #       地方（`agent._ui_oob_events`），否则Subagent发不出去。
-        self._oob_events: "asyncio.Queue | None" = None
+        # 后端事件总线（`core.runtime.events`）：订阅一次，`_event_router` 按轮 id 分发。
+        from core.runtime import events as _events
+        self._events_q = _events.subscribe()
+        self._turn_queues: dict = {}      # turn_id → 这一轮还没被渲染取走的事件
         self.drawer         = None
         # 之前是 3 个独立的 ui.right_drawer 抢同一个布局槽位——怀疑（也是
         # 目前最合理的解释）NiceGUI/Quasar 的 q-layout 假设一侧只有一个
@@ -2365,7 +2365,7 @@ class WebUI:
     def _present_os_confirm(self, step: dict) -> None:
         """把一次 OS 授权请求画成弹窗。
 
-        两个入口：轮内（`navigate_pipeline` 的事件流）与轮外（`_drain_oob_events`，
+        两个入口：轮内（`navigate_pipeline` 的事件流）与轮外（`_handle_out_of_turn`，
         Subagent 跨过它那一轮之后）。Auto 下能自动放行的请求由后端直接放行，不会到这里。
         Auto 下被危险判定拦下的 `run_command` 到这里时没有「始终允许」按钮：
         它的 floor=3，天然走红色分支（见 `_show_os_action_confirm_dialog`）。
@@ -2391,47 +2391,61 @@ class WebUI:
                 auto_blocked=step.get("auto_blocked", ""),
             )
 
-    async def _drain_oob_events(self) -> None:
-        """轮外 UI 事件的**唯一消费者**。
+    def _handle_out_of_turn(self, _ev: dict) -> None:
+        """轮外事件（不属于任何一轮，如 Subagent 跨过它那一轮之后的授权请求）。
 
-        🔴🔴 **它补的是 detach 引入的一个结构性洞**（实测 2026-08-20，Subagent卡死）：
-            Subagent 5s 后交还 → 主轮继续 → 主轮结束 → `navigate_pipeline` 的
-            `async for` 退出 → **从此没有人 drain `event_queue`**
-            → Subagent随后调 `edit_file` → `os_action_confirm` 进了一个没人读的队列
-            → 弹窗永远不出现 → Subagent在确认闸上干等 300 秒。
-        📌 **一个跨过了自己那一轮的执行者，不能再用那一轮的通道去要 UI** ——
-           那条通道的寿命和那一轮绑在一起，而它已经不在那一轮里了。
-        ⚠️ 这个洞**只可能出现在需要 UI 往返的事件上**：Subagent的只读工具不需要
-           任何往返，所以之前一直没撞到 —— 给它写权限的那一刻才暴露。
-
-        ⚠️ 只认**需要用户回应**的那几种事件，不搬整套事件词汇表 ——
-           📌 一个"顺便什么都能收"的通道，会变成第二条谁都往里塞的主路。
+        一个跨过了自己那一轮的执行者，不能再用那一轮的通道去要 UI：它的事件走总线上
+        不带轮 id 的那一路（`core.runtime.events.OUT_OF_TURN`）。只认需要用户回应的那几种。
         """
-        _q = getattr(self, "_oob_events", None)
-        if _q is None:
-            return
-        while not _q.empty():
+        try:
+            _kind = (_ev or {}).get("event", "")
+            if _kind == "os_action_confirm":
+                # 轮外（Subagent）的确认不属于任何回应期：终止按钮不收它
+                _prev_owner = getattr(self, "_confirm_owner", None)
+                self._confirm_owner = None
+                try:
+                    self._present_os_confirm(_ev)
+                finally:
+                    self._confirm_owner = _prev_owner
+            elif _kind == "confirm_dismiss":
+                self._dismiss_pending_confirms(_ev.get("why", ""))
+            else:
+                logger.warning(f"[OOB] 轮外通道收到不认识的事件：{_kind}")
+        except Exception as e:
+            logger.warning(f"[OOB] 轮外事件处理失败（{_ev.get('event','?')}）: {e}")
+
+    def _turn_queue(self, turn_id: str) -> asyncio.Queue:
+        q = self._turn_queues.get(turn_id)
+        if q is None:
+            q = self._turn_queues[turn_id] = asyncio.Queue()
+        return q
+
+    async def _event_router(self) -> None:
+        """后端事件总线的唯一消费者：轮内事件按轮 id 交给正在渲染那一轮的一方，轮外事件直接处理。"""
+        while True:
+            turn_id, ev = await self._events_q.get()
             try:
-                _ev = _q.get_nowait()
-            except Exception:
-                break
-            try:
-                _wire_check(_ev or {})
-                _kind = (_ev or {}).get("event", "")
-                if _kind == "os_action_confirm":
-                    # 轮外（Subagent）的确认不属于任何回应期：终止按钮不收它
-                    _prev_owner = getattr(self, "_confirm_owner", None)
-                    self._confirm_owner = None
-                    try:
-                        self._present_os_confirm(_ev)
-                    finally:
-                        self._confirm_owner = _prev_owner
-                elif _kind == "confirm_dismiss":
-                    self._dismiss_pending_confirms(_ev.get("why", ""))
+                if turn_id is None:
+                    self._handle_out_of_turn(ev or {})
                 else:
-                    logger.warning(f"[OOB] 轮外通道收到不认识的事件：{_kind}")
+                    self._turn_queue(turn_id).put_nowait(ev)
             except Exception as e:
-                logger.warning(f"[OOB] 轮外事件处理失败（{_ev.get('event','?')}）: {e}")
+                logger.warning(f"[Events] 分发事件失败: {e}")
+
+    async def _turn_events(self, turn_id: str):
+        """某一轮的事件流（从总线分发来的），到 `turn_end` 为止；后端那一轮出错时抛出。"""
+        from core.runtime.events import TURN_END
+        q = self._turn_queue(turn_id)
+        try:
+            while True:
+                ev = await q.get()
+                if (ev or {}).get("event") == TURN_END:
+                    if ev.get("error"):
+                        raise RuntimeError(ev["error"])
+                    return
+                yield ev
+        finally:
+            self._turn_queues.pop(turn_id, None)
 
     def _dismiss_pending_confirms(self, why: str = "") -> None:
         """把还挂着的确认类弹窗（OS 授权 / 副作用 / Skill 审计）全部收掉。**永不抛。**"""
@@ -3492,8 +3506,8 @@ class WebUI:
     # ── Pipeline ──────────────────────────────────────────────────────────
 
     async def navigate_pipeline(self, query, loading_container, image_bytes: bytes | None = None, image_mime: str = "image/jpeg", temp_file_hint: str | None = None, thought_blocks_container=None, event_source=None):
-        # event_source: 挂起唤醒用——给定时/后台唤醒复用整套事件渲染逻辑。
-        # 不传时走常规 self.agent.handle_query(query)；传入时直接消费该异步生成器。
+        # event_source：这一轮的事件流（`_turn_events(turn_id)`）。后端事件由调度器泵出，
+        # 用户轮与唤醒轮用同一套渲染；query / 图片 / 附件提示已由调度器交给后端。
         # ⭐⭐⭐ [无缝对话] 续接的那一段**不重置用量、不新建 nano 块**。
         #
         # ⚠️ `reset_session()` 原来无条件调 —— 续接时会把上一段的 token **清零**，
@@ -3505,19 +3519,6 @@ class WebUI:
         if not _seam_cont:
             usage_tracker.reset_session()
         current_session_skill = None
-        # 构建图片 parts（如果有）
-        _image_parts = None
-        if image_bytes:
-            _image_parts = [self.provider.build_image_part(image_bytes, image_mime)]
-            # ⚠️ 图**原样进 memory**，一个字节都不删 —— `attach_user_images`
-            #    是「图片进入账本的唯一入口」（登记 handle + 落盘），
-            #    `view_past_image` 的回看能力整根挂在它上面。
-            #    🔴 2026-08-31 这里写过 `_image_parts = None` 改走文字描述，
-            #       顺手掐了 handle 登记 ⇒ 回看能力没了（实测抓到）。
-            #    主模型没视觉时怎么办 → 见 orchestrator 的到达轮视觉兜底，
-            #    那里走既有的 `_vision_ask` 轨道，不在这里另起一套。
-
-
         # 重置所有技能状态圆点
         for elements in self.skill_ui_elements.values():
             elements["status"].set_text("READY")
@@ -3589,7 +3590,8 @@ class WebUI:
         _timer_task = asyncio.create_task(self._resp_status_timer(_rs))
         _rs["_status_timer_task"] = _timer_task
 
-        _stream = event_source if event_source is not None else self.agent.handle_query(query, image_parts=_image_parts, temp_file_hint=temp_file_hint)
+        # 事件源：调度器泵到总线上的这一轮事件（`_turn_events(turn_id)`，由调用方传入）。
+        _stream = event_source
         async for step in self._stoppable_stream(_stream, _rs):
             _wire_check(step)
             self._note_reply_ids(_rs, step)
@@ -4761,14 +4763,15 @@ class WebUI:
         from core.session import get_scheduler
         get_scheduler().running_inbox_id = v
 
-    async def _safe_execute_pipeline(self, query, loading_container, image_bytes: bytes | None = None, image_mime: str = "image/jpeg", temp_file_hint: str | None = None, thought_blocks_container=None):
+    async def _safe_execute_pipeline(self, query, loading_container, turn_id: str):
         # 用户插话会创建 successor 并覆盖全局 `self._resp_state`。旧 pipeline
         # 随后若异常，异常兜底仍只能收它自己拥有的 predecessor，不能误伤新回应。
         # 锁、「正在回复」、收 inbox 记录与排空由调度器负责（`TurnScheduler.run_user_turn`）。
         _owned_rs = self._resp_state
         self._turn_suspended = False   # 本轮是否以挂起方式结束（挂起则不恢复 mini）
         try:
-            await self.navigate_pipeline(query, loading_container, image_bytes, image_mime, temp_file_hint, thought_blocks_container)
+            await self.navigate_pipeline(query, loading_container,
+                                         event_source=self._turn_events(turn_id))
         except Exception as e:
             logger.error(f"UI 未捕获异常: {e}")
             # 停止计时器
@@ -4810,7 +4813,8 @@ class WebUI:
         except Exception as e:
             logger.debug(f"[Inbox] 标记排队中失败（不影响入队）: {e}")
 
-    async def render_user_turn(self, key: str, payload: dict, continuation: bool) -> None:
+    async def render_user_turn(self, key: str, payload: dict, continuation: bool,
+                               turn_id: str) -> None:
         """画一个用户轮（调度器持锁调用）：找到这条消息的占位，渲染事件流。
 
         `continuation` 为真 = 插话之后的下一段：喂进**已经存在的那个** nano 气泡，不新建。
@@ -4836,9 +4840,7 @@ class WebUI:
         if box is None:
             logger.error(f"[Turn] 找不到消息 {key} 的界面占位，这一轮无法渲染（仍在库里）")
             return
-        await self._safe_execute_pipeline(
-            payload.get("text", ""), box, payload.get("image_bytes"),
-            payload.get("image_mime") or "image/jpeg", payload.get("temp_hint"), None)
+        await self._safe_execute_pipeline(payload.get("text", ""), box, turn_id)
 
     # ── 回复状态计时器 ────────────────────────────────────────────────────
 
@@ -5448,8 +5450,9 @@ class WebUI:
     async def _stoppable_stream(self, stream, rs: dict):
         """包住后端事件流：用户按终止时立刻插入一个界面侧的终止事件，之后继续转发后端事件。
 
-        后端生成器在一个独立 task 里完整迭代（它用到 ContextVar，不能拆到多个 task 里逐步推进），
-        事件经队列转发；这里在「下一个事件」和「终止按钮」之间先到先处理。
+        事件流（这一轮从总线分发来的事件）在一个独立 task 里读完、经队列转发；
+        这里在「下一个事件」和「终止按钮」之间先到先处理。界面提前收尾（终止、插话）后
+        那个 task 仍把这一轮剩下的事件读完（丢弃），后端由调度器持续泵到结束。
         """
         stop_evt = rs.get("stop_evt")
         if stop_evt is None:
@@ -12029,9 +12032,9 @@ class WebUI:
     # ── 呈现方（`core.session.TurnScheduler` 调用）：唤醒轮的气泡与等待 pill ──
 
     async def run_wake_turn(self, suspension_id: str, trigger: str,
-                            continue_bubble: bool, source) -> None:
+                            continue_bubble: bool, turn_id: str) -> None:
         """画一个唤醒轮：同一段回应期（触发那一刻前台上有东西）续接进原气泡，否则新开一个；
-        然后把事件流 `source`（`agent.resume_suspension`）渲染完。锁由调度器持有。"""
+        然后把 `turn_id` 那一轮的事件（`agent.resume_suspension` 泵到总线上的）渲染完。锁由调度器持有。"""
         _live_rs = getattr(self, "_resp_state", None)
         _same_epoch = bool(continue_bubble) and _live_rs is not None
         # ⭐⭐ **续接分支还需要一样只在 `else` 里被创建的东西：`loading_container`。**
@@ -12102,7 +12105,8 @@ class WebUI:
               except Exception:
                   pass
         try:
-            await self.navigate_pipeline(None, loading_container, event_source=source)
+            await self.navigate_pipeline(None, loading_container,
+                                         event_source=self._turn_events(turn_id))
         except Exception:
             try:
                 self._resp_state["running"] = False
@@ -14353,21 +14357,9 @@ class WebUI:
         # ⚠️ 2s 而不是 1.5s 是刻意错开的：📌 两个同周期的定时器会永远在同一帧
         #    里一起跑，把偶发的卡顿叠成必然的卡顿。
         ui.timer(2.0, self._refresh_tasks_panel)
-        # ⭐⭐ **轮外 UI 事件**（Subagent跨过它那一轮之后发的授权请求）。
-        #    0.2s：它是一条要**人来回应**的通道，延迟直接变成用户等待。
-        #    ⚠️ 轮询本身极廉价（正常情况下队列是空的）——
-        #       📌 而它是Subagent唯一能要到弹窗的路：没有它，Subagent会在确认闸上
-        #          干等 300 秒，而屏幕上什么都不会发生（实测 2026-08-20）。
-        # ⚠️ **在这里建**（UI 构建期，事件循环已经在了）——
-        #    📌 `asyncio.Queue()` 在 3.10 里不再绑定循环，但消费它的 timer 在这里，
-        #       建在同一处才不会出现「队列有了、没人读」的窗口。
-        try:
-            self._oob_events = asyncio.Queue()
-            self.agent._ui_oob_events = self._oob_events
-        except Exception as _e_oob:
-            logger.error(f"[OOB] 轮外 UI 通道没建起来 —— "
-                         f"Subagent的授权弹窗将无法呈现: {_e_oob}")
-        ui.timer(0.2, self._drain_oob_events)
+        # 后端事件总线的常驻消费者（按轮 id 分发；轮外事件如 Subagent 的授权请求直接处理）。
+        #    订阅在 __init__ 里就建好了：界面起来之前发出的事件在队列里等着，不丢。
+        ui.timer(0.01, lambda: asyncio.ensure_future(self._event_router()), once=True)
 
         # ── 健康登记表的唯一 UI 消费者 ────────────────────────────────
         # 1 秒一跳。轮询本身极廉价（drain 一个 SimpleQueue，正常情况下空转），

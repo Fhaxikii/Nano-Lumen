@@ -64,11 +64,30 @@ class _Budget:
         U.sync_budget_health = self._orig
 
 
+class _Provider:
+    @staticmethod
+    def build_image_part(b, mime):
+        return {"image": len(b), "mime": mime}
+
+
 class _Agent:
     _seam_continuation_part = -1
+    provider = _Provider()
+
+    def __init__(self):
+        self.queries = []
 
     def resume_suspension(self, sid, trigger, note=""):
-        return ("source", sid, trigger)
+        async def _gen():
+            yield {"event": "final_result"}
+        return _gen()
+
+    def handle_query(self, text, image_parts=None, temp_file_hint=None):
+        self.queries.append((text, image_parts, temp_file_hint))
+
+        async def _gen():
+            yield {"event": "final_result", "text": text}
+        return _gen()
 
 
 class _Presenter:
@@ -78,7 +97,7 @@ class _Presenter:
         self.hold = hold
         self.fail = fail
 
-    async def render_user_turn(self, key, payload, continuation):
+    async def render_user_turn(self, key, payload, continuation, turn_id):
         self.calls.append(("user", key, payload.get("text"), continuation,
                            self.sched.seam_part, self.agent._seam_continuation_part,
                            self.sched.lock.locked()))
@@ -87,7 +106,7 @@ class _Presenter:
         if self.fail:
             raise RuntimeError("界面炸了")
 
-    async def run_wake_turn(self, sid, trigger, continue_bubble, source):
+    async def run_wake_turn(self, sid, trigger, continue_bubble, turn_id):
         self.calls.append(("wake", sid, trigger, continue_bubble))
 
     def settle_wake(self, sid, trigger):
@@ -128,6 +147,8 @@ def t_idle(tmp):
           "呈现方收到这一条（新回应期，不续接）", str(pres.calls))
     check(pres.calls[0][4:] == (1, 0, True), "段号 1、orchestrator 收到 0、期间持锁", str(pres.calls[0][4:]))
     check(turns == [True, False] and not sched.lock.locked(), "「正在回复」开 → 关，锁已释放")
+    check(agent.queries == [("你好", [{"image": 3, "mime": "image/jpeg"}], "hint")],
+          "后端事件流由调度器建：文字、图片 part、附件提示交给 handle_query", str(agent.queries))
     check(sched.running_inbox_id is None, "轮结束收掉 inbox 记录")
 
 

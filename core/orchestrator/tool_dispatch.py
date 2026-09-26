@@ -280,11 +280,9 @@ class ToolDispatchMixin:
         """
         try:
             if current_agent_label():
-                _oob = getattr(self, "_ui_oob_events", None)
-                if _oob is not None:
-                    return _oob
-                logger.error("[OOB] Subagent要弹窗，但轮外通道不存在 —— "
-                             "退回轮内通道（本轮结束后它就没人读了）")
+                # 轮外出口：事件总线上不带轮 id 的那一路（`core.runtime.events`）。
+                from core.runtime import events as _events
+                return _events.OUT_OF_TURN
         except Exception:
             pass
         return event_queue

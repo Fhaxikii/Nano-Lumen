@@ -15,13 +15,18 @@
     附件字节只在内存里：重启后队列里那条保留文字、丢掉附件（已知缺口）。
   · 前台空了 → 给没安排回看的后台等待排第一次回看（60 秒）。
 
+每一轮的后端事件流由这里泵出（`events.pump_turn`），带着轮 id 发到事件总线
+（`core.runtime.events`）；锁一直持有到后端这一轮真正结束（界面先收尾不影响）。
+
 呈现方（界面）只负责画：用户轮（`render_user_turn`）与唤醒轮（`run_wake_turn`）的
-气泡与事件流、等待 pill 的定型（`settle_wake` / `settle_cancelled_handback`）。
+气泡——它从总线读自己那一轮（按 `turn_id`）的事件渲染——以及等待 pill 的定型
+（`settle_wake` / `settle_cancelled_handback`）。
 每一轮开始 / 结束通知 `add_turn_listener` 登记的监听者（主动智能的「正在回复」等）。
 """
 from __future__ import annotations
 
 import asyncio
+import uuid
 from typing import Any, Awaitable, Callable, Optional, Protocol
 
 from loguru import logger
@@ -85,8 +90,8 @@ class Presenter(Protocol):
     """界面（呈现方）要实现的接口。"""
 
     async def run_wake_turn(self, suspension_id: str, trigger: str,
-                            continue_bubble: bool, source) -> None:
-        """画一个唤醒轮：续接当前气泡或新开一个，把事件流 `source` 渲染完。"""
+                            continue_bubble: bool, turn_id: str) -> None:
+        """画一个唤醒轮：续接当前气泡或新开一个，渲染 `turn_id` 那一轮的事件。"""
 
     def settle_wake(self, suspension_id: str, trigger: str) -> None:
         """唤醒轮拿到锁、即将开始：把等待 pill 定型（background 还要收掉原动作的转圈）。"""
@@ -94,9 +99,11 @@ class Presenter(Protocol):
     def settle_cancelled_handback(self, bg_ref: str) -> int:
         """载体完成但等待已取消：只收原动作的转圈，返回收了几条。"""
 
-    async def render_user_turn(self, key: str, payload: dict, continuation: bool) -> None:
+    async def render_user_turn(self, key: str, payload: dict, continuation: bool,
+                               turn_id: str) -> None:
         """画一个用户轮：`key` 是提交时返回的那条消息的标识（界面据此找到它的占位）；
-        `continuation` 为真时续接当前气泡（插话之后的下一段）。锁由调度器持有。"""
+        `continuation` 为真时续接当前气泡（插话之后的下一段）；渲染 `turn_id` 那一轮的事件。
+        锁由调度器持有。"""
 
 
 class TurnScheduler:
@@ -174,17 +181,43 @@ class TurnScheduler:
         except Exception:
             pass
 
+    def _user_source(self, payload: dict):
+        """用户轮的后端事件流：`agent.handle_query`（图片先转成模型的图片 part）。"""
+        _parts = None
+        if payload.get("image_bytes"):
+            _parts = [self.agent.provider.build_image_part(
+                payload["image_bytes"], payload.get("image_mime") or "image/jpeg")]
+        return self.agent.handle_query(payload.get("text", ""), image_parts=_parts,
+                                       temp_file_hint=payload.get("temp_hint"))
+
+    async def _run_turn(self, source, render) -> bool:
+        """泵出这一轮的后端事件（发到总线），同时让呈现方渲染；两边都结束才返回。
+        返回呈现方是否正常结束。"""
+        from core.runtime import events as _events
+        turn_id = uuid.uuid4().hex[:12]
+        pump = asyncio.ensure_future(_events.pump_turn(turn_id, source))
+        ok = False
+        try:
+            if self.presenter is not None:
+                await render(turn_id)
+                ok = True
+            else:
+                logger.error(f"[Turn] 没有登记呈现方，第 {turn_id} 轮只在后端跑（界面看不到）")
+        finally:
+            # 界面先收尾（终止、插话）不影响后端：这一轮真正结束才放锁。
+            await pump
+        return ok
+
     async def run_user_turn(self, key: str, payload: dict, continuation: bool) -> None:
         """持锁跑一个用户轮（由呈现方画），结束时收掉 inbox 记录，锁释放后排空。"""
         async with self.lock:
             self.turn_state(True)
             self._activity_event("user_message")
             try:
-                if self.presenter is not None:
-                    await self.presenter.render_user_turn(key, payload, continuation)
+                source = self._user_source(payload)
+                if await self._run_turn(source, lambda tid: self.presenter.render_user_turn(
+                        key, payload, continuation, tid)):
                     self._activity_event("nano_responded")
-                else:
-                    logger.error(f"[Turn] 没有登记呈现方，用户消息 {key} 无法起轮（仍在库里）")
             except Exception as e:
                 logger.error(f"[Turn] 用户轮异常: {e}")
             finally:
@@ -249,12 +282,11 @@ class TurnScheduler:
                 if p is not None:
                     # 真正拿到锁、即将起唤醒轮时才定型 pill（内核忙时不提前定型）。
                     p.settle_wake(suspension_id, trigger)
-                    source = self.agent.resume_suspension(suspension_id, trigger, note=note)
-                    # 同一段回应期（触发那一刻前台上有东西）→ 续接进原气泡。
-                    await p.run_wake_turn(suspension_id, trigger, bool(busy_at_trigger), source)
-                else:
-                    logger.error(f"[Suspension] 没有登记呈现方，唤醒 {suspension_id} 无法起轮")
-                self._activity_event("nano_responded")
+                source = self.agent.resume_suspension(suspension_id, trigger, note=note)
+                # 同一段回应期（触发那一刻前台上有东西）→ 续接进原气泡。
+                if await self._run_turn(source, lambda tid: p.run_wake_turn(
+                        suspension_id, trigger, bool(busy_at_trigger), tid)):
+                    self._activity_event("nano_responded")
             except Exception as e:
                 logger.error(f"[Suspension] 唤醒轮异常: {e}")
             finally:

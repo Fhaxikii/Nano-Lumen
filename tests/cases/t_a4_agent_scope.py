@@ -749,8 +749,9 @@ def t_agent_ui_requests_survive_its_turn() -> None:
     import core.orchestrator as _O
 
     _o = _O.Orchestrator.__new__(_O.Orchestrator)
-    _turn_q, _oob_q = object(), object()
-    _o._ui_oob_events = _oob_q
+    _turn_q = object()
+    from core.runtime import events as _events
+    _oob_q = _events.OUT_OF_TURN
 
     # main agent：走轮内
     check(_O.Orchestrator._ui_sink(_o, _turn_q) is _turn_q,
@@ -762,25 +763,21 @@ def t_agent_ui_requests_survive_its_turn() -> None:
         check(_O.Orchestrator._ui_sink(_o, _turn_q) is _oob_q,
               "⭐⭐⭐ **Subagent走轮外通道** —— 🔴 走轮内的话，主轮一结束"
               "那个队列就没人读了，Subagent会在确认闸上干等 300 秒")
-        # ⚠️ fail-safe：轮外通道不存在时**退回轮内**，而不是把请求丢掉
-        _o._ui_oob_events = None
-        check(_O.Orchestrator._ui_sink(_o, _turn_q) is _turn_q,
-              "⚠️ 轮外通道缺席时退回轮内 —— "
-              "📌 fail-safe 朝「退化成今天的行为」错，不朝「把授权请求整个丢掉」错")
     finally:
         _O._agent_scope_ctx.reset(_tok)
-        _o._ui_oob_events = _oob_q
 
     # ⭐ 而轮外通道必须**真的有人读**（零消费者的通道 = 没有通道）
     _src = module_text("app")
     _tree = ast.parse(_src)
     _defs_app = {f.name for f in ast.walk(_tree)
                  if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    check("_drain_oob_events" in _defs_app, "⚠️ 前置：轮外消费者存在")
-    _timered = any(
-        isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "timer"
-        and "_drain_oob_events" in ast.unparse(n)
-        for n in ast.walk(_tree))
+    check("_handle_out_of_turn" in _defs_app and "_event_router" in _defs_app,
+          "⚠️ 前置：轮外消费者存在（事件总线的常驻消费者按轮 id 分发，轮外交给 `_handle_out_of_turn`）")
+    _router = next((f for f in ast.walk(_tree) if isinstance(f, ast.AsyncFunctionDef)
+                    and f.name == "_event_router"), None)
+    _timered = (_router is not None and "_handle_out_of_turn" in ast.unparse(_router)
+                and any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "timer"
+                        and "_event_router" in ast.unparse(n) for n in ast.walk(_tree)))
     check(_timered,
           "⭐⭐⭐ **它真的被挂上了定时器** —— "
           "📌 一个写好但没人调的消费者，比没写更坏：缺口看起来已经补上了"

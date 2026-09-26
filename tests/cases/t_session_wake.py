@@ -76,7 +76,15 @@ class _Agent:
 
     def resume_suspension(self, sid, trigger, note=""):
         self.resumed.append((sid, trigger, note))
-        return ("source", sid, trigger)
+
+        async def _gen():
+            yield {"event": "final_result", "sid": sid}
+        return _gen()
+
+    def handle_query(self, text, image_parts=None, temp_file_hint=None):
+        async def _gen():
+            yield {"event": "final_result", "text": text}
+        return _gen()
 
 
 class _Presenter:
@@ -85,8 +93,8 @@ class _Presenter:
         self.calls = []
         self.lock_held_during_run = []
 
-    async def run_wake_turn(self, sid, trigger, continue_bubble, source):
-        self.calls.append(("run", sid, trigger, continue_bubble, source))
+    async def run_wake_turn(self, sid, trigger, continue_bubble, turn_id):
+        self.calls.append(("run", sid, trigger, continue_bubble, isinstance(turn_id, str)))
         self.lock_held_during_run.append(self.sched.lock.locked())
         await asyncio.sleep(0)
 
@@ -97,7 +105,7 @@ class _Presenter:
         self.calls.append(("cancelled_handback", ref))
         return 1
 
-    async def render_user_turn(self, key, payload, continuation):
+    async def render_user_turn(self, key, payload, continuation, turn_id):
         self.calls.append(("user", key, payload.get("text"), continuation))
 
 
@@ -131,7 +139,7 @@ def t_idle_wake(tmp):
             await sched.drive_wake(rec.wait_id, trigger="timer")
     asyncio.run(run())
     check(pres.calls[:2] == [("settle", rec.wait_id, "timer"),
-                             ("run", rec.wait_id, "timer", False, ("source", rec.wait_id, "timer"))],
+                             ("run", rec.wait_id, "timer", False, True)],
           "先定型 pill，再起唤醒轮（新开气泡，事件流来自 resume_suspension）", str(pres.calls))
     check(pres.lock_held_during_run == [True], "唤醒轮期间持有锁")
     check(turns == [True, False], "「正在回复」开 → 关", str(turns))
@@ -159,7 +167,7 @@ def t_busy_park_and_drain(tmp):
             await sched.drain()
             await _settle()
     asyncio.run(run())
-    check(("run", rec.wait_id, "background", True, ("source", rec.wait_id, "background")) in pres.calls,
+    check(("run", rec.wait_id, "background", True, True) in pres.calls,
           "排空时接上：续接原气泡（触发那一刻前台上有东西）", str(pres.calls))
     check(agent.resumed and agent.resumed[-1][2] == "done: 42", "唤醒带回后台结果")
     check(IB.pending_count(k) == 0 and not sched.parked, "唤醒轮结束后 inbox 记录收掉、队列清空")
@@ -236,7 +244,7 @@ def t_wake_now(tmp):
     r1, r2, parked, r3 = asyncio.run(run())
     check(r1 == "ended", "等待已结束 → ended")
     check(r2 == "parked" and parked == [("wake", rec.wait_id, "manual")], "忙 → 排队", str(parked))
-    check(r3 == "started" and ("run", rec.wait_id, "manual", False, ("source", rec.wait_id, "manual")) in pres.calls,
+    check(r3 == "started" and ("run", rec.wait_id, "manual", False, True) in pres.calls,
           "闲 → 起手动唤醒轮", str(pres.calls))
 
 

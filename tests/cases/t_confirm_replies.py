@@ -165,7 +165,9 @@ def t_wire() -> None:
     check(len(hits) == 1, "同一事件同一位置只记一次 WARNING", str(len(hits)))
 
     src = S.module_text("app")
-    check(src.count("_wire_check(") >= 3, "界面的两个事件入口都做了检查（定义 + 2 处调用）",
+    check("warn_if_not_serializable(event" in S.module_text("core.runtime.events")
+          and src.count("_wire_check(") >= 2,
+          "事件进总线时检查（后端出口）；界面轮内入口也检查",
           str(src.count("_wire_check(")))
 
 
