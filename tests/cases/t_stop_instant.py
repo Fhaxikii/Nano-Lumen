@@ -250,8 +250,8 @@ def t_wiring() -> None:
     check(bool(_re.search(r'# 终止：保留已说出的文字，但去掉流式光标[^\n]*\n\s*_rs\["content_md"\]\.set_content\('
                           r'_rs\.get\("current_text", ""\) or ""\)', app)),
           "终止分支保留已说出的文字并去掉流式光标 ▋")
-    check('f"已终止 · {_el}s{self._turn_tok_suffix(_tok)}"' in code and "{_tok} tok\")" not in code,
-          "终止的状态行按「Token 计数器」设置显示 token（与正常收尾同一个函数）")
+    check('set_text(f"已终止 · {_el}s")' in code and "{_tok} tok" not in code,
+          "被终止的回复只显示秒数（在途调用的用量不可知）")
     check("the user pressed Stop" not in code, "界面不再写终止事实")
     rl = S.def_text("core.orchestrator", "_interject_stop_event", owner="Orchestrator")
     check("the user pressed Stop" in rl and "add_system_note" in rl, "终止事实由后端在真正停下时写")

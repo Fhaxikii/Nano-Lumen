@@ -116,9 +116,8 @@ def t_warning_is_actionable() -> None:
         check("Do NOT assume" in n, "明说了不许假设这是它打开的那个文件")
         for word in ("select-all", "delete", "overwrite", "save"):
             check(word in n, f"点名了破坏性动作：{word}")
-        check("stop and ask" in n,
-              "⭐ 给了兜底出路（确认不了就停下来问）—— "
-              "只说「小心」而不给动作，等于什么都没说")
+        check("switch back to it yourself" in n and "only if you cannot tell" in n,
+              "给了出路：认得出目标就自己切回去，认不出才问用户")
     finally:
         EL.foreground_identity = saved
 

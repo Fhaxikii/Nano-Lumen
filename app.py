@@ -4667,7 +4667,6 @@ class WebUI:
                         except Exception:
                             pass
                         try:
-                            _tok = usage_tracker.turn_tokens_fmt()
                             _el = int(time.time() - _rs["start_time"])
                             if _rs.get("spin_lbl"):
                                 _rs["spin_lbl"].set_visibility(False)
@@ -4676,8 +4675,9 @@ class WebUI:
                                                     'flex-shrink:0; display:inline-block;')
                             # ⚠️ 这行字**不在 Nano 气泡里**（是元信息行/系统状态）→
                             #    命中固定文案豁免第 3、5 条，允许写死。
-                            # token 段按「Token 计数器」设置显示（与正常收尾同一个函数）
-                            _rs["status_lbl"].set_text(f"已终止 · {_el}s{self._turn_tok_suffix(_tok)}")
+                            # 被终止的回复只显示秒数：终止时这一轮在途调用的用量还没返回，
+                            # token / 缓存命中都不可知（不把「不知道」显示成一个数）。
+                            _rs["status_lbl"].set_text(f"已终止 · {_el}s")
                             _rs["status_lbl"].style(
                                 'font-size:var(--nano-fs-base); color:var(--nano-danger); font-style:normal; '
                                 'letter-spacing:0.01em; font-family:var(--nano-mono);')

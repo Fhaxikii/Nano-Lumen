@@ -964,7 +964,7 @@ def t_stop_button() -> None:
           "前置：AST 真的取到了终止分支的 body（边界由语法树定，不由字符数定）",
           f"{len(_seg_src or '')} 字符")
     seg = _seg_src or ""
-    check("turn_tokens_fmt" in seg and "已终止" in seg,
+    check("已终止" in seg and "spin_lbl" in seg and "_el" in seg,
           "⭐ 终止**要收尾**（写统计、停转圈、显示「已终止」）—— "
           "因为**没有下一段**；而插话时刻意不收尾")
     _stop_ev_src = S_def_text("core.orchestrator", "_interject_stop_event", owner="Orchestrator")

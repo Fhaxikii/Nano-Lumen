@@ -249,7 +249,9 @@ class ScreenMixin:
                 "DIFFERENT window — identical titles are common (e.g. two untitled "
                 "Notepad windows). Do NOT assume this is the file you opened.\n"
                 "Before any destructive action (select-all, delete, overwrite, save), "
-                "confirm this is really your target. If you cannot confirm it, stop and ask."
+                "confirm this is really your target. If you can tell which window is your "
+                "target, switch back to it yourself (computer_use win_switch); ask the user "
+                "only if you cannot tell."
             )
         return head
 
