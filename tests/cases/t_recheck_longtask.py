@@ -868,9 +868,16 @@ def t_waiting_intent_keeps_user_controls_off_system_rechecks() -> None:
     handback_calls = [node.func.attr for node in ast.walk(handback)
                       if isinstance(node, ast.Call)
                       and isinstance(node.func, ast.Attribute)] if handback else []
-    check("_start_handed_back_carrier" in handback_calls and
-          "_start_bg_task" not in handback_calls,
-          "系统交还的载体不登记成用户可见 BACKGROUND_JOB")
+    _body_calls = [node.func.attr for stmt in (handback.body if handback else [])
+                   for node in ast.walk(stmt)
+                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)]
+    check(not _body_calls, "界面收到交还事件只做展示，不登记载体", str(_body_calls))
+    _starts = [l.strip() for l in orch.splitlines()
+               if "_carriers.start(" in l and not l.strip().startswith("#")]
+    check(len(_starts) == 4 and not any("rt_task_id" in l for l in _starts)
+          and "rt_task_id=_jid or None, owns_record=False" in orch,
+          "后端四处交还都登记载体；只有 Subagent 带权威记录，系统交还不登记成用户可见 BACKGROUND_JOB",
+          str(_starts))
 
     check("at most one user-facing status conclusion" in orch,
           "回看协议要求决定后只给用户一次状态结论，不在工具前后复述")
@@ -1010,23 +1017,24 @@ def t_handed_back_skill_stays_running_until_real_completion() -> None:
         def style(self, value):
             self.styles.append(value)
 
+    from core.runtime import carriers as C
+    C._reset_for_tests()
     gui = object.__new__(WebUI)
     status, icon = FakeEl(), FakeEl()
     gui.skill_ui_elements = {"SlowProgressTest": {"status": status, "icon": icon}}
-    gui._handed_back_carriers = {
-        "carrier-1": {"skill_name": "SlowProgressTest"},
-    }
+    C._carriers["carrier-1"] = {"skill_name": "SlowProgressTest"}
 
     gui._refresh_handed_back_skill_statuses()
     check(status.text == "RUNNING",
           "⭐⭐⭐ 回看轮重置抽屉后，存活 carrier 的本地 Skill 仍显示 RUNNING",
           status.text)
-    check(gui._is_handed_back_skill_running("SlowProgressTest"),
+    check(C.skill_running("SlowProgressTest"),
           "真实完成前禁止 final_result 把它结算为 OK")
 
-    gui._handed_back_carriers.clear()  # 载体真实结束后才允许离开 RUNNING
-    check(not gui._is_handed_back_skill_running("SlowProgressTest"),
+    C._carriers.clear()  # 载体真实结束后才允许离开 RUNNING
+    check(not C.skill_running("SlowProgressTest"),
           "载体记录移除后，状态门禁才放行 OK")
+    C._reset_for_tests()
 
 
 def main() -> int:

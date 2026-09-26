@@ -420,8 +420,10 @@ def t_drawer_keeps_them_apart(tmp: pathlib.Path) -> None:
           str(sorted(_defs_app & {"_render_parked_row", "_parked_snapshot"})))
     # ⚠️ 按**函数定义**数，不按文本数 —— 📌 只要断言读的是文本，
     #    那段留痕注释（里面必然提到这两个名字）就会参与判定。
-    check("_promote_carrier_to_background" in _defs_app,
-          "⭐⭐ 而抽屉 Running 段有了**第二个生产者** —— "
+    from tests._src import module_text as _mt_c
+    check("def promote" in _mt_c("core.runtime.carriers")
+          and "_carriers.promote(" in _mt_c("core.orchestrator"),
+          "⭐⭐ 而抽屉 Running 段有了**第二个生产者**（`dont_wait` → 后端 `carriers.promote`）—— "
           "🔴 在此之前它只有一个（Subagent），那正是用户报的"
           "「后台任务只有Subagent能进去」：不是抽屉坏了，是没有第二条路")
 

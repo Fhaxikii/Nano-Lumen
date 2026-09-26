@@ -353,19 +353,19 @@ def t_consumer_is_shape_neutral() -> None:
           "不是让公共消费端认识每一种载体",
           f"{_orc.count(chr(34)+'long_task_handback'+chr(34))} 处")
 
-    # CancelledError 必须原样上抛（否则「被终止」会被记成「失败」）
-    _tree = ast.parse(_src("app.py"))
+    # CancelledError 与 Exception 分开接（否则「被终止」会被记成「失败」）
+    _tree = ast.parse(_src("core/runtime/carriers.py"))
     _fn = next((n for n in ast.walk(_tree)
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and n.name == "_handback_await"), None)
-    check(_fn is not None, "消费端的包装函数存在")
+                if isinstance(n, ast.AsyncFunctionDef) and n.name == "_run"), None)
+    check(_fn is not None, "载体的 `_run` 存在（后端 `core.runtime.carriers`）")
     if _fn is not None:
-        _s = ast.unparse(_fn)
-        check("CancelledError" in _s and "raise" in _s,
-              "⭐⭐ `CancelledError` **原样上抛** —— "
-              "🔴 吞掉它会让「用户手动终止」被 `_run_bg_task_inner` 记成"
-              "「执行失败」。📌 **「这件事没成」和「这件事被停了」是两回事**，"
-              "归错会让人去排查一个不存在的故障")
+        _try = next(n for n in ast.walk(_fn) if isinstance(n, ast.Try))
+        _h = [ast.unparse(h.type) for h in _try.handlers if h.type is not None]
+        check("asyncio.CancelledError" in _h and "Exception" in _h
+              and _h.index("asyncio.CancelledError") < _h.index("Exception"),
+              "⭐⭐ `CancelledError` 单独先接 —— "
+              "📌 **「这件事没成」和「这件事被停了」是两回事**，"
+              "归错会让人去排查一个不存在的故障", str(_h))
 
 
 def t_skill_protocol_teaches_it() -> None:

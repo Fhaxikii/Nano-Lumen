@@ -544,9 +544,10 @@ class OsExecuteMixin:
                     return f"command finished successfully:\n{_out[-1500:]}"
                 return (f"command finished with a problem "
                         f"({_res.get('error','')}):\n{_out[-1500:]}")
+            from core.runtime import carriers as _carriers
+            _carriers.start(_lc_disp, _await_longcmd(), _lc_ref)
             await event_queue.put({
                 "event": "long_task_handback",
-                "task": asyncio.ensure_future(_await_longcmd()),
                 "bg_task_ref": _lc_ref,
                 "display": _lc_disp,
             })

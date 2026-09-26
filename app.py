@@ -979,6 +979,10 @@ class WebUI:
         self.provider = get_provider()
         self.agent  = Orchestrator(self.provider, registry, self.memory)
         self.agent._push_callback = self._proactive_push
+        # 后台载体结束 → 唤醒等它的挂起；载体状态变化 → 刷新抽屉与 Skill 活动态。
+        from core.runtime import carriers as _carriers
+        _carriers.set_completion_handler(self.notify_background_done)
+        _carriers.add_listener(self._on_carrier_change)
         # 🔴 衰减发生在**本轮 `final_result` 之后**（orchestrator 的 finally 里），
         #    所以 UI 不能在 `final_result` 那一刻去问"有没有东西被移出去" —— 那时还没有。
         #    2026-08-14 实测：模型侧 3 段已经移出、聊天区**一个字没变**，
@@ -4239,60 +4243,9 @@ class WebUI:
                     self.status_lbl.style('color:var(--nano-warn); font-size:var(--nano-fs-sm);')
                 continue
 
-            # ── 长任务被交还：把还在跑的那个载体交给后台生产端 ────────────────
-            # 完成时载体 → notify_background_done(ref) → 唤醒等它的 background 挂起，
-            # Nano 带结果起新 turn 续做。复用整套背景唤醒桥（无需重新发明）。
-            #
-            # ⭐⭐⭐ **这里不认识任何一种载体。** 事件里那个 `task` 一律
-            #    `await` 出**一个字符串**（给模型看的话），由各自的生产端包好。
-            #
-            # 🔴 上一版这里写的是 `_txt, _err, _na, _srv = await _t` ——
-            #    **写死了 MCP 的四元组**。于是长命令和本地 Skill 接进同一条
-            #    合同之后，它们完成的那一刻会被解成
-            #    `后台执行失败：too many values to unpack (expected 4)`，
-            #    而那正好落在最典型的场景上（`pip install` 跑完）。
-            # ⚠️ 事件名也从 `mcp_background_request` 改成了 `long_task_handback`
-            #    —— 三个载体共用它之后，旧名字会让人以为只有 MCP 走这里。
-            #    📌 **一个「保留旧名字」的决定，必须同时检查那个事件的消费端
-            #       还假设着什么。名字兼容 ≠ 形状兼容。**
-            if step.get("event") == "long_task_handback":
-                _bg_t = step.get("task")
-                _bg_ref = step.get("bg_task_ref", "")
-                _bg_disp = step.get("display", "后台任务")
-
-                async def _handback_await(_t=_bg_t):
-                    try:
-                        return await _t
-                    except asyncio.CancelledError:
-                        # ⚠️ 必须原样抛上去：载体的收尾靠它区分
-                        #    「被用户终止」和「执行失败」，吞掉就变成假的失败。
-                        raise
-                    except Exception as _e:
-                        return f"后台执行失败：{type(_e).__name__}: {_e}"
-
-                # 系统交还只是让一个仍阻塞当前工作结果的载体继续跑；它不是 Nano
-                # 主动委派出去的一件独立工作，不能因此出现在 `x running task(s)`。
-                self._start_handed_back_carrier(
-                    _bg_disp, _handback_await(), _bg_ref,
-                    skill_name=step.get("skill_name", ""),
-                    rt_task_id=step.get("rt_task_id") or None,
-                    owns_record=bool(step.get("owns_record", True)))
-                continue
-
-            # ── 模型说「这个调用我不等了」→ 它现在是一件真的后台任务 ────
-            #
-            # ⭐⭐ **这是抽屉 Running 段的第二个生产者。**
-            #    在此之前它只有一个（Subagent）—— 那正是 用户报的
-            #    「后台任务只有Subagent能进去」：不是抽屉坏了，是**没有第二条路**。
-            #
-            # ⚠️ 与系统交还**刻意不同**（见 `_start_handed_back_carrier` 的
-            #    docstring）：系统交还时当前工作**仍然依赖它的结果**，所以它
-            #    不进 pill；而 `dont_wait` 之后 Nano 真的转去做别的了 ——
-            #    📌 **`x running task(s)` 数的是「有东西在动、而你不必等它」**，
-            #       两个条件缺一不可。系统交还满足前者不满足后者。
-            if step.get("event") == "carrier_detached":
-                self._promote_carrier_to_background(
-                    step.get("bg_ref", ""), step.get("display", ""))
+            # ── 长任务被交还 / 转入后台：载体由后端持有（`core.runtime.carriers`），
+            #    抽屉与 Skill 活动态随载体表的状态变化刷新（`_on_carrier_change`）。
+            if step.get("event") in ("long_task_handback", "carrier_detached"):
                 continue
 
             # ── MCP 在场授权提示：某外部服务需登录（OAuth 延后授权）──────────
@@ -4753,9 +4706,10 @@ class WebUI:
                     # 回看那一轮的 final_result 只意味着 Nano 这次看完了，
                     # 不是原来的 Skill 已经结束。真正的完成由 carrier 的 finally
                     # 收口；在那之前该状态必须保持 RUNNING。
+                    from core.runtime import carriers as _carriers_ui
                     self._set_skill_ui_status(
                         active_sk,
-                        "RUNNING" if self._is_handed_back_skill_running(active_sk) else "OK")
+                        "RUNNING" if _carriers_ui.skill_running(active_sk) else "OK")
 
                 self.scroll_area.scroll_to(percent=1.0, duration=0.2)
                 self.status_lbl.set_text("SYS_IDLE")
@@ -7338,212 +7292,27 @@ class WebUI:
         except Exception:
             pass
 
-    def _is_handed_back_skill_running(self, name: str) -> bool:
-        """该 Skill 是否仍有一个被系统交还、尚未完成的载体。"""
-        return any(meta.get("skill_name") == name
-                   for meta in getattr(self, "_handed_back_carriers", {}).values())
-
     def _refresh_handed_back_skill_statuses(self) -> None:
-        """新 pipeline 重置抽屉后，恢复跨回看轮仍在跑的本地 Skill。"""
-        for name in {meta.get("skill_name")
-                     for meta in getattr(self, "_handed_back_carriers", {}).values()}:
-            if name:
-                self._set_skill_ui_status(name, "RUNNING")
+        """新 pipeline 重置抽屉后，恢复仍有载体在跑的本地 Skill 的 RUNNING。"""
+        from core.runtime import carriers as _carriers
+        for name in _carriers.running_skill_names():
+            self._set_skill_ui_status(name, "RUNNING")
 
-    def _start_handed_back_carrier(self, display: str, coro, suspension_ref: str,
-                                    skill_name: str = "",
-                                    rt_task_id: str | None = None,
-                                    owns_record: bool = True) -> str:
-        """保住交还载体的句柄，并在结束时唤醒等待它的当前工作。
-
-        它在执行上当然是独立协程；语义则由 `rt_task_id` 有没有值区分：
-
-          · `None`  —— **系统交还**：当前工作仍依赖它的结果。不进抽屉、不进
-            pill、没有权威 Task 记录（2026-08-10 定的：共享执行手段不代表
-            共享用户语义）。
-          · 有值    —— **它已经不在 Nano 手头了**：要么是 Subagent（生来如此），
-            要么是模型调了 `dont_wait`。这时它进抽屉、进 pill、有 `■`。
-
-        ⚠️ **收权威记录的地方必须在这里**，不在创建它的地方 ——
-           📌 逐字同形：收口要落在拥有该载体**真实终态**的地方，
-              而不是从展示用文本或"我以为它完了"去猜。
-        """
-        import uuid as _uuid
-        carrier_id = _uuid.uuid4().hex[:8]
-        carriers = getattr(self, "_handed_back_carriers", None)
-        if carriers is None:
-            carriers = {}
-            self._handed_back_carriers = carriers
-
-        async def _run():
-            _outcome, _note = "completed", ""
-            try:
-                result = await coro
-            except asyncio.CancelledError:
-                # ⭐ 用户点了 `■`（或进程收尾）。仍要通知等待方，避免活
-                #    WaitRecord 因一个已经死亡的载体而永久挂着。
-                # ⚠️ `cancelled` **不并进 `failed`** —— 早先那条实测结论：
-                #    用户主动停掉不是失败，归进 failed 会让模型和用户都去排查
-                #    一个不存在的问题。
-                _outcome = "cancelled"
-                # 🔴🔴 **实测 2026-08-20：这里把一句准确的话盖成了一句笼统的话。**
-                #    Subagent自己在 `_agent_runner` 的取消分支里写的是
-                #    「这个Subagent被用户手动终止了」—— 而它 re-raise 之后，
-                #    载体这一层用下面这段**通用文案**覆盖了 `result`，
-                #    于是 main agent 收到的是「被中止了，没有返回结果」，
-                #    它只好去猜：「可能是那个目录太大…被系统停了，或者其他原因」。
-                #    📌 **两个人都写这条结论时，后写的那个会盖掉先写的** ——
-                #       而先写的那个才是知道真相的（同 `owns_record` 那条，
-                #       刚为它写过这句判据，转头在【结论文本】上又犯了一次）。
-                #    ⭐ 所以这里要分清**是谁按的停**：UI 那颗 `■` 会先落一个标记。
-                _by_user = bool((carriers.get(carrier_id) or {}).get("cancelled_by_user"))
-                _note = "用户手动终止"
-                if _by_user:
-                    result = ("[System record: the user manually stopped this from the "
-                              "task drawer. It did not fail and it did not finish - "
-                              "the user decided to stop it. Do NOT restart it on your "
-                              "own; tell them plainly that it was stopped and let them "
-                              "decide what happens next.]")
-                else:
-                    _note = "载体在返回结果前终止"
-                    result = ("[System record: this stopped before it returned a "
-                              "result, and nobody asked for that - it was not the "
-                              "user. Do NOT assume it succeeded, and say plainly that "
-                              "you do not know why it stopped.]")
-            except Exception as e:
-                _outcome, _note = "failed", f"{type(e).__name__}: {e}"[:160]
-                result = f"后台执行失败：{type(e).__name__}: {e}"
-            finally:
-                _meta = carriers.pop(carrier_id, None) or {}
-                # ⚠️ 从**表里**取 id，不用闭包里那个 —— `dont_wait` 是在载体
-                #    起跑之后才补上它的。📌 一个「稍后可能被补上」的字段，
-                #    必须在用它的那一刻现读，不能在创建时快照。
-                _rt = _meta.get("rt_task_id") or rt_task_id
-                # ⚠️ **`owns_record=False` 的不收** —— Subagent自己的协程
-                #    已经在它的 `finally` 里收过了（它才知道真实 outcome：
-                #    completed / failed / cancelled 三分）。这里再收一次会用
-                #    一个更粗的判断**覆盖**那个结论。
-                #    📌 **一条记录只能有一个收尾人** —— 两个都收的表现是
-                #       「后收的把先收的盖掉」，而且不会报错。
-                if _rt and _meta.get("owns_record", owns_record):
-                    try:
-                        from core.runtime import task as _rt_task_c
-                        _rt_task_c.finish_background_job(_rt, _outcome, _note)
-                    except Exception as _e_fc:
-                        logger.warning(f"[B1] 载体 {carrier_id} 收权威记录失败: {_e_fc}")
-                    try:
-                        with self._ui_scope():
-                            self._refresh_tasks_panel()
-                    except Exception:
-                        pass
-                # 只有载体真实结束才允许本地 Skill 离开 RUNNING；若同一 Skill
-                # 还有另一条交还载体，仍保持 RUNNING。
-                if skill_name:
-                    try:
-                        with self._ui_scope():
-                            self._set_skill_ui_status(
-                                skill_name,
-                                "RUNNING" if self._is_handed_back_skill_running(skill_name)
-                                else "OK")
-                    except Exception:
-                        pass
-            # ⚠️⚠️ **这一段必须包住 `CancelledError`。**
-            #    🔴 改造前这里是裸的，注释写着「没有 UI 取消入口；这里只可能是
-            #       进程收尾」—— 而 2026-08-20 那颗 `■` 就是 UI 取消入口，
-            #       那句话当场过期了。
-            #    `cancel()` 可能在协程不在 await 点时到达，于是 `_must_cancel`
-            #    置位、**下一个 await 再抛一次** —— 正好打在这个通知上，把它吃掉，
-            #    而等着它的那条 WaitRecord 就再也醒不了。
-            #    📌 **一句「这里不可能发生 X」的注释，会在有人给 X 修了一条路之后
-            #       原地过期，而它不会报错** —— 它只是从此开始说谎。
-            #    ⭐ 权威记录已经在上面**同步**落好了，所以最坏情况只丢一次通知，
-            #       而挂起那边有 orphan 兜底会收。
-            try:
-                await self.notify_background_done(suspension_ref, result_hint=result)
-            except asyncio.CancelledError:
-                logger.warning(
-                    f"[B1] 载体 {carrier_id} 的收尾通知被第二次取消打断 —— "
-                    f"权威记录已落（{_outcome}），等待那边靠 orphan 兜底回收")
-
-        aio = asyncio.create_task(_run())
-        carriers[carrier_id] = {"display": display, "aio": aio,
-                                "suspension_ref": suspension_ref,
-                                "skill_name": skill_name,
-                                "rt_task_id": rt_task_id,
-                                "owns_record": owns_record}
-        return carrier_id
-
-    def _promote_carrier_to_background(self, bg_ref: str, display: str) -> bool:
-        """模型说「这个调用我不等了」→ 给它一条权威记录，让它进抽屉。
-
-        ⚠️ **不碰那个载体本身** —— 它照旧在跑。变的只是「它算不算一件
-           用户该看得见、也该能终止的独立工作」。
-           📌 与早先的设计那条同源：**改的是注意力的归属，不是执行体。**
-        """
-        carriers = getattr(self, "_handed_back_carriers", None) or {}
-        _hit = None
-        for _cid, _meta in carriers.items():
-            if (_meta or {}).get("suspension_ref") == bg_ref:
-                _hit = (_cid, _meta)
-                break
-        if _hit is None:
-            # ⚠️ 最常见的原因是**它刚好跑完了** —— 那时不该再建一条 Running。
-            #    📌 如实记一条日志即可：模型那边已经收到「我会叫你」，而
-            #       完成唤醒本来就会到。
-            logger.info(f"[B1] dont_wait 找不到载体 {bg_ref}（多半刚完成）—— 不建记录")
-            return False
-        _cid, _meta = _hit
-        if _meta.get("rt_task_id"):
-            return True                      # 幂等：同一条别建两次
-        try:
-            from core.runtime import task as _rt_task_p
-            _tid = _rt_task_p.create_background_job(
-                display or _meta.get("display") or "后台任务",
-                _rt_task_p.owner_label())
-        except Exception as e:
-            # 📌 治理/展示层的故障不许把能力本身搞掉（同 那条）：
-            #    记录建不上，那个调用照旧在后台跑、照旧会唤醒 Nano。
-            logger.warning(f"[B1] dont_wait 建后台任务记录失败（载体照旧跑）: {e}")
-            return False
-        _meta["rt_task_id"] = str(getattr(_tid, "task_id", "") or _tid or "")
-        # ⭐ 它**此刻就在跑**（`dont_wait` 是对一个已经启动的载体说的）——
-        #    不 mark 的话抽屉会把一个正在跑的东西显示成「排队中」。
-        #    📌 同Subagent那处：一条状态的唯一写入者一死，它就变成一个不会改变的谎。
-        try:
-            _rt_task_p.mark_background_running(_meta["rt_task_id"])
-        except Exception as _e_mr2:
-            logger.debug(f"[B1] 载体转 RUNNING 失败（照旧跑）: {_e_mr2}")
-        logger.info(f"[B1] {(display or '')[:40]} 进抽屉 "
-                    f"（carrier={_cid} task={_meta['rt_task_id']}）")
+    def _on_carrier_change(self, ev: dict) -> None:
+        """载体表的状态变化（起跑 / 结束 / 进抽屉）→ 刷新抽屉与本地 Skill 的活动态。"""
+        from core.runtime import carriers as _carriers
+        _sk = ev.get("skill_name") or ""
         try:
             with self._ui_scope():
-                self._refresh_tasks_panel()
-        except Exception:
-            pass
-        return True
+                if ev.get("rt_task_id") or ev.get("event") == "carrier_promoted":
+                    self._refresh_tasks_panel()
+                if _sk:
+                    self._set_skill_ui_status(
+                        _sk, "RUNNING" if _carriers.skill_running(_sk) else "OK")
+        except Exception as e:
+            logger.debug(f"[B1] 载体状态刷新界面失败（忽略）: {e}")
 
-    def _cancel_carrier(self, rt_task_id: str) -> bool:
-        """终止一条**已经不在手头**的载体（Subagent / 被 `dont_wait` 的调用）。
 
-        ⭐ 收尾**不在这里做** —— `cancel()` 之后 `_run()` 的 `finally` 会拿到
-           `CancelledError`，在那里记 `cancelled` 并通知等待方。
-           📌 一个动作的结果只该被记一次，而记它的地方是**知道真实终态**的
-              那一个；这里只负责扣扳机。
-        """
-        for _cid, _meta in list((getattr(self, "_handed_back_carriers", None) or {}).items()):
-            if (_meta or {}).get("rt_task_id") != rt_task_id:
-                continue
-            _aio = (_meta or {}).get("aio")
-            if _aio is None or _aio.done():
-                return False
-            # ⭐ **先落标记，再扣扳机** —— 📌 顺序反了的话，`_run()` 的取消分支
-            #    可能在同一轮事件循环里先跑到，读到的还是"没人按过停"。
-            #    （同 「先落成事实、再执行」那条。）
-            _meta["cancelled_by_user"] = True
-            _aio.cancel()
-            logger.info(f"[B1] 用户终止载体 {_cid}（task={rt_task_id}）")
-            return True
-        return False
 
     async def notify_background_done(self, ref: str, result_hint: str | None = None):
         """background 唤醒入口：某个后台进程（ref）完成 → 唤醒等它的挂起。
@@ -11446,32 +11215,6 @@ class WebUI:
         """重画抽屉内容 + 同步导航角标与聊天区 pill。**永不抛。**"""
         try:
             running, finished = self._bg_snapshot()
-            # ⭐⭐ 后台那条的**心跳**（2026-08-22 那次建模）。
-            #
-            # 前台那条的心跳是**回看**（`_reschedule` 每次都推后 `orphan_at`，
-            # 判据：「一次成功的回看恰恰是『有人管』的证据」）。
-            # 🔴 但 `dont_wait` 之后 `fire_at=None` —— **后台的东西没有回看**，
-            #    于是没有任何东西去推 `orphan_at`：一个装 35 分钟的包会在
-            #    第 30 分钟被 `ORPHANED`，35 分钟真装完时通知落到**已终态**的
-            #    记录上 → **结果丢失**。
-            # ⭐ 所以这里换一个「有人管」的证据：**载体还在跑**。
-            #    📌 `orphan_at` 的定义是「等的那个东西再也没回来」，
-            #       而载体还活着恰恰证明它还会回来。
-            # ⚠️ 挂在这个 2 秒定时器上而不是新起一个：它本来就每 2 秒
-            #    问一遍「谁还在跑」——📌 同一个事实不该被问两遍。
-            # 心跳的来源是载体表（内存里还活着的载体，带 `suspension_ref`），
-            # 不是 `running`（runtime 记录，不带 ref）。
-            try:
-                from core.runtime import waitcond as _wc_hb
-                for _m in list((getattr(self, "_handed_back_carriers", None) or {}).values()):
-                    _aio = _m.get("aio")
-                    if _aio is None or _aio.done():
-                        continue          # 已经结束的不推 —— 推后 ≠ 让它不死
-                    _ref = str(_m.get("suspension_ref") or "")
-                    if _ref:
-                        _wc_hb.touch_by_bg_ref(_ref)
-            except Exception as _e_hb:
-                logger.debug(f"[B1] 载体心跳跳过（不影响抽屉）: {_e_hb}")
             # ⭐⭐ pill 数的是「**它在后台**」—— 就这一个条件。
             #
             # 🔴 旧判据写的是「有东西在动、**而你不必等它**」，两个条件。
@@ -11905,7 +11648,8 @@ class WebUI:
         """
         _tid = getattr(rec, "task_id", "") or ""
         try:
-            if self._cancel_carrier(_tid):
+            from core.runtime import carriers as _carriers
+            if _carriers.cancel(_tid):
                 ui.notify('已终止', type='positive')
             else:
                 ui.notify('这个任务已经不在跑了', type='info')

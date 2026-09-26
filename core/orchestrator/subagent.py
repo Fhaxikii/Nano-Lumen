@@ -382,17 +382,17 @@ class SubagentMixin:
             display=f"Agent · {_label}", bg_ref=_agent_ref,
             action_id=aid, event_queue=event_queue,
             recheck=False, detachable=False)
+        # ⭐ Subagent**生来**就有权威记录（`create_background_job` 在最上面），
+        #    所以载体这一层只拿它当「那颗 `■` 要终止谁」的钥匙，
+        #    **不负责收尾**（`owns_record=False`）。
+        #    📌 一条记录只能有一个收尾人 —— 两个都收的表现是
+        #       「后收的那个把先收的结论覆盖掉」，而它不会报错。
+        from core.runtime import carriers as _carriers
+        _carriers.start(f"Agent · {_label}", _task, _agent_ref,
+                        rt_task_id=_jid or None, owns_record=False)
         await event_queue.put({
             "event": "long_task_handback",
-            "task": _task,
             "bg_task_ref": _agent_ref,
             "display": f"Agent · {_label}",
-            # ⭐ Subagent**生来**就有权威记录（`create_background_job` 在最上面），
-            #    所以载体这一层只拿它当「那颗 `■` 要终止谁」的钥匙，
-            #    **不负责收尾**（`owns_record=False`）。
-            #    📌 一条记录只能有一个收尾人 —— 两个都收的表现是
-            #       「后收的那个把先收的结论覆盖掉」，而它不会报错。
-            "rt_task_id": _jid,
-            "owns_record": False,
         })
         return _txt

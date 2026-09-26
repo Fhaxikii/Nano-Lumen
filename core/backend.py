@@ -5,7 +5,7 @@
 （orchestrator、runtime、health、proactive），不依赖任何界面框架。
 
 周期心跳（间隔秒）：
-  runtime_reconcile 5 · capability_probe 15 · budget_health 20 · intel_tick 20 ·
+  runtime_reconcile 5 · capability_probe 15 · budget_health 20 · intel_tick 20 · carrier_heartbeat 30 ·
   cpu_sample 60 · ambient_trail 240 · canary 300
 一次性：asyncio 崩溃处理器（立即）· mcp_startup（1.5 秒后）
 """
@@ -74,6 +74,9 @@ def start_backend_services(agent: Any, intel_engine: Optional[Any] = None) -> No
     heartbeat.register("capability_probe", 15, _capability_probe)
     heartbeat.register("budget_health", 20, _budget_health)
     heartbeat.register("canary", 300, agent.maybe_run_canary)
+    # 还在跑的后台载体 → 推后它等待记录的 orphan_at（默认 30 分钟判孤儿）
+    from core.runtime import carriers
+    heartbeat.register("carrier_heartbeat", 30, carriers.heartbeat)
     if intel_engine is not None:
         # 主动智能引擎（shadow 期 20 秒一跳，多采样决策面；上线后可调回 60 秒）
         heartbeat.register("intel_tick", 20, intel_engine.tick)

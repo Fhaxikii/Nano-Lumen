@@ -856,9 +856,10 @@ class ToolDispatchMixin:
                                     f"error:\n{_txt}")
                         return f"External capability \"{_n}\" finished:\n{_txt}"
 
+                    from core.runtime import carriers as _carriers
+                    _carriers.start(_bg_display, _await_mcp(), _bg_ref)
                     await event_queue.put({
                         "event": "long_task_handback",
-                        "task": asyncio.ensure_future(_await_mcp()),
                         "bg_task_ref": _bg_ref,
                         "display": _bg_display,
                     })
@@ -1095,9 +1096,10 @@ class ToolDispatchMixin:
                                 f"Skill \"{_n}\" ran but returned no content."
                             return f"Skill \"{_n}\" finished:\n{_t2}"
 
+                        from core.runtime import carriers as _carriers
+                        _carriers.start(_sk_disp, _await_skill(), _sk_ref, skill_name=name)
                         await event_queue.put({
                             "event": "long_task_handback",
-                            "task": asyncio.ensure_future(_await_skill()),
                             "bg_task_ref": _sk_ref,
                             "display": _sk_disp,
                             "skill_name": name,

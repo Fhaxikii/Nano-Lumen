@@ -599,9 +599,8 @@ class LongTaskMixin:
               同一件事有两个实现，它们只在「我两次想法相同」的前提下一致。
 
         ⚠️ 撤回看复用 `reschedule_wait(None)`，**不另写一套**。
-        ⚠️ 抽屉记录交给 UI 侧建：Task 记录要和 carrier 的**生命周期**绑在一起
-           （完成时收），而持有 carrier 的是 app。
-           📌 一条记录的收尾必须落在拥有它真实终态的地方（逐字同形）。
+        ⚠️ 抽屉记录由载体表建（`carriers.promote`）：Task 记录和载体的生命周期绑在一起
+           （载体结束时收）。
         """
         try:
             from core.runtime import waitcond as _wc_pk
@@ -611,6 +610,11 @@ class LongTaskMixin:
         # ⚠️ **一次性** —— 用掉就清。📌 一个「当前是哪个」的记录点如果不清，
         #    下一次会作用在一个早就结束的载体上，而且不报错。
         self._detachable_carrier = None
+        try:
+            from core.runtime import carriers as _carriers
+            _carriers.promote(car.get("bg_ref", ""), car.get("display", ""))
+        except Exception as _e_pr:
+            logger.warning(f"[B1] 载体进抽屉失败（照旧继续）: {_e_pr}")
         logger.info(f"[B1] {why or 'park'}：{car.get('display','')[:40]} 移出手头 "
                     f"→ 进抽屉，下一步「{next_step[:40]}」")
         # ⚠️ **只造事件，不投递** —— 两个调用方的送法本来就不同

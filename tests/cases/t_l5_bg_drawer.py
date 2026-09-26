@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """后台任务抽屉 —— `■` 终止、Finished 的范围、载体心跳。
 
-  ① `■` 的 handler 调到载体表（`_cancel_carrier`），并真的把在跑的载体取消
+  ① `■` 的 handler 调到后端载体表（`carriers.cancel`），并真的把在跑的载体取消
   ② Finished = **本次运行产生的**（不是"最近 N 条"），且**含**本次启动
      认定的 `INTERRUPTED_BY_RESTART`
   ③ 「本次运行」的起点取自**内核时钟**，不是模块级 `time.time()`
@@ -55,10 +55,10 @@ def _func_src(src: str, name: str) -> str:
 
 
 def t_cancel_has_a_ui_caller() -> None:
-    print("[1] `■` 的 handler 调到载体表")
+    print("[1] `■` 的 handler 调到后端载体表")
     src = module_text("app")
     seg = _func_src(src, "_cancel_bg_from_ui")
-    check("self._cancel_carrier(" in seg, "⭐⭐ `_cancel_bg_from_ui` 调用 `_cancel_carrier`")
+    check("_carriers.cancel(" in seg, "⭐⭐ `_cancel_bg_from_ui` 调用 `carriers.cancel`")
     tree = ast.parse(src)
     _fn = next((f for f in ast.walk(tree)
                 if isinstance(f, ast.FunctionDef) and f.name == "_render_bg_row"), None)
@@ -67,25 +67,24 @@ def t_cancel_has_a_ui_caller() -> None:
           "⭐⭐⭐ handler 被 `■` 的点击绑上了")
 
 
-def t_cancel_path_really_runs() -> None:
-    print("[2] 没有对应载体时如实说「不在跑了」")
+class _UiHost:
+    def __init__(self):
+        self.refreshed = 0
+        self.notified = []
+
+    def _refresh_tasks_panel(self):
+        self.refreshed += 1
+
+
+def _click_stop(h, task_id: str) -> None:
+    """真的调 WebUI 上那个方法（绑到替身上），`ui.notify` 换成记录。"""
     from app import WebUI
     import app as _app
 
-    class _Host:
-        def __init__(self):
-            self._handed_back_carriers = {}
-            self.refreshed = 0
-            self.notified = []
-        _cancel_carrier = WebUI._cancel_carrier
-
-        def _refresh_tasks_panel(self):
-            self.refreshed += 1
-
     class _Rec:
-        task_id = "rt_gone"
-
-    h = _Host()
+        pass
+    _r = _Rec()
+    _r.task_id = task_id
 
     class _Notify:
         @staticmethod
@@ -94,9 +93,17 @@ def t_cancel_path_really_runs() -> None:
     _orig = _app.ui
     try:
         _app.ui = _Notify
-        WebUI._cancel_bg_from_ui.__get__(h, _Host)(_Rec())
+        WebUI._cancel_bg_from_ui.__get__(h, _UiHost)(_r)
     finally:
         _app.ui = _orig
+
+
+def t_cancel_path_really_runs() -> None:
+    print("[2] 没有对应载体时如实说「不在跑了」")
+    from core.runtime import carriers as C
+    C._reset_for_tests()
+    h = _UiHost()
+    _click_stop(h, "rt_gone")
     check(bool(h.notified) and "不在跑" in str(h.notified[0]), "⭐ 提示「这个任务已经不在跑了」",
           str(h.notified))
     check(h.refreshed >= 1, "⚠️ 之后重刷面板（否则那一行会一直显示在 Running）")
@@ -106,59 +113,36 @@ def t_cancel_reaches_the_only_real_producer() -> None:
     """`■` 打到载体表里真的在跑的那一条（Subagent 的载体），并真的取消它。"""
     print("")
     print("[2b] 🔴 那颗 `■` 打到的是**真的有货的那张表**")
-    from app import WebUI
     import asyncio as _aio
-
-    class _Host2:
-        def __init__(self):
-            self._handed_back_carriers = {}
-            self.refreshed = 0
-            self.notified = []
-        _cancel_carrier = WebUI._cancel_carrier
-
-        def _refresh_tasks_panel(self):
-            self.refreshed += 1
-
-    class _Rec2:
-        task_id = "rt_agent"
+    from core.runtime import carriers as C
 
     async def _drive():
-        h2 = _Host2()
+        C._reset_for_tests()
+        got = []
+
+        async def _done(ref, hint):
+            got.append((ref, hint))
+        C.set_completion_handler(_done)
 
         async def _forever():
             await _aio.sleep(60)
 
         _t = _aio.ensure_future(_forever())
+        C.start("Agent · 查点东西", _t, "agent_x", rt_task_id="rt_agent", owns_record=False)
         await _aio.sleep(0)                     # 让它真的跑起来
-        h2._handed_back_carriers["c1"] = {"display": "Agent · 查点东西",
-                                          "aio": _t, "rt_task_id": "rt_agent",
-                                          "owns_record": False}
-        import app as _app
+        h2 = _UiHost()
+        _click_stop(h2, "rt_agent")
+        for _ in range(20):
+            await _aio.sleep(0.01)
+        C._reset_for_tests()
+        return h2, _t.cancelled(), got
 
-        class _N:
-            @staticmethod
-            def notify(*a, **k):
-                h2.notified.append(a[0] if a else "")
-        _orig = _app.ui
-        try:
-            _app.ui = _N
-            WebUI._cancel_bg_from_ui.__get__(h2, _Host2)(_Rec2())
-        finally:
-            _app.ui = _orig
-        # 让取消真的落地（cancel() 只是请求，要下一次调度才抛进去）
-        try:
-            await _t
-        except _aio.CancelledError:
-            pass
-        return h2, _t.cancelled()
-
-    h2, _cancelled = _aio.run(_drive())
-    check(_cancelled,
-          "⭐⭐⭐ **载体真的被 cancel 了**",
-          f"cancelled={_cancelled}")
+    h2, _cancelled, got = _aio.run(_drive())
+    check(_cancelled, "⭐⭐⭐ **载体真的被 cancel 了**", f"cancelled={_cancelled}")
     check(bool(h2.notified) and "已终止" in str(h2.notified[0]),
-          "⭐ 告诉用户的是「已终止」",
-          str(h2.notified))
+          "⭐ 告诉用户的是「已终止」", str(h2.notified))
+    check(len(got) == 1 and got[0][0] == "agent_x" and "the user manually stopped this" in got[0][1],
+          "⭐⭐ 等待方收到的是「用户手动停的」", str(got)[:120])
 
 
 def t_finished_is_this_run() -> None:
@@ -287,54 +271,23 @@ def t_running_is_not_shown_as_queued() -> None:
 
 
 def t_cancel_reason_reaches_the_model() -> None:
-    """🔴 实测 2026-08-20：main agent **不知道是用户手动停的**。
-
-    用户点了抽屉里那颗 `■`，而 main agent 的说法是：
-      「Subagent任务被中止了，没有返回结果。可能是那个目录太大、文件太多，
-        搜索耗时太长被系统停了，或者其他原因。」
-    —— 它在**猜**。
-
-    根因：Subagent自己在取消分支里写的是「这个Subagent被用户手动终止了」，
-    但它 re-raise 之后，载体那一层用一段**通用文案**覆盖了 `result`。
-    📌 **两个人都写这条结论时，后写的那个会盖掉先写的** ——
-       而先写的那个才是知道真相的。
-    ⚠️ 刚为 `owns_record` 写过这句判据（一条记录只能有一个收尾人），
-       转头在【结论文本】上又犯了一次 ——
-       📌 一条判据只在你想到它适用的地方才生效；它不会自己去覆盖同形的第二处。
-    """
+    """「是用户停的」这件事必须到得了模型（后端载体表 `core.runtime.carriers`）。"""
     print("")
     print("[2d] 🔴 「是用户停的」这件事必须到得了模型")
     import ast as _ast
-    _src = module_text("app")
+    _src = module_text("core.runtime.carriers")
+    check("cancelled_by_user" in _src,
+          "⭐⭐⭐ 载体**分得清**「用户按了停」和「它自己没了」")
+    check("the user manually stopped this" in _src and "Do NOT restart it on" in _src,
+          "⭐⭐⭐ 用户停的那一档，给模型的话指名道姓，并明说别自己重启")
+    check("it was not the user" in _src,
+          "⭐ 不是用户停的那一档也如实说（不替用户编一个没做过的动作）")
     _tree = _ast.parse(_src)
-    _fn = next((f for f in _ast.walk(_tree)
-                if isinstance(f, (_ast.FunctionDef, _ast.AsyncFunctionDef))
-                and f.name == "_start_handed_back_carrier"), None)
-    check(_fn is not None, "⚠️ 前置：找得到载体")
-    _body = _ast.unparse(_fn) if _fn else ""
-
-    check("cancelled_by_user" in _body,
-          "⭐⭐⭐ 载体**分得清**「用户按了停」和「它自己没了」 —— "
-          "📌 一个字段不许表达两个现实；而这两者对模型的下一步完全不同")
-    check("the user manually stopped this" in _body,
-          "⭐⭐⭐ 用户停的那一档，给模型的话**指名道姓** —— "
-          "🔴 改造前它只能猜「可能是目录太大被系统停了」")
-    check("Do NOT restart it on your own" in _body,
-          "⭐⭐ 并明说**别自己重启一遍** —— "
-          "📌 用户停掉它是一次决定，不是一次故障")
-    check("it was not the user" in _body,
-          "⭐ 而**不是**用户停的那一档也要如实说 —— "
-          "📌 宁可承认「不知道为什么」，也不许替用户编一个用户没做过的动作"
-          "（同 `cancelled_by_user_message` 那条）")
-
-    # ⭐ 标记必须**先落再扣扳机**
     _cf = next((f for f in _ast.walk(_tree)
-                if isinstance(f, (_ast.FunctionDef, _ast.AsyncFunctionDef))
-                and f.name == "_cancel_carrier"), None)
+                if isinstance(f, _ast.FunctionDef) and f.name == "cancel"), None)
     _cb = _ast.unparse(_cf) if _cf else ""
-    check(_cb.index("cancelled_by_user") < _cb.index(".cancel()"),
-          "⭐⭐ **先落标记，再 cancel** —— 📌 顺序反了的话，取消分支可能在同一轮"
-          "事件循环里先跑到，读到的还是「没人按过停」")
+    check(bool(_cb) and _cb.index("cancelled_by_user") < _cb.index(".cancel()"),
+          "⭐⭐ **先落标记，再 cancel**（否则取消分支可能先跑到、读到「没人按过停」）")
 
 
 def t_pill_handle_cannot_outlive_its_element() -> None:
@@ -378,12 +331,38 @@ def t_pill_handle_cannot_outlive_its_element() -> None:
 
 
 def t_carrier_heartbeat_reads_carriers() -> None:
-    print("[L5-hb] 载体心跳读的是载体表（D46）")
-    seg = _func_src(module_text("app"), "_refresh_tasks_panel")
-    k = seg.index("touch_by_bg_ref")
-    loop = seg[seg.rindex("for _m in", 0, k):k]
-    check("_handed_back_carriers" in loop,
-          "⭐⭐ 心跳遍历的是 `_handed_back_carriers`（真正在跑的载体）", loop[:80])
+    print("[L5-hb] 载体心跳：后端心跳周期调用，只推后还在跑的载体（D46）")
+    import asyncio as _aio
+    from core.runtime import carriers as C
+    from core.runtime import waitcond as W
+    touched = []
+    _orig = W.touch_by_bg_ref
+    W.touch_by_bg_ref = lambda ref: touched.append(ref)
+
+    async def _drive():
+        C._reset_for_tests()
+
+        async def _slow():
+            await _aio.sleep(60)
+        _t = _aio.ensure_future(_slow())
+        C.start("pip install", _t, "cmd_live")
+        _done = _aio.ensure_future(_aio.sleep(0))
+        await _done
+        C._carriers["dead"] = {"aio": _done, "suspension_ref": "cmd_dead"}
+        C.heartbeat()
+        _t.cancel()
+        await _aio.sleep(0.01)
+        C._reset_for_tests()
+
+    try:
+        _aio.run(_drive())
+    finally:
+        W.touch_by_bg_ref = _orig
+    check(touched == ["cmd_live"], "⭐⭐ 只推后还在跑的载体", str(touched))
+    check('heartbeat.register("carrier_heartbeat"' in module_text("core.backend"),
+          "⭐ 由后端心跳调度器周期调用（不再挂在抽屉的界面刷新上）")
+    check("touch_by_bg_ref" not in _func_src(module_text("app"), "_refresh_tasks_panel"),
+          "界面刷新不再做心跳")
 
 
 def main() -> int:

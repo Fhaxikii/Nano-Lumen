@@ -83,6 +83,8 @@ def t_scheduler() -> None:
 EXPECTED = {
     "runtime_reconcile": 5, "capability_probe": 15, "budget_health": 20, "canary": 300,
     "intel_tick": 20, "cpu_sample": 60, "ambient_trail": 240,
+    # 后台载体心跳（原挂在抽屉 2 秒刷新里，S6-6b 第 3 步移入后端；orphan 判定是 30 分钟）
+    "carrier_heartbeat": 30,
 }
 
 

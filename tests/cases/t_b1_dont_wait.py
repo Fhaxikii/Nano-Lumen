@@ -395,7 +395,7 @@ def t_agent_goes_through_the_same_contract() -> None:
           "同一个 context 上，被记进这个Subagent的账。"
           "📌 一个用来「归属」的 ContextVar，必须在它所归属的那条执行链里 set")
     # 🔴 一条记录只能有一个收尾人
-    check("owns_record" in body and "'owns_record': False" in body.replace('"', "'"),
+    check("owns_record=False" in body,
           "⭐⭐⭐ Subagent**自己**收权威记录，载体那层不许再收一次 —— "
           "📌 两个都收的表现是「后收的把先收的盖掉」，而且不会报错")
     check("cancelled" in body,

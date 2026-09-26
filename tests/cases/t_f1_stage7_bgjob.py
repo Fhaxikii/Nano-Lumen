@@ -283,16 +283,17 @@ def t_source_invariants() -> None:
     tsk = module_text("core.runtime.task")
 
     # ① 载体的 asyncio.Task 句柄被保住（终止功能的前提；无强引用的 task 可能被 GC）
-    tree = ast.parse(app)
+    car = module_text("core.runtime.carriers")
+    tree = ast.parse(car)
     fn = None
     for n in ast.walk(tree):
-        if isinstance(n, ast.FunctionDef) and n.name == "_start_handed_back_carrier":
+        if isinstance(n, ast.FunctionDef) and n.name == "start":
             fn = n
-    check(fn is not None, "前置：找到 `_start_handed_back_carrier`")
+    check(fn is not None, "前置：找到后端载体表的 `start`")
     body = ast.unparse(fn) if fn else ""
-    check("aio = asyncio.create_task" in body and "'aio': aio" in body.replace('"', "'"),
-          "⭐⭐⭐ AST：`asyncio.create_task` 的返回值存进载体表")
-    check("_cancel_carrier" in app, "⭐ 终止入口存在")
+    check("aio = asyncio.ensure_future" in body and "'aio': aio" in body.replace('"', "'"),
+          "⭐⭐⭐ AST：`ensure_future` 的返回值存进载体表")
+    check("def cancel" in car and "_carriers.cancel(" in app, "⭐ 终止入口存在且界面 `■` 调它")
 
     # ② CancelledError 接在 Exception 之前（3.8+ 它继承 BaseException，不被 except Exception 捕获）
     run_fn = None
