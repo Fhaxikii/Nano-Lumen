@@ -630,8 +630,17 @@ class ScreenMixin:
                 "then continue the task - do not stop to ask."
             )
 
-        # 没有 GUI 任务：缩窗前先请用户授权本次任务（全局 auto 已开时界面直接放行）。
+        # 没有 GUI 任务：缩窗前先请用户授权本次任务。
         # 授权在缩窗前弹：那时目标窗口没有瞬态 UI 可丢，点授权偷焦点也无害。
+        # 用户选了 Auto 时事件标 `preapproved`：界面不弹授权，缩窗完成后直接回复同意
+        # （仍等界面回复，保证同一批后续的屏幕动作在窗口缩好之后才执行）。
+        try:
+            from core.os_layer import dsl as _dsl_auto
+            _preapproved = _dsl_auto.user_auto_mode_on()
+        except Exception:
+            _preapproved = False
+        if _preapproved:
+            logger.info("[Window] 用户选的是 Auto → 缩窗不弹授权")
         _ev = asyncio.Event()
         _approved = [False]
         _loop = asyncio.get_running_loop()
@@ -647,7 +656,7 @@ class ScreenMixin:
         from core.runtime import replies as _replies
         _rid = _replies.register({"approve": _on_approve, "reject": _on_reject})
         await event_queue.put({
-            "event": "mini_auth_request",
+            "event": "mini_auth_request", "preapproved": _preapproved,
             "reply_id": _rid, "actions": ["approve", "reject"],
         })
         from core.runtime import inbox as _ib6
@@ -659,18 +668,22 @@ class ScreenMixin:
         if _oc_mini != _ib6.ConfirmOutcome.CONFIRMED:
             _approved[0] = False
         if _approved[0]:
-            self._gui_task_begin("set_window_mode('mini') approved")
-            self._set_window_mode("mini")
-            return (
-                "Nano has been minimized to the top-right mini window and the user authorized automatic screen operation for this task. "
-                "You may now continue operating the user's screen without repeated confirmation prompts. "
-                "IMPORTANT: when the screen work is done, call set_window_mode('full'). That call is what ends the task and "
-                "revokes this temporary authorization. The task does NOT end with the turn; if you forget, the authorization "
-                "stays active and your window stays small until the task times out after 15 idle minutes."
-            )
+            return self._begin_authorized_gui_task()
         return (
             "The user rejected this screen-operation authorization or the request timed out. "
             "Do not operate the screen again. Tell the user that authorization is needed to continue, or suggest completing it manually."
+        )
+
+    def _begin_authorized_gui_task(self) -> str:
+        """授权已有（用户同意，或用户选了 Auto）→ 开始 GUI 任务、记窗口为 mini，返回给模型的结果。"""
+        self._gui_task_begin("set_window_mode('mini') approved")
+        self._set_window_mode("mini")
+        return (
+            "Nano has been minimized to the top-right mini window and the user authorized automatic screen operation for this task. "
+            "You may now continue operating the user's screen without repeated confirmation prompts. "
+            "IMPORTANT: when the screen work is done, call set_window_mode('full'). That call is what ends the task and "
+            "revokes this temporary authorization. The task does NOT end with the turn; if you forget, the authorization "
+            "stays active and your window stays small until the task times out after 15 idle minutes."
         )
 
     async def _handle_end_screen_task(self, args: dict, aid: str, *,

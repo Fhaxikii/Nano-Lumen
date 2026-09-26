@@ -275,7 +275,8 @@ class McpMixin:
             return
 
         # ⭐ 弹窗事件。**刻意用一个新事件名**而不是复用 os_action_confirm /
-        #    execution_confirm —— 那两个都会被 `_auto_on()` 自动放行，
+        #    execution_confirm —— 那两个在 Auto 下由后端自动放行
+        #    （`os_skill` 的危险判定 / `dsl.auto_skips_confirmation`），
         #    而这一类**不许被 auto 豁免**。
         #    📌 复用一个「会被豁免」的通道去表达「不许豁免」，是自相矛盾的接线。
         # ⚠️ 等待走**既有合同** `inbox.wait_confirm_or_user_message(event, timeout)` ——

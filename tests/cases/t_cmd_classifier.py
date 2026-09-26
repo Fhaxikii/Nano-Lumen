@@ -254,13 +254,12 @@ def t_wiring() -> None:
     _app = module_text("app")
     _orc = module_text("core.orchestrator")
 
-    check('if self._auto_on() and step.get("auto_ok") is True:' in _app,
-          "🔴🔴 **判据是「明确说可以」而不是「没人说不行」** —— "
-          "📌 上游漏传这个键时：前者退化成照常弹窗（安全），"
-          "后者退化成静默执行（危险）。**默认值那一侧永远是危险的那侧**")
-    check('"auto_ok": _auto_ok' in _orc and '"gate_by": _gate_by' in _orc,
-          "⭐ 事件里带出判定结果")
-    check("if _dsl_g.auto_authorization_on():" in _orc,
+    check("if _auto_now and _auto_ok is True:" in _orc,
+          "🔴🔴 后端放行判据是「明确说可以」而不是「没人说不行」 —— "
+          "判定漏给结果时退化成照常弹窗（安全），不退化成静默执行")
+    check("_auto_on" not in _app and '"auto_ok"' not in _orc,
+          "⭐ 放行判定在后端：界面不再判断 Auto，事件里也不再带 auto_ok")
+    check("_auto_now = _dsl_g.auto_authorization_on()" in _orc and "if _auto_now:" in _orc,
           "⭐⭐ **只在 auto 开着时才调判定** —— "
           "ask permission 模式本来就每条都问，判定一分钱不值")
     check("_auto_ok, _gate_by, _gate_why = False" in _orc,

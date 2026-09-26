@@ -285,9 +285,9 @@ def t_wiring_c_phase() -> None:
     #    ⇒ 断言查源码文本时**必须先剥注释**，否则留痕本身会替代码作证。
     _ac_code = "\n".join(l for l in ac.splitlines()
                          if not l.strip().startswith("#"))
-    check("auto_authorization_on()" in _ac_code,
-          "⭐⭐ `_auto_on()` 读的是**授权租约**（`auto_authorization_on()`），"
-          "不再是 `_temp_auto` 那个 bool")
+    check("auto_authorization_on()" in module_text("core.orchestrator")
+          and "def _auto_on" not in _ac_code,
+          "⭐⭐ Auto 放行由后端按 `auto_authorization_on()`（含授权租约）判定，界面不再判断")
     check("_temp_auto" not in _ac_code and "_rt_auto_compare" not in _ac_code
           and "def shadow_compare_auto" not in module_text("core.runtime.oslease"),
           "旧的 `_temp_auto` bool 与对答案函数已删除")

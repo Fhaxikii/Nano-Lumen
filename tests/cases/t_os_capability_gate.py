@@ -227,10 +227,9 @@ def t_authorized_by_is_visible() -> None:
     check(fn is not None, "⚠️ 前置：找得到 `_execute_dsl_step`")
     body = ast.unparse(fn) if fn else ""
 
-    check("'auto': _on_auto" in body,
-          "⭐⭐⭐ **auto 走一个单独的回调** —— 🔴 复用 `on_confirm` 的话，"
-          "「用户亲自点了同意」和「auto 替用户点了」在这一层就完全无法区分，"
-          "而它们对模型是两件事")
+    check("_user_choice[0] = 'auto'" in body,
+          "⭐⭐⭐ **auto 放行记成单独的一档**（后端直接放行时写 'auto'，不复用用户同意）—— "
+          "「用户亲自点了同意」和「auto 替用户放行」对模型是两件事")
     for _v in ("user_once", "user_always", "auto", "user_denied"):
         check(f"'{_v}'" in body, f"⭐ `authorized_by` 有 `{_v}` 这一档")
     check("confirm_timeout" in body and "cancelled_by_user_message" in body,

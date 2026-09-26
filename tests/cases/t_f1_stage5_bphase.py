@@ -297,17 +297,12 @@ def t_wiring() -> None:
     # ── 免确认授权也切到租约了 ──────────────────────────
     apc = module_text("app")
     apl = chr(10).join(l for l in apc.splitlines() if not l.strip().startswith("#"))
-    check("_rt_auto_authorized()" in apl,
-          "⭐⭐ `_auto_on()` 读的是**授权租约**，不是 `self._temp_auto`"
-          "（旧写法的失效条件写在 UI 里：mini 窗一关就没了 —— "
-          "一条「用户还授权着吗」的判断，答案取决于某个窗口开着没有）")
-    _seg = apl.split("def _auto_on")[1].split("def ")[0]
-    check("self._temp_auto" not in _seg.split("return")[-1],
-          "⭐ `_auto_on` 的返回值里不再有旧 bool（它只剩对答案那一个用途）")
-    check("self._global_auto" in _seg,
-          "⚠️ 而 `_global_auto` **刻意保留** —— 用户显式拨的模式开关，"
-          "存 `os_config.json`、跨重启存活、没有生命周期问题，"
-          "不在本次迁移范围（迁移边界当时就划定了）")
+    _dsl = module_text("core.os_layer.dsl")
+    _aao = _dsl.split("def auto_authorization_on")[1].split("def ")[0]
+    check("temp_auto_authorized()" in _aao and "user_auto_mode_on(" in _aao,
+          "⭐⭐ Auto 的判断（`dsl.auto_authorization_on`）= 用户选的 Auto 或临时授权租约")
+    check("def _auto_on" not in apl,
+          "⭐ 界面不再自己判断 Auto（放行判定在后端）")
     check("_temp_auto" not in apl,
           "旧 bool `_temp_auto` 已删除：临时授权只以授权租约为准")
 

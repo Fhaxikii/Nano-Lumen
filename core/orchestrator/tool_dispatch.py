@@ -713,7 +713,8 @@ class ToolDispatchMixin:
                 # 在场确认：仅当 server 明确标 destructive（不可逆）时弹确认卡，复用 execution_confirm。
                 # 普通读/写不拦——透明度由工具卡片保证（对齐"可逆直接做、不可逆先确认"）。
                 _mcp_confirm = _mcp_mgr.confirm_summary(name)
-                if _mcp_confirm:
+                from core.os_layer import dsl as _dsl_auto
+                if _mcp_confirm and not _dsl_auto.auto_skips_confirmation(f"MCP 工具 {name}"):
                     _confirm_ev = asyncio.Event()
                     _cancelled = [False]
                     _loop = asyncio.get_running_loop()
@@ -984,7 +985,8 @@ class ToolDispatchMixin:
                 # ── 本地 Skill 执行 ──────────────────────────────────────
                 # 副作用确认检查
                 _side_check = self._check_skill_side_effects(name)
-                if _side_check:
+                from core.os_layer import dsl as _dsl_auto
+                if _side_check and not _dsl_auto.auto_skips_confirmation(f"Skill {name}"):
                     _confirm_ev = asyncio.Event()
                     _cancelled = [False]
                     _loop = asyncio.get_running_loop()

@@ -2415,37 +2415,16 @@ class WebUI:
     #    ⚠️ 但最小化之后弹窗已经 `close()` 了，**右下角那个悬浮条还在** ——
     #       所以外部关闭必须**连悬浮条一起清**，否则壳只是换了个形状。
 
-    def _present_os_confirm(self, step: dict) -> bool:
-        """把一次 OS 授权请求呈现出来。返回 True = 已经处理掉（auto 直接放行）。
+    def _present_os_confirm(self, step: dict) -> None:
+        """把一次 OS 授权请求画成弹窗。
 
-        ⭐⭐ **抽成方法是因为它现在有两个入口**：
-          · 轮内 —— `navigate_pipeline` 的事件流（main agent 自己动手时）
-          · 轮外 —— `_drain_oob_events`（Subagent**跨过了它那一轮**之后）
-        📌 同一件事有两处各画一遍，只在"我两次想法相同"的前提下一致
-           （本项目第 N 次撞这个形状：live/replay 工具卡、pill、渲染…）。
+        两个入口：轮内（`navigate_pipeline` 的事件流）与轮外（`_drain_oob_events`，
+        Subagent 跨过它那一轮之后）。Auto 下能自动放行的请求由后端直接放行，不会到这里。
+        Auto 下被危险判定拦下的 `run_command` 到这里时没有「始终允许」按钮：
+        它的 floor=3，天然走红色分支（见 `_show_os_action_confirm_dialog`）。
         """
         from core.runtime.replies import reply_callback as _reply_cb
         _on_confirm = _reply_cb(step, "confirm")
-        # auto 模式（全局或本次临时）→ 自动通过，不弹窗（消除中途偷焦点）
-        # ⭐ 走 `on_auto` 而**不是** `on_confirm` —— 📌 「用户亲自点了同意」
-        #    和「auto 替用户点了」对模型是两件事：前者是一次真实的人类判断，
-        #    后者是"这一轮压根没人被问过"。复用同一个回调，这个区别就消失了。
-        # ⭐⭐ [危险判定 2026-08-27] auto 放行的判据从「auto 开着」收紧成
-        #    「auto 开着 **且** 这一步被判定为可自动放行」。
-        #
-        # ⚠️ **判据写成 `is True` 而不是 `not step.get("blocked")`** ——
-        #    📌 前者要求上游**明确说可以**，后者是「没人说不行就放行」。
-        #       上游漏传这个键时：前者退化成"照常弹窗"（安全），
-        #       后者退化成"静默执行"（危险）。**默认值那一侧永远是危险的那侧。**
-        # ⚠️ C/D 走到弹窗时**没有「始终允许」按钮** —— 那不是这里做的，
-        #    是 `run_command` 的 floor=3 天然走红色分支（见 _show_os_action_confirm_dialog）。
-        #    📌 而这正是它该有的语义：用户开的本来就是 auto，
-        #       "始终"什么呢？下一个弹窗是**另一次**意图对不上，不是同一件事。
-        if self._auto_on() and step.get("auto_ok") is True:
-            _cb = _reply_cb(step, "auto") or _on_confirm
-            if _cb:
-                _cb()
-            return True
         try:
             if self._current_loading_label:
                 self._current_loading_label.set_text('等待你确认操作...')
@@ -2463,7 +2442,6 @@ class WebUI:
                 on_cancel=_reply_cb(step, "cancel") or (lambda: None),
                 agent_label=step.get("agent_label", ""),
             )
-        return False
 
     async def _drain_oob_events(self) -> None:
         """轮外 UI 事件的**唯一消费者**。
@@ -3944,7 +3922,7 @@ class WebUI:
                 continue
 
             # ── 副作用确认弹窗 ──────────────────────────────────────
-            # ⭐⭐ MCP 接入授权 —— 🔴 **这里刻意【不】查 `self._auto_on`。**
+            # ⭐⭐ MCP 接入授权 —— 🔴 **不受 Auto 豁免**（后端对它不做自动放行，见 `core/orchestrator/mcp.py`）。
             #
             # 不是「MCP 特殊」或「频率低」那种例外理由（例外会被下一个人问
             # 「那为什么别的不例外」），而是**它不在 auto 管辖的维度上**：
@@ -3972,11 +3950,6 @@ class WebUI:
                 from core.runtime.replies import reply_callback as _reply_cb
                 _confirm_cb  = _reply_cb(step, "confirm")
                 _cancel_cb   = _reply_cb(step, "cancel")
-                # auto 模式（全局或本次临时）→ 自动通过，不弹窗（不偷焦点）
-                if self._auto_on():
-                    if _confirm_cb:
-                        _confirm_cb()
-                    continue
 
                 # 修复：不移除 loading_container——确认对话框弹出后，
                 # 用户点确认到最终回复之间还有"工具执行+总结"几秒钟，
@@ -4013,8 +3986,7 @@ class WebUI:
 
             if step.get("event") == "os_action_confirm":
                 _risk = step.get("effective_risk", 2)
-                if self._present_os_confirm(step):
-                    continue
+                self._present_os_confirm(step)
                 risk_color = "var(--nano-danger)" if _risk >= 3 else "var(--nano-warn)"
                 self.status_lbl.set_text("AWAITING_OS_CONFIRM")
                 self.status_lbl.style(f'color:{risk_color}; font-size:var(--nano-fs-sm);')
@@ -4178,8 +4150,8 @@ class WebUI:
                 from core.runtime.replies import reply_callback as _reply_cb
                 _approve = _reply_cb(step, "approve")
                 _reject  = _reply_cb(step, "reject")
-                if self._global_auto:
-                    # 全局 auto 已开 → 直接缩窗，不弹授权
+                if step.get("preapproved"):
+                    # 用户选了 Auto（后端判定）→ 不弹授权，缩窗后回复同意
                     await self._enter_mini()
                     if _approve:
                         _approve()
@@ -5474,42 +5446,11 @@ class WebUI:
 
     # ── auto 模式 ──────────────────────────────────────────────────────────
     def _load_global_auto(self) -> bool:
-        # ⚠️ 路径走 `os_dsl.os_state_path`，不在这里另算一遍 ——
-        #    这份数据跟着用户走，不能留在会被升级覆盖的 `config/` 里。
-        try:
-            import json as _j
-            p = os_dsl.os_state_path()
-            if p.exists():
-                return bool(_j.loads(p.read_text(encoding="utf-8")).get("auto_mode", False))
-        except Exception:
-            pass
-        return False
+        """用户选的 Ask / Auto（后端 `dsl` 读 `os_state.json`；不含 GUI 任务的临时授权）。"""
+        return os_dsl.user_auto_mode_on()
 
     def _save_global_auto(self, on: bool):
-        try:
-            import json as _j
-            p = os_dsl.os_state_path()
-            raw = {}
-            if p.exists():
-                raw = _j.loads(p.read_text(encoding="utf-8"))
-            raw["auto_mode"] = bool(on)
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(_j.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception as e:
-            logger.warning(f"[Auto] 保存 auto_mode 失败: {e}")
-
-    def _auto_on(self) -> bool:
-        """当前是否处于 auto（全局开，或 GUI 任务期间的临时授权）→ OS 确认自动通过。
-
-        `_global_auto` 是用户在界面上拨的持久开关（`data/os_state.json`）；临时授权以授权租约为准，
-        判断公式在 `dsl.auto_authorization_on()`（模型侧也读它）。`_global_auto` 仍参与，是因为
-        本进程刚拨过的值可能还没落盘。
-        """
-        try:
-            from core.os_layer import dsl as _dsl_auto
-            return bool(self._global_auto or _dsl_auto.auto_authorization_on())
-        except Exception:
-            return bool(self._global_auto or _rt_auto_authorized())
+        os_dsl.set_user_auto_mode(on)
 
     def _toggle_global_auto(self):
         self._global_auto = not self._global_auto

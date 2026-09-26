@@ -43,8 +43,10 @@ class OsExecuteMixin:
                     f"SyntaxError: {syn_err}\n"
                     f"Fix the syntax and call the tool again.")
 
-        # ── ② 确认（只在扫出副作用时）──────────────────────────────────
-        if cats:
+        # ── ② 确认（只在扫出副作用时；Auto 下直接通过）─────────────────────
+        from core.os_layer import dsl as _dsl_auto
+        if cats and not _dsl_auto.auto_skips_confirmation(
+                f"临时代码「{purpose or 'scratch code'}」"):
             _confirm_ev = _aio.Event()
             _cancelled = [False]
             _loop = _aio.get_running_loop()

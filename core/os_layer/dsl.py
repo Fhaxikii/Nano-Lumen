@@ -477,6 +477,35 @@ def user_auto_mode_on(config_path: Optional[pathlib.Path] = None) -> bool:
     return False
 
 
+def set_user_auto_mode(on: bool, config_path: Optional[pathlib.Path] = None) -> bool:
+    """保存用户选的 Ask / Auto（`os_state.json` 的 `auto_mode`，保留其它字段）。返回是否写成功。"""
+    if config_path is None:
+        config_path = os_state_path()
+    try:
+        raw = {}
+        if config_path.exists():
+            raw = json.loads(config_path.read_text(encoding="utf-8"))
+        raw["auto_mode"] = bool(on)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.warning(f"[OS-DSL] 保存 auto_mode 失败: {e}")
+        return False
+
+
+def auto_skips_confirmation(what: str) -> bool:
+    """执行确认（Skill 副作用、临时代码、MCP 不可逆操作）在 Auto 下直接通过、不发确认事件。
+
+    Auto = 用户选的 Auto，或 GUI 任务期间的临时授权（`auto_authorization_on`）。
+    放行时记一条日志，`what` 写进日志。
+    """
+    if auto_authorization_on():
+        logger.info(f"[Auto] 自动放行执行确认：{what}")
+        return True
+    return False
+
+
 def required_permissions(action: str, effective_risk: int = 0) -> frozenset:
     """这一次执行需要哪些能力开关同时开着。**权威只有 `_ACTIONS` 这一张表。**
 

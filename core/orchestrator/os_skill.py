@@ -147,16 +147,6 @@ class OsSkillMixin:
                     _user_choice[0] = False
                     _loop.call_soon_threadsafe(_confirm_ev.set)
 
-                # ⭐⭐ [B] **auto 走一个【不同的】回调，不是复用 `_on_confirm`。**
-                #    🔴 复用的话，「用户亲自点了同意」和「auto 替用户点了」在这一层
-                #       完全无法区分 —— 而它们对模型是两件事：
-                #       前者是一次真实的人类判断，后者是"这一轮压根没人被问过"。
-                #    📌 **一个字段如果要回答「谁批的」，那么两个批准者就必须
-                #       走两条能被分辨的路。**
-                def _on_auto():
-                    _user_choice[0] = "auto"
-                    _loop.call_soon_threadsafe(_confirm_ev.set)
-
                 # 对 run_command/file_write，把原始内容传给弹窗用于代码预览
                 _raw_params = resolved_instr.get("params", instr.get("params", {}))
                 # ⭐ 这个动作是谁发起的 —— **UI 只多画一行，规则一个字不改**
@@ -169,65 +159,73 @@ class OsSkillMixin:
                 # ⭐⭐ auto 模式下的危险判定（四态）。**只在 auto 开着时才花这个钱** ——
                 #    ask permission 模式本来就每条都问，判定一分钱不值。
                 _auto_ok, _gate_by, _gate_why = True, "", ""
+                _auto_now = False
                 try:
                     from core.os_layer import dsl as _dsl_g
-                    if _dsl_g.auto_authorization_on():
+                    _auto_now = _dsl_g.auto_authorization_on()
+                    if _auto_now:
                         _auto_ok, _gate_by, _gate_why = await self._auto_gate_verdict(
                             action, _raw_params, used_model)
                 except Exception as _e_g:
                     # 🔴 连"要不要判"都判不了 → 当作需要确认（fail-safe）
                     logger.warning(f"[CmdClassifier] 闸前置异常: {_e_g}")
                     _auto_ok, _gate_by, _gate_why = False, "classifier", "判定前置异常"
-                _reasons = list(ev.get("risk_reasons", []) or [])
-                if _gate_why:
-                    # ⭐ 复用弹窗现成的「风险原因」那一栏 —— 不新增 UI 通道。
-                    #    📌 一个只多一行文字的需求，不该换来一条新的展示管线。
-                    _reasons.append(f"[自动放行被拦下] {_gate_why}")
-                from core.runtime import replies as _replies
-                _rid = _replies.register({"confirm": _on_confirm, "always": _on_always,
-                                          "cancel": _on_cancel, "auto": _on_auto})
-                yield {
-                    "event": "os_action_confirm",
-                    "action": action, "effective_risk": risk,
-                    # ⚠️ **判据是「明确为 True 才放行」，不是「没被拦就放行」** ——
-                    #    上游要是漏传了这个键，行为退化成"照常弹窗"，而不是静默执行。
-                    "auto_ok": _auto_ok, "gate_by": _gate_by,
-                    "risk_reasons": _reasons,
-                    "params_summary": p_summary, "reason": reason,
-                    "params_raw": _raw_params,
-                    "agent_label": _agent_label,
-                    "reply_id": _rid,
-                    "actions": ["confirm", "always", "cancel", "auto"],
-                }
-
                 from core.runtime import inbox as _ib6
-                # ⭐⭐ Subagent发起的确认**只认这个弹窗自己的回应**（+ 超时兜底）。
-                #    理由见 `wait_confirm_or_user_message` 的 docstring：
-                #    📌 一个「取消」的信号，必须来自它要取消的那件事的同一条注意力。
-                try:
-                    _oc6 = await _ib6.wait_confirm_or_user_message(
-                        _confirm_ev, 300,
-                        cancel_on_user_message=not _agent_label)
-                finally:
-                    _replies.discard(_rid)
-                if _oc6 != _ib6.ConfirmOutcome.CONFIRMED:
-                    # 🔴 **告诉 UI 把那个弹窗收掉**。
-                    #    用户改口说话 / 干等超时，这两条路上**没有人点过按钮**，
-                    #    而弹窗只在按钮里 `close()` —— 于是它活了下来，
-                    #    屏上写着"待授权"，按钮指向一个已经结束的等待。
-                    # 📌 **一个只能被自己的按钮关掉的弹窗，一定会在
-                    #    「不是按按钮」的那些结束路径上活下来** ——
-                    #    而那些路径恰恰是用户没在看它的时候。
+                # auto 开着且这一步被判定为可自动放行 → 后端直接放行，不发确认事件。
+                # 判据是「明确为 True」：判定漏给结果时照常弹窗，不静默执行。
+                # 放行记为 "auto"（不是用户点的同意）：对模型「有人判断过」和
+                # 「这一步没人被问过」是两件事，结果里的 authorized_by 据此区分。
+                if _auto_now and _auto_ok is True:
+                    logger.info(f"[Auto] 自动放行 OS 动作 {action}（risk={risk}）")
+                    _user_choice[0] = "auto"
+                    _oc6 = _ib6.ConfirmOutcome.CONFIRMED
+                else:
+                    _reasons = list(ev.get("risk_reasons", []) or [])
+                    if _gate_why:
+                        # ⭐ 复用弹窗现成的「风险原因」那一栏 —— 不新增 UI 通道。
+                        #    📌 一个只多一行文字的需求，不该换来一条新的展示管线。
+                        _reasons.append(f"[自动放行被拦下] {_gate_why}")
+                    from core.runtime import replies as _replies
+                    _rid = _replies.register({"confirm": _on_confirm, "always": _on_always,
+                                              "cancel": _on_cancel})
+                    yield {
+                        "event": "os_action_confirm",
+                        "action": action, "effective_risk": risk,
+                        "risk_reasons": _reasons,
+                        "params_summary": p_summary, "reason": reason,
+                        "params_raw": _raw_params,
+                        "agent_label": _agent_label,
+                        "reply_id": _rid,
+                        "actions": ["confirm", "always", "cancel"],
+                    }
+
+                    # ⭐⭐ Subagent发起的确认**只认这个弹窗自己的回应**（+ 超时兜底）。
+                    #    理由见 `wait_confirm_or_user_message` 的 docstring：
+                    #    📌 一个「取消」的信号，必须来自它要取消的那件事的同一条注意力。
                     try:
-                        yield {"event": "confirm_dismiss",
-                               "why": str(getattr(_oc6, "value", _oc6))}
-                    except Exception:
-                        pass
-                    # ⭐⭐ 用户没点按钮 —— 要么改口说话了，要么干等超时。
-                    #    两者都 **不执行**，但**要告诉模型的话不同**，所以不许压成一个布尔。
-                    #    📌 「用户改口说别做了」和「等了五分钟没人管」在结果上都是不执行，
-                    #       语义完全不同 —— 同 ActionAttempt 那条：一个字段不许表达两个现实。
-                    _user_choice[0] = False
+                        _oc6 = await _ib6.wait_confirm_or_user_message(
+                            _confirm_ev, 300,
+                            cancel_on_user_message=not _agent_label)
+                    finally:
+                        _replies.discard(_rid)
+                    if _oc6 != _ib6.ConfirmOutcome.CONFIRMED:
+                        # 🔴 **告诉 UI 把那个弹窗收掉**。
+                        #    用户改口说话 / 干等超时，这两条路上**没有人点过按钮**，
+                        #    而弹窗只在按钮里 `close()` —— 于是它活了下来，
+                        #    屏上写着"待授权"，按钮指向一个已经结束的等待。
+                        # 📌 **一个只能被自己的按钮关掉的弹窗，一定会在
+                        #    「不是按按钮」的那些结束路径上活下来** ——
+                        #    而那些路径恰恰是用户没在看它的时候。
+                        try:
+                            yield {"event": "confirm_dismiss",
+                                   "why": str(getattr(_oc6, "value", _oc6))}
+                        except Exception:
+                            pass
+                        # ⭐⭐ 用户没点按钮 —— 要么改口说话了，要么干等超时。
+                        #    两者都 **不执行**，但**要告诉模型的话不同**，所以不许压成一个布尔。
+                        #    📌 「用户改口说别做了」和「等了五分钟没人管」在结果上都是不执行，
+                        #       语义完全不同 —— 同 ActionAttempt 那条：一个字段不许表达两个现实。
+                        _user_choice[0] = False
 
                 choice = _user_choice[0]
                 confirmed = choice in (True, "always", "auto")
