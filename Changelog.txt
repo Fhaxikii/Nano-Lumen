@@ -2214,7 +2214,10 @@
 - Fixed the status line of a stopped reply ignoring the Token counter setting.
 - Fixed a background task that Nano handed off and that ran longer than 30 minutes losing its result when it finished.
 - Fixed the confirm dialog for a command that Auto did not approve looking the same as an ordinary confirmation and not saying why it was stopped.
-- Fixed a long task that was moved to the background just as the reply was stopped never reporting its result.
+- Stopping a reply now also stops the command it is running; calls that cannot be interrupted finish quietly in the background and are marked as such.
+- Fixed Nano carrying on after the reply was stopped: a command still running at that moment kept going in the background and Nano reported its result afterwards.
+- Fixed a message sent right after stopping being attached to the stopped reply.
+- Fixed the task drawer's stop button not actually ending the command process.
 
 
 ### 新增
@@ -2242,6 +2245,9 @@
 - 修复回复被终止后，状态行不遵守 Token 计数器设置的问题。
 - 修复 Nano 转入后台、运行超过 30 分钟的任务完成时结果丢失的问题。
 - 修复 Auto 下被安全检查拦下的命令，确认弹窗与普通确认一模一样、也不说明拦截原因的问题。
-- 修复回复被终止的同时转入后台的长任务，之后不再回报结果的问题。
+- 终止回复时，正在执行的命令一并停止；无法中途停止的调用会在后台自行结束，并在工具行标明。
+- 修复回复被终止后 Nano 仍继续：当时还在跑的命令转入后台继续执行，跑完后 Nano 还会接着汇报的问题。
+- 修复终止后马上发出的消息被接在已终止的那条回复里的问题。
+- 修复任务抽屉里的终止按钮并没有真正结束命令进程的问题。
 
 ---
