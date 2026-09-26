@@ -2200,7 +2200,7 @@
 - The Stop button takes effect in the interface immediately and no longer ends the screen task.
 - Nano can send several screen steps at once; if one fails, the rest are skipped.
 - Clicks are located by the real control name or ID from the window's control tree.
-- Internal restructuring (no behaviour change): confirmation dialogs reply by ID, background heartbeats run outside the UI timers, one module decides which windows are Nano's own, Auto approval is decided by the core instead of the interface, and unused code for the old proactive speech was removed.
+- Internal restructuring (no behaviour change): confirmation dialogs reply by ID, background heartbeats run outside the UI timers, one module decides which windows are Nano's own, Auto approval is decided by the core instead of the interface, background tasks are held by the core, and unused code for the old proactive speech was removed.
 
 ### Fixes
 - Fixed programs that Nano opened being treated as Nano's own window, so using them did not make Nano pause.
@@ -2214,6 +2214,7 @@
 - Fixed the status line of a stopped reply ignoring the Token counter setting.
 - Fixed a background task that Nano handed off and that ran longer than 30 minutes losing its result when it finished.
 - Fixed the confirm dialog for a command that Auto did not approve looking the same as an ordinary confirmation and not saying why it was stopped.
+- Fixed a long task that was moved to the background just as the reply was stopped never reporting its result.
 
 
 ### 新增
@@ -2227,7 +2228,7 @@
 - 终止按钮在界面上即时生效，且不再结束屏幕操作任务。
 - Nano 可一次连发多步屏幕操作，某步失败则跳过剩余步骤。
 - 点击优先按窗口控件树中的真实名称或 ID 定位。
-- 内部结构调整（行为不变）：确认弹窗改为按编号回复，后台心跳移出界面定时器，统一判断哪些窗口属于 Nano 自己，Auto 放行改由核心判定而非界面，删除旧主动开口机制的无用代码。
+- 内部结构调整（行为不变）：确认弹窗改为按编号回复，后台心跳移出界面定时器，统一判断哪些窗口属于 Nano 自己，Auto 放行改由核心判定而非界面，后台任务改由核心持有，删除旧主动开口机制的无用代码。
 
 ### 修复
 - 修复 Nano 打开的程序被当成 Nano 自己的窗口，用户使用这些程序时 Nano 不会停手的问题。
@@ -2241,5 +2242,6 @@
 - 修复回复被终止后，状态行不遵守 Token 计数器设置的问题。
 - 修复 Nano 转入后台、运行超过 30 分钟的任务完成时结果丢失的问题。
 - 修复 Auto 下被安全检查拦下的命令，确认弹窗与普通确认一模一样、也不说明拦截原因的问题。
+- 修复回复被终止的同时转入后台的长任务，之后不再回报结果的问题。
 
 ---
