@@ -30,6 +30,11 @@ from loguru import logger
 _carriers: dict[str, dict] = {}
 _completion_handler: Optional[Callable[[str, str], Awaitable[None]]] = None
 _listeners: list[Callable[[dict], None]] = []
+_epoch_provider: Optional[Callable[[], int]] = None
+# 最近结束的「手头」载体：suspension_ref → (回应期编号, 显示名)。终止时要知道
+# 「已经完成、唤醒还在排队」的那几个属于哪段回应期；只留最近一批，防无界增长。
+_finished_on_hand: dict[str, tuple[int, str]] = {}
+_FINISHED_KEEP = 64
 
 USER_STOPPED_NOTE = (
     "[System record: the user manually stopped this from the task drawer. It did not "
@@ -45,6 +50,33 @@ def set_completion_handler(fn: Optional[Callable[[str, str], Awaitable[None]]]) 
     """登记载体结束时的通知回调：`await fn(suspension_ref, result_hint)`。"""
     global _completion_handler
     _completion_handler = fn
+
+
+def set_epoch_provider(fn: Optional[Callable[[], int]]) -> None:
+    """登记「当前回应期编号」的来源（会话调度器）。载体起跑时记下它属于哪段回应期。"""
+    global _epoch_provider
+    _epoch_provider = fn
+
+
+def _current_epoch() -> Optional[int]:
+    try:
+        return _epoch_provider() if _epoch_provider is not None else None
+    except Exception:
+        return None
+
+
+def on_hand_of_epoch(epoch: int) -> tuple[dict[str, str], dict[str, str]]:
+    """这段回应期里交还、仍在 Nano 手头（没进抽屉）的载体。
+
+    返回 `(还在跑的, 已经结束的)`，都是 `suspension_ref → 显示名`。
+    """
+    running = {str(m.get("suspension_ref")): str(m.get("display") or "")
+               for m in _carriers.values()
+               if m.get("suspension_ref") and not m.get("rt_task_id")
+               and m.get("epoch") == epoch
+               and m.get("aio") is not None and not m["aio"].done()}
+    finished = {ref: disp for ref, (ep, disp) in _finished_on_hand.items() if ep == epoch}
+    return running, finished
 
 
 def add_listener(fn: Callable[[dict], None]) -> None:
@@ -95,6 +127,10 @@ def start(display: str, awaitable: Awaitable[Any], suspension_ref: str, *,
             _meta = _carriers.pop(carrier_id, None) or {}
             # 从表里现读 id：`dont_wait` 是在载体起跑之后才补上它的。
             _rt = _meta.get("rt_task_id") or rt_task_id
+            if not _rt and _meta.get("epoch") is not None and suspension_ref:
+                _finished_on_hand[suspension_ref] = (_meta["epoch"], display)
+                while len(_finished_on_hand) > _FINISHED_KEEP:
+                    _finished_on_hand.pop(next(iter(_finished_on_hand)))
             if _rt and _meta.get("owns_record", owns_record):
                 try:
                     from core.runtime import task as _rt_task
@@ -121,7 +157,8 @@ def start(display: str, awaitable: Awaitable[Any], suspension_ref: str, *,
                              "suspension_ref": suspension_ref,
                              "skill_name": skill_name,
                              "rt_task_id": rt_task_id,
-                             "owns_record": owns_record}
+                             "owns_record": owns_record,
+                             "epoch": _current_epoch()}
     _notify({"event": "carrier_started", "skill_name": skill_name,
              "display": display, "rt_task_id": rt_task_id or ""})
     return carrier_id
@@ -231,4 +268,5 @@ def _reset_for_tests() -> None:
     global _completion_handler
     _carriers.clear()
     _listeners.clear()
+    _finished_on_hand.clear()
     _completion_handler = None

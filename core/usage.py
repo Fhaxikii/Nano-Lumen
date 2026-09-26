@@ -156,6 +156,11 @@ class UsageTracker:
                 self._turn_cache.pop(_old, None)
         return tid
 
+    @staticmethod
+    def context_turn() -> str:
+        """当前执行链归属的那一轮（没有则为空串）。"""
+        return _turn_ctx.get("")
+
     def _attribute(self, n: int) -> None:
         """把 n 记到**当前上下文那一轮**头上。调用方必须已持锁。"""
         _aid = _agent_ctx.get("")

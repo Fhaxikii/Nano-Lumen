@@ -47,6 +47,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401
 from tests._src import module_text  # noqa: E402
+from tests import _src as S  # noqa: E402
 from tests._patch import patch_global  # noqa: E402
 
 from loguru import logger
@@ -778,12 +779,16 @@ def t_wake_continues_same_bubble() -> None:
           "⭐⭐⭐ 同一段 → **只打开续接开关**，复用无缝对话那条已被实测验过的路径。"
           "📌 **复用一条已经被实测验过的路径，比新写一条等价的更安全** —— "
           "尤其在 UI 这种测试无法覆盖的层")
-        check("nano ❯" in els and "self._resp_state =" in els,
+        # 新开气泡的代码在 `_new_reply_view`（排队的用户消息被折叠后也用它）
+        _nrv = S.def_text("app", "_new_reply_view", owner="WebUI")
+        check("self._new_reply_view()" in els and "self._resp_state =" in els
+              and "nano ❯" in _nrv,
           "⭐⭐⭐ 而**整段重建气泡的代码全在 else 里** —— "
           "🔴 这一格红了意味着它会无条件覆盖 `_resp_state`，"
           "那就是又新开一个 `nano ❯`",
-          f"else 内: nano❯={'nano ❯' in els}, resp_state={'self._resp_state =' in els}")
-        check("_last_meta_row.delete" in els,
+          f"else 内: new_view={'self._new_reply_view()' in els}, "
+          f"resp_state={'self._resp_state =' in els}")
+        check("_last_meta_row.delete" in _nrv and "_last_meta_row.delete" not in body,
           "⭐⭐ 删元信息行也只在 else 里 —— 续接时那个元信息行还要继续用"
           "（token 统计等**整段**结束才写）。"
           "📌 「上一条的元信息行」这个说法在续接场景里不成立："

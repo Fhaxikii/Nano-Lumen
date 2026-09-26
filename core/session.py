@@ -77,6 +77,16 @@ def inbox_submit_wake(suspension_id: str, trigger: str) -> str | None:
         return None
 
 
+def inbox_discard(item_id: str | None, reason: str) -> None:
+    if not item_id or item_id.startswith(("mem_", "memwake_")):
+        return
+    try:
+        from core.runtime import inbox as _ib
+        _ib.discard(item_id, reason)
+    except Exception as e:
+        logger.debug(f"[Inbox] 丢弃失败（忽略）: {e}")
+
+
 def inbox_pending() -> int:
     try:
         from core.runtime import inbox as _ib
@@ -84,6 +94,25 @@ def inbox_pending() -> int:
         return _ib.pending_count(get_kernel())
     except Exception:
         return 0
+
+
+async def _with_turn_usage(source):
+    """给这一轮的 `final_result` 带上本轮用量（`turn_usage`：token 数与缓存命中率）。
+
+    用量按轮归属（`core.usage` 的上下文变量，由这一轮的后端在开头打点）。这个包装与后端
+    在同一个任务里迭代，读到的就是这一轮；界面在别的协程里，读不到这个归属。
+    """
+    async for ev in source:
+        if isinstance(ev, dict) and ev.get("event") == "final_result" and "turn_usage" not in ev:
+            try:
+                from core.usage import usage_tracker as _ut
+                _tid = _ut.context_turn()
+                if _tid:
+                    ev = {**ev, "turn_usage": {"tokens": _ut.turn_tokens(_tid),
+                                               "cache_hit": _ut.turn_cache_hit(_tid)}}
+            except Exception as e:
+                logger.debug(f"[Turn] 本轮用量没附上（界面退回读当前轮）: {e}")
+        yield ev
 
 
 class Presenter(Protocol):
@@ -112,9 +141,17 @@ class TurnScheduler:
         self.parked: dict = {}                 # item_id → 排队项（dict 保序 = 入队顺序）
         self.running_inbox_id: Optional[str] = None
         self.seam_part = 1                     # 当前回应期的第几段（插话一次 +1）
+        self.epoch = 0                         # 当前回应期的编号（新开一段回应期 +1，续接不变）
         self.presenter: Optional[Presenter] = None
         self.agent: Any = None                 # 提供 resume_suspension / memory
         self._turn_listeners: list[Callable[[bool], None]] = []
+        # 终止时仍在跑、停不掉的载体：ref → 显示名（结束时结果只记入历史，不唤醒）
+        self._stopped_refs: dict[str, str] = {}
+        try:
+            from core.runtime import carriers as _car
+            _car.set_epoch_provider(lambda: self.epoch)
+        except Exception as e:
+            logger.debug(f"[Turn] 载体回应期来源登记失败（终止时无法按回应期停载体）: {e}")
 
     # ── 登记 ──────────────────────────────────────────────────────────────
     def attach(self, agent: Any, presenter: Presenter) -> None:
@@ -170,6 +207,7 @@ class TurnScheduler:
         inbox_claim(item_id)
         self.running_inbox_id = item_id
         self._set_seam_part(1)
+        self.epoch += 1
         asyncio.ensure_future(self.run_user_turn(key, payload, continuation=False))
         return key, "run"
 
@@ -195,7 +233,7 @@ class TurnScheduler:
         返回呈现方是否正常结束。"""
         from core.runtime import events as _events
         turn_id = uuid.uuid4().hex[:12]
-        pump = asyncio.ensure_future(_events.pump_turn(turn_id, source))
+        pump = asyncio.ensure_future(_events.pump_turn(turn_id, _with_turn_usage(source)))
         ok = False
         try:
             if self.presenter is not None:
@@ -213,6 +251,7 @@ class TurnScheduler:
         async with self.lock:
             self.turn_state(True)
             self._activity_event("user_message")
+            self._clear_stop()
             try:
                 source = self._user_source(payload)
                 if await self._run_turn(source, lambda tid: self.presenter.render_user_turn(
@@ -223,6 +262,7 @@ class TurnScheduler:
             finally:
                 self.turn_state(False)
                 self.consume_running()
+                self._after_turn()
         # 锁已释放：这一轮跑的时候进来的消息 / 唤醒要在这里接上。
         try:
             await self.drain()
@@ -252,31 +292,44 @@ class TurnScheduler:
     async def drive_wake(self, suspension_id: str, trigger: str, note: str = "",
                          inbox_item_id: str | None = None) -> None:
         """唤醒轮的唯一出口：不管从哪条路返回，排队时认领的那条 inbox 记录都要收掉。"""
+        ran = False
         try:
             # inbox_item_id 有值 ⟺ 触发那一刻前台上有东西（忙才会进队列）。
-            await self._drive_wake_inner(suspension_id, trigger, note,
-                                         busy_at_trigger=bool(inbox_item_id))
+            ran = await self._drive_wake_inner(suspension_id, trigger, note,
+                                               busy_at_trigger=bool(inbox_item_id))
         finally:
             if inbox_item_id:
                 inbox_consume(inbox_item_id)
+        if not ran:
+            return
+        # 锁已释放、这一条已收掉：唤醒轮跑的时候进来的消息 / 唤醒要在这里接上。
+        # 必须在收掉之后：库里同一时刻只能有一条「正在处理」，先排空的话下一条认领不上。
+        try:
+            await self.drain()
+        except Exception as e:
+            logger.error(f"[Inbox] 唤醒轮后排空队列失败: {e}")
 
     async def _drive_wake_inner(self, suspension_id: str, trigger: str,
-                                note: str = "", busy_at_trigger: bool = False) -> None:
+                                note: str = "", busy_at_trigger: bool = False) -> bool:
+        """起一个唤醒轮；返回是否真的起了（进队列时为假）。"""
         if self.lock.locked():
             # 后台等待的 fire_at 为空，定时轮询永远轮不到它：忙时必须进队列，不能静默返回。
             self.park_wake(suspension_id, trigger, note, "内核忙")
-            return
+            return False
         try:
             from core.usage import sync_budget_health
             if sync_budget_health() == "hard":
                 logger.warning(f"[Suspension] 预算已达硬上限，本次不唤醒 "
                                f"{suspension_id}（记录保持 active，唤醒进队列）")
                 self.park_wake(suspension_id, trigger, note, "预算已达硬上限")
-                return
+                return False
         except Exception:
             pass
         async with self.lock:
             self.turn_state(True)
+            self._clear_stop()
+            if not busy_at_trigger:
+                self.epoch += 1              # 不续接原气泡 → 新的一段回应期
             try:
                 p = self.presenter
                 if p is not None:
@@ -291,14 +344,108 @@ class TurnScheduler:
                 logger.error(f"[Suspension] 唤醒轮异常: {e}")
             finally:
                 self.turn_state(False)
-        # 锁已释放：唤醒轮跑的时候进来的消息 / 唤醒要在这里接上。
+                self._after_turn()
+        return True
+
+    # ── 终止 ──────────────────────────────────────────────────────────────
+    def _clear_stop(self) -> None:
+        """新一轮开始：清掉上一次的终止意图（不清的话上一次的终止会把这一轮也停掉）。"""
         try:
-            await self.drain()
-        except Exception as e:
-            logger.error(f"[Inbox] 唤醒轮后排空队列失败: {e}")
+            self.agent.clear_stop()
+        except Exception:
+            pass
+
+    def _after_turn(self) -> None:
+        """一轮结束（持锁）：这一轮被用户终止过 → 回应期到此为止。"""
+        try:
+            stopped = bool(self.agent._stop_asked())
+        except Exception:
+            stopped = False
+        if stopped:
+            try:
+                self._settle_stopped_epoch()
+            except Exception as e:
+                logger.error(f"[Stop] 终止后收尾回应期失败: {e}")
+
+    def _settle_stopped_epoch(self) -> None:
+        """用户终止了这一轮：这段回应期不再继续（裁决 73）。
+
+        · 排着的续接段改成新的一轮：它们是用户说的话，照常处理，但不再接进被终止的回应期。
+        · 这段回应期里交还、仍在 Nano 手头（没进抽屉）的载体属于前台，一并停下，
+          不再唤醒 Nano：命令进程终止；停不掉的（MCP / Skill）自行结束，结果只记入历史；
+          已经完成、唤醒在排队的，结果记入历史，不起唤醒轮。
+          抽屉里的后台任务不受影响。
+        """
+        for k, v in list(self.parked.items()):
+            if isinstance(v, tuple) and len(v) == 2 and v[0] == "cont":
+                self.parked[k] = ("user", v[1])        # 原位替换，排队顺序不变
+                logger.info(f"[Stop] 排着的续接段 {k} 改为新的一轮（不接进被终止的回应期）")
+
+        from core.runtime import carriers as _car
+        from core.runtime import waitcond as _wc
+        from core.runtime.kernel import get_kernel
+        running, finished = _car.on_hand_of_epoch(self.epoch)
+        refs = set(running) | set(finished)
+        if not refs:
+            return
+        try:
+            _live = _wc.list_live(get_kernel(), oldest_first=True)
+        except Exception:
+            _live = []
+        for r in _live:
+            if r.bg_ref in refs:
+                _wc.cancel_wait(r.wait_id, "user stopped the turn")
+
+        for ref, display in running.items():
+            self._stopped_refs[ref] = display
+            if ref.startswith("cmd_"):
+                try:
+                    from core.os_layer import longcmd as _lc
+                    _lc.stop(ref, "stopped by the user (Stop)")
+                    logger.info(f"[Stop] 手头的命令 {ref} 随这一轮一起停下")
+                except Exception as e:
+                    logger.warning(f"[Stop] 停止手头的命令 {ref} 失败: {e}")
+            else:
+                logger.info(f"[Stop] 手头的「{display[:40]}」停不掉 → 自行结束，结果只记入历史（不唤醒）")
+
+        for k, v in list(self.parked.items()):
+            if not (isinstance(v, tuple) and v and v[0] == "wake"):
+                continue
+            try:
+                rec = _wc.find_by_id(get_kernel(), v[1])
+            except Exception:
+                rec = None
+            ref = getattr(rec, "bg_ref", None)
+            if ref not in finished:
+                continue
+            self.parked.pop(k, None)
+            inbox_discard(k, "用户终止了这段回应期，唤醒不再发生")
+            self._note_finished_after_stop(finished[ref], v[3] if len(v) > 3 else "")
+            if self.presenter is not None:
+                try:
+                    self.presenter.settle_cancelled_handback(ref)
+                except Exception as e:
+                    logger.debug(f"[Stop] 收原动作界面失败: {e}")
+            logger.info(f"[Stop] {ref} 已完成、唤醒在排队 → 结果记入历史，不起唤醒轮")
+
+    @staticmethod
+    def _note_finished_after_stop(display: str, result: str, *, terminated: bool = False) -> None:
+        """终止波及的那件事的结局：写一条系统事件（只在下一轮进上下文），不唤醒 Nano。"""
+        what = ("It was terminated together with the turn" if terminated
+                else "It has ended")
+        try:
+            from core.health import get_system_events
+            get_system_events().add(
+                f"The user stopped a turn while \"{display}\" was still in hand. {what}; "
+                f"its result: {str(result)[:300]}. Because the user stopped it on purpose, "
+                f"do not bring this up on your own and do not explain it to the user "
+                f"unless they ask about it.")
+        except Exception:
+            pass
 
     async def notify_background_done(self, ref: str, result_hint: str | None = None) -> None:
         """后台载体（ref）完成 → 唤醒等它的挂起；等待已取消则只收原动作的界面。"""
+        _stopped_display = self._stopped_refs.pop(ref, None)
         try:
             from core.runtime.kernel import get_kernel
             from core.runtime import waitcond as _wc
@@ -308,6 +455,10 @@ class TurnScheduler:
         except Exception:
             _hit = []
         if not _hit:
+            if _stopped_display is not None:
+                # 终止时还在手头、停不掉（或命令已被终止）的那件事结束了：结果只记入历史。
+                self._note_finished_after_stop(_stopped_display, result_hint or "",
+                                               terminated=ref.startswith("cmd_"))
             _settled = 0
             if self.presenter is not None:
                 try:

@@ -585,11 +585,20 @@ def t_wake_intent_wiring() -> None:
           "没有下一次就是永远。"
           "📌 **一个「锁释放后要做的动作」，必须挂在每一个持有那把锁的地方**",
           f"lock={n_lock} drain={n_drain}")
-    for _src_l, _lock, _drain in ((live, "async with _sched.lock", "await _sched.drain()"),
-                                  (_sess_live, "async with self.lock", "await self.drain()")):
+    for _src_l, _lock, _drain in ((live, "async with _sched.lock", "await _sched.drain()"),):
         for m in re.finditer(re.escape(_lock), _src_l):
             seg = _src_l[m.end():m.end() + 6000]
             check(_drain in seg, "⚠️ 这个持锁点后面有排空", "")
+    # 调度器：用户轮持锁后排空；唤醒轮的排空在壳里、收掉 inbox 记录之后
+    # （库里同一时刻只能有一条「正在处理」，先排空的话下一条认领不上）
+    _rut = S_def_text("core.session", "run_user_turn", owner="TurnScheduler")
+    check("async with self.lock" in _rut and "await self.drain()" in _rut,
+          "⚠️ 用户轮持锁点后面有排空")
+    _dw = S_def_text("core.session", "drive_wake", owner="TurnScheduler")
+    _dwi = S_def_text("core.session", "_drive_wake_inner", owner="TurnScheduler")
+    check("async with self.lock" in _dwi and "await self.drain()" not in _dwi
+          and _dw.index("inbox_consume") < _dw.index("await self.drain()"),
+          "⚠️ 唤醒轮的排空在壳里，且在收掉 inbox 记录之后")
 
 
 def t_seam_wiring() -> None:
@@ -610,7 +619,8 @@ def t_seam_wiring() -> None:
     check("_handoff_response_epoch" in live,
           "⭐⭐ 忙时不是拼接 DOM，而是显式交接 predecessor/successor 回应期")
     check('args[0] in ("cont", "user")' in module_text("core.session")
-          and 'box = _rs_live.get("container")' in live,
+          and 'view = getattr(self, "_resp_state", None)'
+          in S_def_text("app", "render_user_turn", owner="WebUI"),
           "⭐ 排空时喂进**已经存在的**那个气泡，不新建")
 
     # ⚠️ 用量不许在续接时被清零（token 计数器统计整段）
@@ -779,7 +789,7 @@ def t_seam_cmd47_fix() -> None:
           "⭐⭐⭐ 在**忙判断那一行**就把活着的回应期快照下来。"
           "📌 一个「要不要做 X」的判断，和「不做 X」的那个分支之间，"
           "不许有任何会改变 X 前提的代码")
-    check("self._handoff_response_epoch(_rs_live, self._resp_state)" in busy_body,
+    check("self._handoff_response_epoch(_rs_live, _view)" in busy_body,
           "⭐⭐ 忙分支把快照与新 state 显式交给回应期交接函数")
     check("self._resp_state = _rs_live" not in busy_body,
           "⭐⭐ 不再把全局当前回应还原成 predecessor")

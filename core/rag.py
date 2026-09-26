@@ -4045,6 +4045,9 @@ def _resolve_file_path(filename: str) -> Tuple[Optional[pathlib.Path], str]:
         return None, "unknown"
 
     raw = filename.strip()
+    # 环境变量与 ~ 展开（`%USERPROFILE%\Desktop\x.txt`），与 OS 层读写文件的路径处理一致
+    if "%" in raw or "$" in raw or raw.startswith("~"):
+        raw = os.path.expandvars(os.path.expanduser(raw))
 
     # 绝对路径直接用(模型一般不会这么传，但兜底)
     if os.path.isabs(raw):

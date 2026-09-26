@@ -573,8 +573,10 @@ class SkillLifecycleMixin:
         #    而仍走 `final_result` 的那一个分支**必须自己写**。
         #    ⇒ 所以原来函数开头那句「始终先写 tool_call」被拆散到具体分支里。
         #    📌 「始终先写」在只有一种出口时是对的，多一种出口它就成了 bug。
-        def _defer(facts: str, log: str):
-            return {"event": "exit_flow_defer_to_model", "tool_result": facts, "log": log}
+        def _defer(facts: str, log: str, ok: bool = False):
+            # ok=True：这件事已经做成，只是措辞交回模型（工具行显示 ✓）
+            return {"event": "exit_flow_defer_to_model", "tool_result": facts, "log": log,
+                    "ok": ok}
 
         # operation 非法
         if _op not in _OP_VALID:
@@ -622,9 +624,11 @@ class SkillLifecycleMixin:
 
         if _op in ("disable", "enable"):
             # 禁用 / 启用可逆，直接执行、不二次确认；只有删除确认（koala 2026-09-26）。
+            _done = False
             try:
                 _r = (self.registry.disable_skill(_skill) if _op == "disable"
                       else self.registry.enable_skill(_skill))
+                _done = bool((_r or {}).get("ok", True))
                 _facts = (f"Operation {_op!r} on Skill {_skill!r} completed "
                           f"(ok={(_r or {}).get('ok', True)}). Raw system message, as evidence: "
                           + repr((_r or {}).get("msg") or "") + ". Tell the user it is done, "
@@ -635,7 +639,7 @@ class SkillLifecycleMixin:
                           "as-is - do not replace it with a vague \"something went wrong\".")
             from core import skill_watch as _skw
             _skw.request_reload(f"Skill 管理操作 {_op}")
-            yield _defer(_facts, f"{_op} Skill「{_skill}」已直接执行，措辞交回模型。")
+            yield _defer(_facts, f"{_op} Skill「{_skill}」已直接执行，措辞交回模型。", ok=_done)
             return
 
         # 删除：挂 pending_action，走二次确认流

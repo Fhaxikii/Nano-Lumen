@@ -713,8 +713,10 @@ def t_cmd71_wake_closes_its_own_inbox_row() -> None:
           "而且失效时不报错",
           "内层里出现了 _rt_inbox_consume")
     # 前置：内层确实有多条早退（这条断言的价值就建立在这上面）
+    # 内层的早退返回「没起轮」（False），壳据此决定要不要排空
     _rets = [n for n in ast.walk(inner)
-             if isinstance(n, ast.Return) and n.value is None]
+             if isinstance(n, ast.Return) and (n.value is None or (
+                 isinstance(n.value, ast.Constant) and n.value.value is False))]
     # ⚠️ 内层里是 **2** 条早退（内核忙 / 预算满）——「无处可排」那条 return
     #    在 `_park_wake` 里，不在这个函数。
     #    📌 写这条断言时把它数成了 3，红了才回代码看 ——

@@ -313,8 +313,8 @@ def t_pill_handle_cannot_outlive_its_element() -> None:
     print("\n[L5] pill 句柄不许活得比元素长")
     app = module_text("app")
     fn_src = _func_src(app, "_sync_task_pill")
-    check("default_slot.children" in fn_src,
-          "⭐⭐⭐ 重建判据是「**它还在不在聊天容器的孩子里**」（level-triggered），"
+    check("parent_slot.children" in fn_src,
+          "⭐⭐⭐ 重建判据是「**它还在不在所在容器的孩子里**」（level-triggered），"
           "不是「句柄空不空」")
     check("self._task_pill = None" in fn_src,
           "⭐ 判定为不在时**把句柄清掉** —— 否则下一次还是不会重建")

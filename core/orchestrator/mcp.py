@@ -120,8 +120,10 @@ class McpMixin:
         #    tool_use / tool_result 配对损坏 → 下一轮直接 400。
         #    ⇒ 所以原来那句「始终先写 tool_call」**整条删掉**，不是挪位置。
         #    （既有两处正确用法所在的函数里，`add_tool_call` 出现 **0 次** —— 已核。）
-        def _defer(facts: str, log: str):
-            return {"event": "exit_flow_defer_to_model", "tool_result": facts, "log": log}
+        def _defer(facts: str, log: str, ok: bool = False):
+            # ok=True：这件事已经做成，只是措辞交回模型（工具行显示 ✓）
+            return {"event": "exit_flow_defer_to_model", "tool_result": facts, "log": log,
+                    "ok": ok}
 
         if _op not in _OPS:
             yield _defer(
@@ -219,7 +221,7 @@ class McpMixin:
         yield _defer(
             _facts + " This already succeeded - do not call manage_mcp again for it. "
                      "Just tell the user, in your own words.",
-            f"manage_mcp {_op}「{_srv}」完成，措辞交回模型。")
+            f"manage_mcp {_op}「{_srv}」完成，措辞交回模型。", ok=True)
 
     async def _handle_connect_mcp_decision(
         self, decision, used_model: str, base_guide: str, realtime_callback,
@@ -252,8 +254,10 @@ class McpMixin:
         # ⚠️ **不写 `add_tool_call`** —— 本 handler 所有出口都走
         #    `exit_flow_defer_to_model`，拦截处会无条件写一次。写两次 →
         #    tool_use / tool_result 配对损坏 → 下一轮 400。（同 manage_mcp 那条）
-        def _defer(facts: str, log: str):
-            return {"event": "exit_flow_defer_to_model", "tool_result": facts, "log": log}
+        def _defer(facts: str, log: str, ok: bool = False):
+            # ok=True：这件事已经做成，只是措辞交回模型（工具行显示 ✓）
+            return {"event": "exit_flow_defer_to_model", "tool_result": facts, "log": log,
+                    "ok": ok}
 
         try:
             from core.mcp_client import MCPManager as _MM
@@ -404,7 +408,7 @@ class McpMixin:
             + _recheck
             + " This already succeeded - do not call connect_mcp again for it. "
               "Tell the user, in your own words.",
-            f"connect_mcp 已接入「{_srv}」，措辞交回模型。")
+            f"connect_mcp 已接入「{_srv}」，措辞交回模型。", ok=True)
 
     async def _mcp_tooltip(self, server: str, tool_names: list, *, fallback: str = "") -> str:
         """一句话说明这个 MCP 是干什么的。**先问 server 自己，模型写的只是兜底。**

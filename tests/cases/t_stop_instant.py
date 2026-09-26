@@ -91,7 +91,7 @@ def t_stream() -> None:
         me = types.SimpleNamespace(
             agent=types.SimpleNamespace(request_stop=lambda src="": stops.append(src)),
             _resp_state=rs, pipeline_lock=lock, _refresh_send_btn=lambda: None,
-            _dismiss_confirms_of=lambda *a, **k: None)
+            _dismiss_confirms_of=lambda *a, **k: None, _live_view=lambda: rs)
         check(turn_running(me) is True, "按终止之前：锁在、按钮是终止")
         t_stop = time.monotonic()
         request_stop(me)
@@ -166,7 +166,8 @@ def t_stop_cancels_pending_confirms() -> None:
     other = R.register({"confirm": lambda: got.append("sub-confirm"), "cancel": lambda: got.append("sub-cancel")})
     me = types.SimpleNamespace(agent=types.SimpleNamespace(request_stop=lambda src="": None),
                                _resp_state=rs, _refresh_send_btn=lambda: None,
-                               _dismiss_confirms_of=lambda *a, **k: None)
+                               _dismiss_confirms_of=lambda *a, **k: None,
+                               _live_view=lambda: rs)
     me._discard_after_stop = lambda step: discard(me, step)
     request_stop(me)
     check(got == ["cancel"], "按终止：本轮等待中的确认回「取消」（后端不必等到超时）", str(got))

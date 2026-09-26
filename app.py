@@ -77,7 +77,6 @@ def _rt_auto_authorized() -> bool:
 
 
 
-from core.session import inbox_pending as _rt_inbox_pending  # noqa: E402
 
 
 from dotenv import load_dotenv
@@ -928,9 +927,11 @@ class WebUI:
         self.full_file_lbl  = None 
 
         self._cost_warning_bar  = None
-        # 用户消息 key（调度器返回）→ 它的 nano 占位气泡；排过队的 key 另记（接上时先清「排队中」）
+        # 用户消息 key（调度器返回）→ 它自己的回应期状态（气泡 + 元信息行）。
+        # 轮到它跑时按 key 取，不按「最后建的是哪个」取：排队期间还会有别的气泡被建出来。
         self._user_views: dict = {}
-        self._queued_views: set = set()
+        # 正在渲染的那段回应期（终止按钮作用的对象）；`_resp_state` 可能已经指向排着的下一段
+        self._rendering_view = None
         # 接管状态条。⚠️ 必须在 __init__ 里初始化：`render` 之前就有
         # 1 秒 timer 可能跑到（`_refresh_takeover_bar` 有 None 保护，但别依赖属性不存在）。
         self._takeover_bar      = None
@@ -963,8 +964,9 @@ class WebUI:
         self._agent_watch   = ""        # 当前盯住哪个Subagent
         self._nav_tasks_row = None
         self._tasks_badge_label = None
-        self._task_pill     = None          # 聊天区那个 `x running task(s)`
+        self._task_pill     = None          # 最新回复元信息行里那个 `x running task(s)`
         self._task_pill_lbl = None
+        self._task_pill_sep = None
         self._bg_finished_hidden_before = 0.0   # Clear 只隐藏，不删记录
         self.plan_panel     = None
         self._nav_kb_row      = None
@@ -2501,7 +2503,7 @@ class WebUI:
         """OS 操作授权弹窗。
 
         risk=2 → 黄色标准卡片（可选"始终允许"）
-        risk=3 → 红色 + 5秒倒计时（确认按钮倒计时内禁用，不可"始终允许"）
+        risk=3 → 红色 + 3 秒倒计时（确认按钮倒计时内禁用，不可"始终允许"）
         auto_blocked 非空（Auto 下被危险判定拦下）→ 标题改为「Nano操作被系统拦截」，
         详情区最上方加红色拦截说明，与 Ask 下的普通确认区分开。
         """
@@ -2681,11 +2683,11 @@ class WebUI:
                                            dialog.close(), on_cancel()))
 
                     if is_high_risk:
-                        # risk=3：5秒倒计时，不可"始终允许"
-                        confirm_btn = ui.button('确认执行 (5)', icon='check').props(
+                        # risk=3：3 秒倒计时，不可"始终允许"
+                        confirm_btn = ui.button('确认执行 (3)', icon='check').props(
                             'unelevated disabled'
                         ).style('background:var(--nano-danger-fill); color:#fff; font-size:var(--nano-fs-md); padding:0 14px; border-radius:8px;')
-                        countdown = [5]
+                        countdown = [3]
 
                         async def _tick():
                             import asyncio
@@ -3508,6 +3510,9 @@ class WebUI:
 
         # 本回应期共享状态（由 start_pipeline_task 在 send_message 里初始化）
         _rs = self._resp_state
+        # 这一轮渲染的回应期。界面先收尾（插话）后后端可能还在跑，终止仍作用在它上面，
+        # 所以这里不清，下一轮开始渲染时才换。
+        self._rendering_view = _rs
         if _seam_cont:
             # ⭐⭐⭐ **续接时是「复用」还是「新开」，由【那个元素现在有没有内容】决定。**
             #
@@ -4607,9 +4612,11 @@ class WebUI:
                             logger.info("[Seam] 这一段答完了但队列里还有 → "
                                         "保持转圈，不写 token（等整段结束再定型）")
                         else:
-                            # 本段用量：orchestrator 在本轮开头 begin_turn() 打点，这里取差值
-                            # （fresh+output，非全会话累加）。避免 app 端 tok_base 的时序竞争。
-                            _tok_str = usage_tracker.turn_tokens_fmt()
+                            # 本轮用量由后端随 final_result 带来（`turn_usage`，按轮归属算好的）；
+                            # 界面所在的协程读不到那一轮的归属，自己取会取错轮。
+                            _tu = step.get("turn_usage") or {}
+                            _tok_str = (_fmt_tokens(int(_tu["tokens"])) if "tokens" in _tu
+                                        else usage_tracker.turn_tokens_fmt())
                             # 定型：藏 braille 转圈、显光芒头像 ✦、状态变 "8.2s · 2.2K tok"
                             if _rs.get("spin_lbl"):
                                 _rs["spin_lbl"].set_visibility(False)
@@ -4619,7 +4626,7 @@ class WebUI:
                             #    这行**每条消息下面都有**，是用户看得最多的数字。
                             #    📌 一个数字出现的频率，跟它的大小一样影响观感。
                             _rs["status_lbl"].set_text(
-                                f"{_elapsed_done}s{self._turn_tok_suffix(_tok_str)}{rag_suffix}")
+                                f"{_elapsed_done}s{self._turn_tok_suffix(_tok_str, _tu)}{rag_suffix}")
                             _rs["status_lbl"].style(
                                 'font-size:var(--nano-fs-base); color:var(--nano-dim); font-style:normal; '
                                 'letter-spacing:0.01em; font-family:var(--nano-mono);'
@@ -4783,52 +4790,73 @@ class WebUI:
 
     # ── 队列排空 ───────────────────────────────────────────────
 
-    def _rt_inbox_mark_queued(self, loading_container) -> None:
-        """把那条消息的 loading 区改成「排队中」。
-
-        ⚠️ 这段文案**不出现在 Nano 的气泡里**，是系统状态提示 ——
-           命中固定文案豁免的第 3 条（系统级通知）和第 5 条（不在气泡里）。
-        """
-        try:
-            n = _rt_inbox_pending()
-            with self._ui_scope():
-                loading_container.clear()
-                with loading_container:
-                    ui.label(
-                        f'排队中 · Nano 正在处理上一条'
-                        + (f'（前面还有 {n - 1} 条）' if n > 1 else '')
-                    ).style('font-size:var(--nano-fs-sm); color:var(--nano-fg-soft);')
-        except Exception as e:
-            logger.debug(f"[Inbox] 标记排队中失败（不影响入队）: {e}")
-
     async def render_user_turn(self, key: str, payload: dict, continuation: bool,
                                turn_id: str) -> None:
-        """画一个用户轮（调度器持锁调用）：找到这条消息的占位，渲染事件流。
+        """画一个用户轮（调度器持锁调用）：找到这条消息的回应期，渲染事件流。
 
-        `continuation` 为真 = 插话之后的下一段：喂进**已经存在的那个** nano 气泡，不新建。
-        排过队的那条先清掉「排队中」那行，让正常的 loading 接上。
+        `continuation` 为真 = 插话之后的下一段：喂进当前回应期的气泡（连续多次插话时
+        前面的空占位已折叠，最后那个 successor 是 `_resp_state`），不新建。
+        否则用这条消息发出时建好的那个气泡（`_user_views[key]`）；它已不在页面上
+        （被折叠过）就新开一个。
         """
-        box = self._user_views.pop(key, None)
+        view = self._user_views.pop(key, None)
         if continuation:
-            _rs_live = getattr(self, "_resp_state", None) or {}
-            _rs_live["pending_epoch"] = False
-            box = _rs_live.get("container")
-            if box is None:
+            view = getattr(self, "_resp_state", None)
+            if view is None or view.get("container") is None:
                 logger.warning("[Seam] 续接时找不到 nano 块，放弃这一条（已在库里）")
                 return
             # 这个标志由 `navigate_pipeline` 开头读一次就清（即读即清 + 单一读点）。
             self._resp_continuation = True
-        elif key in self._queued_views:
-            self._queued_views.discard(key)
+        elif view is None or self._view_gone(view):
+            view = self._new_reply_view()
+        view["pending_epoch"] = False
+        self._resp_state = view
+        self._current_loading_label = view.get("status_lbl")
+        await self._safe_execute_pipeline(payload.get("text", ""), view["container"], turn_id)
+
+    @staticmethod
+    def _view_gone(view) -> bool:
+        _box = view.get("container") if view is not None else None
+        return _box is None or bool(getattr(_box, "is_deleted", False))
+
+    def _new_reply_view(self) -> "ViewSession":
+        """在聊天区末尾新开一个 nano 气泡（元信息行从 connecting 开始），返回它的回应期状态。"""
+        with self._ui_scope():
+            self._clear_empty_state_greeting()
             try:
-                with self._ui_scope():
-                    box.clear()
+                if getattr(self, '_last_meta_row', None):
+                    self._last_meta_row.delete()
             except Exception:
                 pass
-        if box is None:
-            logger.error(f"[Turn] 找不到消息 {key} 的界面占位，这一轮无法渲染（仍在库里）")
-            return
-        await self._safe_execute_pipeline(payload.get("text", ""), box, turn_id)
+            with self.chat_container:
+                loading_container = ui.column().classes('w-full py-1 mb-8')
+                with loading_container:
+                    with ui.row().classes('items-start gap-2 no-wrap w-full min-w-0'):
+                        ui.label('nano ❯').style(
+                            'color:var(--nano-ok); font-size:var(--nano-fs-lg); line-height:1.75rem; flex-shrink:0; min-width:64px; text-align:right;'
+                            'font-family:var(--nano-mono);')
+                        _inner_col = ui.column().classes('w-full gap-0 min-w-0')
+                        with _inner_col:
+                            _c_md = nano_md()
+                    with ui.row().classes('items-center gap-1.5 mt-1').style('padding-left:72px;') as _meta_row:
+                        _spin_lbl = ui.label('⠋').style('font-size:var(--nano-fs-md); color:var(--nano-dim); font-family:var(--nano-mono);')
+                        _svg_el = ui.html(NANO_AVATAR_SVG).style('width:16px; height:16px; flex-shrink:0; display:none;')
+                        _s_lbl = ui.label('connecting · 0s').style(
+                            'font-size:var(--nano-fs-base); color:var(--nano-dim); letter-spacing:0.01em; font-family:var(--nano-mono);'
+                        )
+                self._last_meta_row = _meta_row
+            try:
+                self.scroll_area.scroll_to(percent=1.0, duration=0.1)
+            except Exception:
+                pass
+        return ViewSession(container=loading_container, meta_row=_meta_row,
+            pending_epoch=False,
+            status_lbl=_s_lbl, spin_lbl=_spin_lbl, svg_el=_svg_el,
+            start_time=time.time(), tok_base=sum(usage_tracker.session_tokens()), running=True,
+            content_md=_c_md, current_text="", loading_col=_inner_col,
+            tool_count=0, had_text_since_tool=True, batch_tool_count=0,
+            tool_pill_lbl=None, tool_pill_arrow=None, tool_details_col=None,
+            action_refs={}, text_checkpoint="",)
 
     # ── 回复状态计时器 ────────────────────────────────────────────────────
 
@@ -5429,6 +5457,10 @@ class WebUI:
     #    📌 **一个「停止」能力如果依赖被停止的那一方理解你的意思，
     #       它就不是停止能力。**
 
+    def _live_view(self):
+        """后端正在跑（或刚跑完）的那一轮所渲染的回应期；还没有渲染过任何一轮时退回 `_resp_state`。"""
+        return getattr(self, "_rendering_view", None) or getattr(self, "_resp_state", None)
+
     def _turn_running(self) -> bool:
         """（对用户而言）现在有没有一轮在跑：持有 `pipeline_lock` 且用户没有按过终止。
 
@@ -5436,7 +5468,7 @@ class WebUI:
         新消息进队列，等后端停下后接着处理。
         """
         try:
-            _rs_now = getattr(self, "_resp_state", None) or {}
+            _rs_now = self._live_view() or {}
             return self.pipeline_lock.locked() and not _rs_now.get("stop_clicked")
         except Exception:
             return False
@@ -5656,7 +5688,8 @@ class WebUI:
         except Exception as e:
             logger.error(f"[Stop] 请求终止失败: {e}")
             return
-        _rs_now = getattr(self, "_resp_state", None)
+        # 作用在后端正在跑的那一轮的回应期上：`_resp_state` 可能已经是插话建出的下一段。
+        _rs_now = self._live_view()
         if _rs_now is not None:
             _rs_now["stop_clicked"] = True
             _evt = _rs_now.get("stop_evt")
@@ -6045,19 +6078,24 @@ class WebUI:
         from core.session import get_scheduler
         _rs_live = _seam_live or {}
         # 被终止过的回应期不再续接：终止后发的新消息开新气泡（排队到后端这一轮真正停下）。
+        # 两处都要看：插话之后 `_resp_state` 已是下一段，被终止的是后端正在跑的那一轮。
         _can_cont = bool(_rt_inbox_busy and _rs_live.get("container") is not None
                          and _rs_live.get("running")
-                         and not _rs_live.get("stop_clicked") and not _rs_live.get("ui_stopped"))
+                         and not _rs_live.get("stop_clicked") and not _rs_live.get("ui_stopped")
+                         and not (self._live_view() or {}).get("stop_clicked"))
         _key, _mode = get_scheduler().submit_user_message(
             effective_query, image_bytes=_img_bytes, image_mime=_img_mime,
             temp_hint=_temp_hint, can_continue=_can_cont)
-        self._user_views[_key] = loading_container
+        _view = self._resp_state
+        self._user_views[_key] = _view
         if _mode == "cont":
             # 用户插话是回应期边界，不是 DOM 搬家指令：predecessor 留在原位，后续写入 successor。
-            self._handoff_response_epoch(_rs_live, self._resp_state)
+            self._handoff_response_epoch(_rs_live, _view)
         elif _mode == "queued":
-            self._queued_views.add(_key)
-            self._rt_inbox_mark_queued(loading_container)
+            # 排队的这一条有自己的气泡（元信息行显示 queued · Ns），轮到它时按 key 取回。
+            # 当前回应期仍是正在跑的那一段：终止、确认等都作用在它上面。
+            self._resp_state = _seam_live
+            self._current_loading_label = (_seam_live or {}).get("status_lbl")
 
 
     # ── 记忆管理（user_note）────────────────────────────────────────────────
@@ -9359,7 +9397,7 @@ class WebUI:
             logger.debug(f"[Model] 按厂商取模型清单失败，回落内置表: {e}")
             return {m["id"]: m["name"] for m in (CLAUDE_MODELS or [])}
 
-    def _turn_tok_suffix(self, tok_str: str) -> str:
+    def _turn_tok_suffix(self, tok_str: str, turn_usage: dict | None = None) -> str:
         """每条消息尾部那行的 token 部分，按用户选的档位给。
 
         ```
@@ -9376,7 +9414,8 @@ class WebUI:
         out = f" · {tok_str} tok"
         if mode == "full":
             try:
-                hit = usage_tracker.turn_cache_hit()
+                hit = ((turn_usage or {}).get("cache_hit") if "cache_hit" in (turn_usage or {})
+                       else usage_tracker.turn_cache_hit())
                 if hit is not None:
                     out += f" · cache hit {int(hit * 100)}%"
             except Exception:
@@ -9792,7 +9831,6 @@ class WebUI:
             _n = _ib.discard_all_pending("用户重置对话")
             self._rt_inbox_parked.clear()
             self._user_views.clear()
-            self._queued_views.clear()
             if _n:
                 logger.info(f"[Inbox] 重置对话 → 丢弃 {_n} 条排队消息（用户显式要求）")
         except Exception as e:
@@ -11277,10 +11315,11 @@ class WebUI:
     def _sync_task_pill(self, n: int) -> None:
         """聊天区那个 `x running task(s)`。
 
-        ⭐ 早先定的形态是「**挂在最新一条回复气泡下面，始终跟随**（不是固定在
-           页面某处）」，数量为 0 时整个消失，点击展开右侧抽屉。
+        形态：跟随最新一条回复，接在它元信息行的计时器后面（`· 1 running task ··`，
+        2026-09-26 起不再单独占一行、不带图标）；数量为 0 时整个消失，点击展开右侧抽屉。
+        最新回复还没有元信息行时退回聊天区末尾。
 
-        ⚠️ 实现是**一个** pill + 每次刷新 `move()` 到聊天容器末尾，
+        ⚠️ 实现是**一个** pill + 每次刷新 `move()` 到所在容器末尾，
            而不是"每条气泡各挂一个再统一控制显隐"：
            📌 后者会在历史里留下一串隐藏的空壳，重放时还得一个个清 ——
               **一个始终跟随的东西，本身就该只有一个。**
@@ -11294,6 +11333,11 @@ class WebUI:
             _c = getattr(self, "chat_container", None)
             if _c is None:
                 return
+            # 挂在最新那条回复的元信息行里、计时器后面（`still running · 85s · 1 running task`）；
+            # 那一行不在（对话刚重置、还没有回复）就挂在聊天区末尾。
+            _meta = getattr(self, "_last_meta_row", None)
+            _in_meta = _meta is not None and not getattr(_meta, "is_deleted", False)
+            _host = _meta if _in_meta else _c
             with self._ui_scope():
                 _pill = getattr(self, "_task_pill", None)
                 # 🔴🔴 [2026-08-22] **pill 只在启动后出现一次，
@@ -11320,16 +11364,18 @@ class WebUI:
                 #    `set_visibility(True)` **不报错也不显示** → 重启前 pill 回不来。
                 # 📌 **一个「只创建一次」的句柄，必须有办法知道它指的东西还在不在** ——
                 #    否则一次静默失败就是永久失效。
-                # ⭐ 判据用**它还在不在聊天容器的孩子里**（level-triggered，
+                # ⭐ 判据用**它还在不在它所在容器的孩子里**（level-triggered，
                 #    每 2 秒重新问一次现状），不维护任何"它是否有效"的标志位。
+                #    所在的元信息行随新回复被删掉时，pill 跟着没了，这里重建到新的那一行。
                 if _pill is not None:
                     try:
-                        _alive = _pill in _c.default_slot.children
+                        _alive = (not getattr(_pill, "is_deleted", False)
+                                  and _pill in _pill.parent_slot.children)
                     except Exception:
                         _alive = False
                     if not _alive:
-                        logger.info("[L5] pill 已不在聊天容器里 → 重建"
-                                    "（多半是对话重置/重放清过容器，或 move 半途失败）")
+                        logger.info("[L5] pill 已不在页面上 → 重建"
+                                    "（所在的元信息行被删、对话重置/重放清过容器，或 move 半途失败）")
                         _pill = None
                         self._task_pill = None
                         self._task_pill_lbl = None
@@ -11338,23 +11384,23 @@ class WebUI:
                         _pill.set_visibility(False)
                     return
                 if _pill is None:
-                    with _c:
+                    with _host:
                         # 🔴 实测 2026-08-20：整条 pill 都可点 —— 它是 `w-full`，
                         #    于是右边一大片空白也在点击范围里。
                         #    📌 **一个可点击区域的边界，应该等于它看起来的边界** ——
                         #       看不见的热区会让用户在"没点到东西"的地方触发跳转。
                         # ⭐ 修法：外层行**不再可点**，只有里面那一小段可点，
                         #    宽度由内容决定（`w-max`），`w-full` 留给外层做定位。
-                        _pill = ui.row().classes(
-                            'items-center w-full').style('padding:2px 0 6px 72px;')
+                        _pill = ui.row().classes('items-center gap-1.5')
                         with _pill:
+                            # 接在计时器后面的分隔点；挂在聊天区末尾时不显示
+                            self._task_pill_sep = ui.label('·').style(
+                                'font-size:var(--nano-fs-base); color:var(--nano-dim); '
+                                'font-family:var(--nano-mono);')
                             _hot = ui.row().classes(
                                 'items-center gap-1.5 cursor-pointer w-max').on(
                                 'click', lambda _: self._show_right_panel('tasks'))
                             with _hot:
-                                ui.label('✳').style(
-                                    'font-size:var(--nano-fs-sm); color:var(--nano-amber); '
-                                    'font-family:var(--nano-mono);')
                                 self._task_pill_lbl = ui.label('').style(
                                     'font-size:var(--nano-fs-base); color:var(--nano-fg-soft); '
                                     'font-family:var(--nano-mono);')
@@ -11385,12 +11431,13 @@ class WebUI:
                                     '·' * (_self._task_pill_tick % 4))
                             except Exception:
                                 pass
-                        ui.timer(0.4, _dots)
+                        with _pill:
+                            ui.timer(0.4, _dots)      # 随 pill 一起删除
                     self._task_pill = _pill
                 else:
                     # ⚠️ 重新挂到末尾 = 「跟着最新那条气泡」。
                     try:
-                        _pill.move(_c)
+                        _pill.move(_host)
                     except Exception as _e_mv:
                         # 🔴 **不许 `pass`** —— `move()` 先摘后挂，抛在中间时
                         #    元素已经离开了容器。静默吞掉 = 让 pill 永久消失，
@@ -11403,6 +11450,10 @@ class WebUI:
                         return
                 self._task_pill_lbl.set_text(
                     f"{n} running task{'s' if n != 1 else ''}")
+                # 在元信息行里：行内、接在计时器后；在聊天区末尾：独占一行、与气泡内容对齐
+                _pill.classes(replace='items-center gap-1.5 ' + ('w-max' if _in_meta else 'w-full'))
+                _pill.style(replace='' if _in_meta else 'padding:2px 0 6px 72px;')
+                self._task_pill_sep.set_visibility(_in_meta)
                 _pill.set_visibility(True)
         except Exception as e:
             logger.debug(f"[L5] 同步 pill 失败: {e}")
@@ -11874,74 +11925,27 @@ class WebUI:
         """画一个唤醒轮：同一段回应期（触发那一刻前台上有东西）续接进原气泡，否则新开一个；
         然后把 `turn_id` 那一轮的事件（`agent.resume_suspension` 泵到总线上的）渲染完。锁由调度器持有。"""
         _live_rs = getattr(self, "_resp_state", None)
-        _same_epoch = bool(continue_bubble) and _live_rs is not None
-        # ⭐⭐ **续接分支还需要一样只在 `else` 里被创建的东西：`loading_container`。**
-        #    它下面要传给 `navigate_pipeline`。续接时它必须是**活着那个容器**。
-        # 📌 **一个 if/else 里只在 else 分支赋值的局部变量，是 if 分支的
-        #    隐藏依赖** —— 只打开开关不补依赖，if 分支必然 NameError。
-        #    （这正是上面那个 bug 的第二层，原来的补丁两层都错了。）
-        # ⚠️ 拿不到容器就**退回新开一个**，而不是崩掉 ——
-        #    唤醒轮的价值在于「Nano 接着说下去」，气泡长相是次要的。
+        # 被用户终止过的回应期不再续接：唤醒轮新开一个气泡。
+        _same_epoch = (bool(continue_bubble) and _live_rs is not None
+                       and not _live_rs.get("stop_clicked") and not _live_rs.get("ui_stopped"))
+        # 拿不到活着的容器就退回新开一个，而不是崩掉：唤醒轮的价值在于 Nano 接着说下去。
         loading_container = None
         if _same_epoch:
             loading_container = (_live_rs or {}).get("container")
-            if loading_container is None:
+            if loading_container is None or self._view_gone(_live_rs):
                 logger.warning(f"[Wake] {suspension_id} 判为同一回应期，但活着的"
                                f"容器已经不在了 → 退回新开一个 nano ❯")
                 _same_epoch = False
         if _same_epoch:
             logger.info(f"[Wake] {suspension_id} 仍在同一段回应期 → 续接进原气泡"
                         f"（不新开 nano ❯）")
-            # ⚠️ 同一段回应期 → **跳过整段「重建 nano 块」**，只打开续接开关。
-            #    ⚠️ 也**不许删 `_last_meta_row`** —— 那是这一段自己的元信息行，
-            #       续接之后它还要继续用（token 统计等整段结束才写）。
-            #       📌 「上一条的元信息行」这个说法在续接场景里不成立：
-            #          此刻那个元信息行不是上一条的，是**当前这一段**的。
+            # 同一段回应期：不重建 nano 块、不删这一段自己的元信息行（token 统计等整段结束才写），
+            # 只打开续接开关。
             self._resp_continuation = True
         else:
-            with self._ui_scope():
-              self._clear_empty_state_greeting()
-              try:
-                  if getattr(self, '_last_meta_row', None):
-                      self._last_meta_row.delete()
-              except Exception:
-                  pass
-              with self.chat_container:
-                  loading_container = ui.column().classes('w-full py-1 mb-8')
-                  with loading_container:
-                      with ui.row().classes('items-start gap-2 no-wrap w-full min-w-0'):
-                          ui.label('nano ❯').style(
-                              'color:var(--nano-ok); font-size:var(--nano-fs-lg); line-height:1.75rem; flex-shrink:0; min-width:64px; text-align:right;'
-                              'font-family:var(--nano-mono);')
-                          _inner_col = ui.column().classes('w-full gap-0 min-w-0')
-                          with _inner_col:
-                              _c_md = nano_md()
-                      with ui.row().classes('items-center gap-1.5 mt-1').style('padding-left:72px;') as _meta_row:
-                          _spin_lbl = ui.label('⠋').style('font-size:var(--nano-fs-md); color:var(--nano-dim); font-family:var(--nano-mono);')
-                          _svg_el = ui.html(NANO_AVATAR_SVG).style('width:16px; height:16px; flex-shrink:0; display:none;')
-                          _s_lbl = ui.label('connecting · 0s').style(
-                              'font-size:var(--nano-fs-base); color:var(--nano-dim); letter-spacing:0.01em; font-family:var(--nano-mono);'
-                          )
-                  self._last_meta_row = _meta_row
-                  self._resp_state = ViewSession(container=loading_container, meta_row=_meta_row,
-                      pending_epoch=False,
-                      status_lbl=_s_lbl, spin_lbl=_spin_lbl, svg_el=_svg_el,
-                      start_time=time.time(), tok_base=sum(usage_tracker.session_tokens()), running=True,
-                      content_md=_c_md, current_text="", loading_col=_inner_col,
-                      tool_count=0, had_text_since_tool=True, batch_tool_count=0,
-                      tool_pill_lbl=None, tool_pill_arrow=None, tool_details_col=None,
-                      action_refs={}, text_checkpoint="",)
-                  self._current_loading_label = _s_lbl
-                  # 🪦 这里曾经回填 `_pill_entry["resp_state"] = self._resp_state`
-                  #    —— 那是给上一版「对象身份比对」续命的补丁。
-                  # 2026-08-22 判据换成「触发那一刻前台上有东西」之后，
-                  # `_pill_entry` 的那个字段**再没有任何读取点**，所以一并拆掉。
-                  # 📌 **留着一个零读取点的写入，是「写好但没人调」的反面镜像** ——
-                  #    它同样会让下一个人以为这里有一套还在生效的机制。
-              try:
-                  self.scroll_area.scroll_to(percent=1.0, duration=0.1)
-              except Exception:
-                  pass
+            self._resp_state = self._new_reply_view()
+            self._current_loading_label = self._resp_state["status_lbl"]
+            loading_container = self._resp_state["container"]
         try:
             await self.navigate_pipeline(None, loading_container,
                                          event_source=self._turn_events(turn_id))

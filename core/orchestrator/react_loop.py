@@ -817,6 +817,7 @@ class ReactLoopMixin:
                     # 📌 同一条判据：**给出足够的事实，让它自己判断怎么说、
                     #    下一步做什么**，而不是替它把话说死。
                     _defer_to_model: str | None = None
+                    _defer_ok = False          # handler 标明「已经做成，只是措辞交回模型」
 
                     # ⭐⭐ [2026-08-06 实测] `tool_end` 必须赶在**终端事件之前**发出。
                     #
@@ -839,11 +840,13 @@ class ReactLoopMixin:
                         _tool_end_sent = True
                         return {
                             "event": "tool_end", "action_id": _exit_aid,
-                            "result_summary": "已完成" if not _defer_to_model else "需要我来说明",
+                            "result_summary": ("已完成" if (not _defer_to_model or _defer_ok)
+                                               else "需要我来说明"),
                             "status": "CORE_THINKING", "model": used_model,
                             "current_skill": exit_call.name,
                             "tool_use_id": exit_call.tool_use_id,
-                            "ok": _defer_to_model is None,
+                            # 交回措辞 ≠ 没做成：handler 在做成了的出口上标 `ok`
+                            "ok": _defer_to_model is None or _defer_ok,
                         }
 
                     def _pre(ev):
@@ -859,9 +862,10 @@ class ReactLoopMixin:
 
                     def _take_defer(ev):
                         """返回 True 表示这个事件被拦下（不转发给 UI）。"""
-                        nonlocal _defer_to_model
+                        nonlocal _defer_to_model, _defer_ok
                         if isinstance(ev, dict) and ev.get("event") == "exit_flow_defer_to_model":
                             _defer_to_model = str(ev.get("tool_result") or "").strip() or None
+                            _defer_ok = bool(ev.get("ok"))
                             return True
                         return False
 
