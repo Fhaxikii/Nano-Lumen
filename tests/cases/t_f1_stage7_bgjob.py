@@ -282,38 +282,24 @@ def t_source_invariants() -> None:
     app = module_text("app")
     tsk = module_text("core.runtime.task")
 
-    # ① 句柄必须被保住（终止功能的前提）
+    # ① 载体的 asyncio.Task 句柄被保住（终止功能的前提；无强引用的 task 可能被 GC）
     tree = ast.parse(app)
     fn = None
     for n in ast.walk(tree):
-        if isinstance(n, ast.FunctionDef) and n.name == "_start_bg_task":
+        if isinstance(n, ast.FunctionDef) and n.name == "_start_handed_back_carrier":
             fn = n
-    check(fn is not None, "前置：找到 `_start_bg_task`")
+    check(fn is not None, "前置：找到 `_start_handed_back_carrier`")
     body = ast.unparse(fn) if fn else ""
-    check("create_task" in body and "_bg_tasks[task_id]['aio']" in body.replace('"', "'"),
-          "⭐⭐⭐ AST：`asyncio.create_task` 的返回值**被存起来了** —— "
-          "🔴 旧实现直接丢掉，于是「每个后台任务各自的终止按钮」**物理上不可能实现**，"
-          "而且没有强引用的 task 可能在完成前被 GC。"
-          "📌 一个「以后要能停下它」的东西，创建时就得把句柄留住")
-    check("cancel_bg_task" in app, "⭐ 终止入口存在")
+    check("aio = asyncio.create_task" in body and "'aio': aio" in body.replace('"', "'"),
+          "⭐⭐⭐ AST：`asyncio.create_task` 的返回值存进载体表")
+    check("_cancel_carrier" in app, "⭐ 终止入口存在")
 
-    # ② 权威记录必须在起协程【之前】落
-    _i_create = body.index("create_background_job")
-    _i_spawn = body.index("create_task")
-    check(_i_create < _i_spawn,
-          "⭐⭐ 权威记录落在**起协程之前** —— 反过来的话，如果起协程那步炸了，"
-          "就跑起了一个**没有任何记录**的任务。📌 先落成事实、再执行")
-
-    # ③ CancelledError 必须排在 Exception 之前
-    # ⚠️ 三种结局的 try/except 在 `_run_bg_task_inner` 里 —— 早先加 slot
-    #    等待时把函数拆成了两层：外层等 slot、内层跑协程。
-    #    📌 一条按函数名定位的断言，在函数被拆开时会红 —— 而那是**好事**：
-    #       它逼你确认拆完之后那条性质还在。
+    # ② CancelledError 接在 Exception 之前（3.8+ 它继承 BaseException，不被 except Exception 捕获）
     run_fn = None
-    for n in ast.walk(tree):
-        if isinstance(n, ast.AsyncFunctionDef) and n.name == "_run_bg_task_inner":
+    for n in ast.walk(fn) if fn else []:
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "_run":
             run_fn = n
-    check(run_fn is not None, "前置：找到 `_run_bg_task_inner`（外层负责等 slot）")
+    check(run_fn is not None, "前置：找到载体的 `_run`")
     handlers = []
     for n in ast.walk(run_fn) if run_fn else []:
         if isinstance(n, ast.Try):
@@ -321,29 +307,14 @@ def t_source_invariants() -> None:
             break
     check("asyncio.CancelledError" in handlers and "Exception" in handlers
           and handlers.index("asyncio.CancelledError") < handlers.index("Exception"),
-          "⭐⭐⭐ AST：`CancelledError` 接在 `Exception` **之前**。"
-          "🔴 这不是风格问题：`CancelledError` 在 3.8+ 继承 `BaseException`，"
-          "**根本不会被 `except Exception` 捕获** —— 旧实现里它会直接穿透上去，"
-          "连那句「执行失败」都不会有，用户手动终止**一点痕迹都不留**",
-          str(handlers))
+          "⭐⭐⭐ AST：`CancelledError` 接在 `Exception` **之前**", str(handlers))
 
-    # ③b slot：满了要**等**，不许失败
-    outer = None
-    for n in ast.walk(tree):
-        if isinstance(n, ast.AsyncFunctionDef) and n.name == "_run_bg_task":
-            outer = n
-    o_src = ast.unparse(outer) if outer else ""
-    check("_bg_slot_sem" in o_src and "async with" in o_src,
-          "⭐⭐⭐ AST：跑协程之前 `async with` 那个 slot 信号量 —— "
-          "满了就**等**。📌 闸的出口是失败，队列的出口是稍后处理"
-          "（这条判据第四次用到）")
-    check("mark_background_running" in o_src
-          and o_src.index("async with") < o_src.index("mark_background_running"),
-          "⭐⭐ 而「转 RUNNING」在**拿到 slot 之后** —— "
-          "📌 「在排队」和「在跑」必须是两个状态，压成一个之后上限就数不清了")
-    check("MAX_BACKGROUND_RUNNING" in app or "MAX_BACKGROUND_RUNNING" in tsk,
-          "⭐ 上限只有一个数字来源（`task.MAX_BACKGROUND_RUNNING`）—— "
-          "📌 一个限制有两个数字来源，迟早变成两个不同的限制")
+    # ③ 旧后台任务链（零生产调用方，已删除）没有长回来
+    for _gone in ("_start_bg_task", "_run_bg_task", "cancel_bg_task", "_bg_slot_sem",
+                  "_bg_tasks", "_append_zombie_bubble"):
+        check(_gone not in app, f"旧链 `{_gone}` 不在 app 里")
+    check("MAX_BACKGROUND_RUNNING" in tsk,
+          "⭐ 上限只有一个数字来源（`task.MAX_BACKGROUND_RUNNING`）")
 
     # ④ 三种结局的映射表里三个值互不相同
     i = tsk.index("_BG_OUTCOME_TO_REASON = {")

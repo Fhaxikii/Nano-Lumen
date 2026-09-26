@@ -1,6 +1,6 @@
 # core/proactive/intel/engine.py
 """
-主动智能主引擎，把下面各层串联起来。取代旧 speaker 的角色，但 v0 默认 SHADOW_MODE：
+主动智能主引擎，把下面各层串联起来。v0 默认 SHADOW_MODE：
 只决策+记日志，不真说话——先攒实际运行数据，复核 shadow 日志后把 SHADOW_MODE 改 False 即上线。
 
 三层：L0 硬安全(不受情感闸门，穿透静音) / L1 日历仪式(不受情感压制，服从静音+守卫) /

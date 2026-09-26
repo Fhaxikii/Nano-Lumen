@@ -160,7 +160,6 @@ load_dotenv()
 # 所以 core.* 与 nano_koala 全部放到 _bootstrap_core_modules()，只在主进程启动时导入。
 Orchestrator = None
 _get_activity_buffer = None
-ProactiveSpeaker = None
 _IntelEngine = None
 _ISignal = None
 _start_proactive_hooks = None
@@ -185,7 +184,7 @@ def _bootstrap_core_modules() -> None:
     注意：native 窗口子进程 import 本文件时不会执行 __main__，因此不会走到这里；
     它只需要读取 app.native.start_args/window_args 这类轻量窗口参数。
     """
-    global Orchestrator, _get_activity_buffer, ProactiveSpeaker, _IntelEngine, _ISignal
+    global Orchestrator, _get_activity_buffer, _IntelEngine, _ISignal
     global _start_proactive_hooks, os_dsl
     global ClaudeProvider, get_provider, GeminiProvider, CLAUDE_MODELS, CLAUDE_MODEL_MAP, GEMINI_MODELS, GEMINI_MODEL_MAP
     global usage_tracker, _fmt_tokens, registry, rag_engine, MemoryManager, render_nano_koala_avatar
@@ -193,7 +192,6 @@ def _bootstrap_core_modules() -> None:
     from nano_koala import render_nano_koala_avatar as _render_nano_koala_avatar
     from core.orchestrator import Orchestrator as _Orchestrator
     from core.proactive.activity import get_buffer as __get_activity_buffer
-    from core.proactive.speaker import ProactiveSpeaker as _ProactiveSpeaker
     from core.proactive.intel.engine import ProactiveEngine as __IntelEngine
     from core.proactive.intel.feedback import Signal as __ISignal
     from core.proactive.hooks import start_hooks as __start_proactive_hooks
@@ -215,7 +213,6 @@ def _bootstrap_core_modules() -> None:
     render_nano_koala_avatar = _render_nano_koala_avatar
     Orchestrator = _Orchestrator
     _get_activity_buffer = __get_activity_buffer
-    ProactiveSpeaker = _ProactiveSpeaker
     _IntelEngine = __IntelEngine
     _ISignal = __ISignal
     _start_proactive_hooks = __start_proactive_hooks
@@ -992,10 +989,8 @@ class WebUI:
         # 看屏幕前 Nano 要把自己最小化让开；core 不直接依赖 UI 框架，由这里交给它取主窗口的方法。
         from nicegui import app as _napp_for_agent
         self.agent._native_window = lambda: _napp_for_agent.native.main_window
-        self._speaker = ProactiveSpeaker(self.provider, self._proactive_push)
-        # 主动智能 v0：默认 SHADOW（只决策记日志、不真说话），与旧 speaker 并存零冲突。
-        # 复核 data/proactive_shadow.jsonl 后，把 engine.SHADOW_MODE 改 False 即上线，
-        # 同时停掉上面旧 _speaker 的轮询（见 _maybe_speak 注释）。
+        # 主动智能 v0：默认 SHADOW（只决策记日志、不真说话）。
+        # 复核 data/proactive_shadow.jsonl 后，把 engine.SHADOW_MODE 改 False 即上线。
         self._intel_engine = _IntelEngine(self.provider, self._proactive_push)
         self._activity = _get_activity_buffer()
 
@@ -1048,7 +1043,6 @@ class WebUI:
         self._takeover_bar      = None
         self._takeover_lbl      = None
         self._cost_warning_lbl  = None
-        self._bg_tasks: dict        = {}
         # ⭐ 轮外 UI 事件通道。**由 app 建、由 orchestrator 写、由 app 读** ——
         #    📌 建在 app 是因为消费它的是 UI；而它必须在 orchestrator 拿得到的
         #       地方（`agent._ui_oob_events`），否则Subagent发不出去。
@@ -4250,7 +4244,7 @@ class WebUI:
                 continue
 
             # ── 长任务被交还：把还在跑的那个载体交给后台生产端 ────────────────
-            # 完成时 _run_bg_task → notify_background_done(ref) → 唤醒等它的 background 挂起，
+            # 完成时载体 → notify_background_done(ref) → 唤醒等它的 background 挂起，
             # Nano 带结果起新 turn 续做。复用整套背景唤醒桥（无需重新发明）。
             #
             # ⭐⭐⭐ **这里不认识任何一种载体。** 事件里那个 `task` 一律
@@ -4274,7 +4268,7 @@ class WebUI:
                     try:
                         return await _t
                     except asyncio.CancelledError:
-                        # ⚠️ 必须原样抛上去：`_run_bg_task_inner` 靠它区分
+                        # ⚠️ 必须原样抛上去：载体的收尾靠它区分
                         #    「被用户终止」和「执行失败」，吞掉就变成假的失败。
                         raise
                     except Exception as _e:
@@ -4576,18 +4570,6 @@ class WebUI:
                         self._settle_tool_pill(_rs)
                     except Exception:
                         pass
-                # 下面九行保留的是早期“同一气泡重画”方案的迁移历史；将它退役。
-                # ⚠️⚠️ **修掉一个「擦掉重画」会引入的静默数据丢失**：
-                #    `_bg_tasks` 里快照了「最新那条回复」的 UI 引用
-                #    （`inner_col` / `status_lbl`），后台任务完成时要往那里追加结果。
-                #    这一段被擦掉/重画之后，那些引用可能指向**已被删除**的元素 →
-                #    后台任务跑完，结果**追加到不存在的地方，静默丢失**。
-                #    ⭐ 与 那个 bug 完全同形（持有已被移除的 DOM 引用）。
-                #    📌 **任何「以后要往这里写」的 UI 引用，都必须能承受「这里被重画」。**
-                #    修法：把它们改指到**当前**这一段的元素 ——
-                #    它们本来就是「最新那条回复」的快照，语义上就该跟着最新走。
-                # 旧的“把所有后台任务 DOM 引用改指到当前回复”已经退役：有等待的
-                # 异步结果走 future wake，无等待的走独立 ChatEmitter，不再绑定“上一条”。
                 # ⭐⭐⭐ **两种原因的出口方向相反，必须分开。**
                 if step.get("stopped"):
                     # 终止：**没有下一段**。所以这里要**收尾**（写统计、停转圈），
@@ -4870,7 +4852,6 @@ class WebUI:
         _owned_rs = None
         async with self.pipeline_lock:
             _owned_rs = self._resp_state
-            self._speaker.set_responding(True)
             self._intel_engine.set_responding(True)
             self._activity.on_nano_event("user_message")
             self._turn_suspended = False   # 本轮是否以挂起方式结束（挂起则不恢复 mini）
@@ -4897,7 +4878,6 @@ class WebUI:
                     self.status_lbl.style('color:var(--nano-danger); font-size:var(--nano-fs-sm);')
                     self.log_lbl.set_text(f"核心故障: {str(e)[:80]}")
             finally:
-                self._speaker.set_responding(False)
                 self._intel_engine.set_responding(False)
                 # ⛔ [2026-08-23 已定：整段删除] 这里原来在 **turn 结束时无条件
                 #    把窗口恢复成 full**，理由写的是「避免 Nano 没机会调 full 时卡在 mini」。
@@ -7338,7 +7318,7 @@ class WebUI:
         #    ⇒ 写盘挪到每个开关的 on_value_change 上（见上面的 _on_toggle）。
         # 🪦 顺带删掉的还有「含高危」徽标的刷新逻辑（已定：徽标不要了）。
 
-    # ── 后台任务 / 诈尸机制 ──────────────────────────────────────────────────
+    # ── OS 权限面板 ─────────────────────────────────────────────────────────────
 
     def _show_permissions_dialog(self):
         """OS 权限面板：6 个布尔开关，整体读改写，保留 `data/os_state.json` 里
@@ -7373,51 +7353,7 @@ class WebUI:
 
             dialog.open()
 
-    # ── 后台任务 / 诈尸机制 ──────────────────────────────────────────────────
-
-    def _start_bg_task(self, display: str, coro, suspension_ref: str | None = None) -> str:
-        """注册并启动后台任务。display 是用户可见的任务描述。返回 task_id。
-
-        suspension_ref 不为空时，本任务被当作"某个挂起在等的后台进程"——
-        完成时不走诈尸追加，而是触发 background 唤醒（notify_background_done），
-        让 Nano 带着上下文起新 turn 接着做。这是 wait_for(wake_on=['background'])
-        的生产者端：任何会产出后台结果的能力（未来 MCP 长任务/OS 长命令）
-        spawn 任务时带上 wait_for 给的 bg_task_ref 即可，无需重新发明唤醒。
-        """
-        import uuid as _uuid
-        task_id = _uuid.uuid4().hex[:8]
-        # ⭐⭐⭐ **权威记录先落，再起协程。**
-        #    顺序是有讲究的：先落记录，万一起协程那一步炸了，历史里至少留着
-        #    「有个后台任务试图开始」；反过来则会跑起一个**没有任何记录的**任务。
-        #    📌 **先落成事实、再执行**（同那条崩溃窗口的处置）。
-        # ⚠️ 归给「那件事」（对话类 Task）—— 用 `owner_label()` 而不是 `ensure_...`：
-        #    后台任务**不该让一件事诞生**。它只在某件事进行中才会被起来，
-        #    而那件事早就因为别的归属物（等待）存在了；如果确实没有，
-        #    留空比无端造一件事诚实。
-        _rt_tid = None
-        try:
-            from core.runtime import task as _rt_task
-            _rt_tid = _rt_task.create_background_job(display, _rt_task.owner_label())
-        except Exception as _e_bt:
-            logger.warning(f"[Task] 后台任务权威记录没落上（任务照旧跑）: {_e_bt}")
-        self._bg_tasks[task_id] = {
-            "display": display,
-            "started_at": time.time(),
-            "suspension_ref": suspension_ref,
-            "rt_task_id": _rt_tid,       # 权威记录的 id（可能为 None）
-        }
-        # ⭐⭐⭐ **保住 asyncio.Task 句柄。**
-        #    🔴 原来是 `asyncio.create_task(...)` **返回值直接丢掉** —— 两个后果：
-        #      ① **没有句柄就没有终止能力**。早先就要求每个后台任务
-        #         有自己的手动终止按钮，而在此之前那个按钮**物理上不可能实现**：
-        #         没有任何东西可以被 cancel。
-        #      ② asyncio 的已知陷阱：**没有强引用的 task 可能在完成前被 GC 回收**，
-        #         表现为后台任务偶发「跑了一半没了」，而且不留任何痕迹。
-        #    📌 **一个「以后要能停下它」的东西，创建时就得把句柄留住** ——
-        #       句柄不是终止功能的一部分，它是终止功能的**前提**。
-        _aio = asyncio.create_task(self._run_bg_task(task_id, coro))
-        self._bg_tasks[task_id]["aio"] = _aio
-        return task_id
+    # ── 后台载体 ──────────────────────────────────────────────────────────────
 
     def _set_skill_ui_status(self, name: str, status: str) -> None:
         """更新抽屉中一项本地 Skill 的活动态。"""
@@ -7556,7 +7492,7 @@ class WebUI:
             #    📌 **一句「这里不可能发生 X」的注释，会在有人给 X 修了一条路之后
             #       原地过期，而它不会报错** —— 它只是从此开始说谎。
             #    ⭐ 权威记录已经在上面**同步**落好了，所以最坏情况只丢一次通知，
-            #       而挂起那边有 orphan 兜底会收（同 `_run_bg_task` 那条处置）。
+            #       而挂起那边有 orphan 兜底会收。
             try:
                 await self.notify_background_done(suspension_ref, result_hint=result)
             except asyncio.CancelledError:
@@ -7643,169 +7579,6 @@ class WebUI:
             logger.info(f"[B1] 用户终止载体 {_cid}（task={rt_task_id}）")
             return True
         return False
-
-    def _bg_slot_sem(self):
-        """后台 slot 信号量。**懒建** —— 它必须在事件循环里第一次被用到时才存在。
-
-        ⚠️ 上限取自 `task.MAX_BACKGROUND_RUNNING`，**不在这里另写一个数** ——
-           📌 一个限制有两个数字来源，迟早会变成两个不同的限制。
-        """
-        sem = getattr(self, "_bg_sem", None)
-        if sem is None:
-            try:
-                from core.runtime.task import MAX_BACKGROUND_RUNNING as _n
-            except Exception:
-                _n = 3
-            sem = asyncio.Semaphore(_n)
-            self._bg_sem = sem
-            logger.info(f"[Task] 后台并发上限 = {_n}（超出的排队，**不失败**）")
-        return sem
-
-    def cancel_bg_task(self, task_id: str, by: str = "user") -> bool:
-        """用户手动终止一个后台任务。返回是否真的停掉了一个还在跑的。
-
-        ⚠️⚠️ **这个方法的存在本身就是实测 Claude Code 得出的那三条要求的兑现**
-。那边的反面教材：被用户手动终止时，模型
-        **什么都没收到**，任务就是不存在了，output 文件 0 字节 ——
-        「跑完了但没输出」/「崩了」/「被停了」三种情况表象完全一样。
-
-        所以这里三件事都做，一件都不许省：
-          ① **产出一条事实记录**（Task 终态 CANCELLED），不只是「进程没了」
-          ② **告诉模型**（写进 memory，它下一轮读得到）
-          ③ **CANCELLED 不是 FAILED** —— 用户主动停掉不是失败
-        """
-        meta = self._bg_tasks.get(task_id)
-        if not meta:
-            return False
-        _aio = meta.get("aio")
-        _disp = meta.get("display") or task_id
-        # ① 先取消协程。⚠️ `cancel()` 只是**请求**，真正的收尾在 `_run_bg_task`
-        #    的 CancelledError 分支里 —— 那里才知道该记成 cancelled。
-        try:
-            if _aio is not None and not _aio.done():
-                _aio.cancel()
-            else:
-                return False
-        except Exception as e:
-            logger.warning(f"[Task] 终止后台任务 {task_id} 失败: {e}")
-            return False
-        meta["cancelled_by"] = by
-
-        # ⭐⭐ ② **再停掉载体本身**（2026-08-22 那次建模 新增）。
-        #
-        # 🔴 在此之前这里**只取消协程**，而协程只是「我在等它」这件事 ——
-        #    那条命令**还在跑**。函数自己的结果文案都写着
-        #    「its result is unknown」，那句话诚实地承认了：
-        #    **停掉的是自己的等待，不是那件事。**
-        # ⚠️ 于是用户点了 ■、看着它从抽屉里消失，而 pip 还在后台装。
-        #    📌 **一个「停掉」的按钮，如果只停掉了我们自己的等待，
-        #       比没有这个按钮更坏** —— 用户会以为已经停了。
-        # ⚠️ 只对**命令**有效（`cmd_` 前缀）。MCP 停不了（server 在对端）、
-        #    Skill 停不了（`importlib` 进程内执行，Python 没有安全中断手段）——
-        #    那两类**如实留日志，不假装停掉了**。
-        _ref = str(meta.get("suspension_ref") or "")
-        if _ref.startswith("cmd_"):
-            try:
-                from core.os_layer import longcmd as _lc_stop
-                if _lc_stop.stop(_ref, f"stopped by {by}"):
-                    logger.info(f"[Task] 载体 {_ref} 已真正停止（进程树）")
-                else:
-                    logger.info(f"[Task] 载体 {_ref} 已经不在了（多半刚跑完）")
-            except Exception as e:
-                logger.warning(f"[Task] 停止载体 {_ref} 失败（等待已取消）: {e}")
-        elif _ref:
-            logger.info(f"[Task] 载体 {_ref} 属于停不掉的一类（MCP/Skill）——"
-                        f"只取消了等待，它可能仍在运行")
-
-        logger.info(f"[Task] 用户手动终止后台任务 {task_id}（{_disp[:40]}）")
-        return True
-
-    async def _run_bg_task(self, task_id: str, coro):
-        """包装协程：完成后——若关联了挂起则触发 background 唤醒，否则走诈尸追加。
-
-        ⭐⭐⭐ **三种结局必须分开。**
-        🔴 原来只有两行：`try: result = await coro` / `except: result = f"执行失败：{e}"`
-           —— 于是异常被压成一个字符串，然后走**和成功完全一样**的路径。
-           「跑完了但没输出」/「崩了」/「被用户停了」在下游**表象完全一致**。
-        ⚠️ 而这正是实测 Claude Code 时观察到、并写成三条要求的那个问题
-           。原话：「**要不是在对话里说了一句，模型永远不会知道。**」
-        📌 **一个能分辨三种结局的系统，和一个能描述其中一种的系统，
-           差的不是细节，是「历史能不能读出真相」。**
-        """
-        _outcome, _note = "completed", ""
-        # ⭐⭐⭐ **等一个后台 slot。**
-        #
-        # 🔴 在此之前后台并发**完全没有上限** —— `asyncio.create_task` 想起多少起多少。
-        #    而后台任务**每完成一个就唤醒一次模型**，所以那不只是句柄上限，
-        #    **它是一个成本乘数**：同时二十个下载，完成时就是二十次模型调用。
-        #
-        # ⚠️⚠️ **满了的出口是「等」，不是「失败」。**
-        #    📌 **闸的出口是失败，队列的出口是稍后处理** —— 这条判据这是第四次用到
-        #       （前三次：`pipeline_lock` 丢消息 / 早先的闸-vs-挂起 / inbox）。
-        #    ⭐ 而「在排队」有它自己的诚实状态：Task 停在 **ACTIVE + IDLE**
-        #       （`CREATE` 恒定写 IDLE，本来就是「还没跑」），拿到 slot 才转 RUNNING。
-        #       📌 **「在排队」和「在跑」必须是两个状态** —— 压成一个之后上限就数不清了。
-        _sem = self._bg_slot_sem()
-        async with _sem:
-            try:
-                from core.runtime import task as _rt_task
-                _rt_task.mark_background_running(
-                    (self._bg_tasks.get(task_id) or {}).get("rt_task_id"))
-            except Exception as _e_mr:
-                logger.debug(f"[Task] 后台任务 {task_id} 转 RUNNING 失败（照旧跑）: {_e_mr}")
-            return await self._run_bg_task_inner(task_id, coro)
-
-    async def _run_bg_task_inner(self, task_id: str, coro):
-        """真正跑那个协程 + 分辨三种结局。**已经持有 slot 才会进来。**"""
-        _outcome, _note = "completed", ""
-        try:
-            result = await coro
-        except asyncio.CancelledError:
-            # ⭐⭐ 用户手动终止走这条。**必须最先接**（CancelledError 在 3.8+
-            #    继承 BaseException，不被下面那个 `except Exception` 捕获 ——
-            #    所以原实现里它会**直接穿透上去**，连那句「执行失败」都不会有）。
-            _outcome = "cancelled"
-            _by = (self._bg_tasks.get(task_id) or {}).get("cancelled_by") or "user"
-            _note = f"被 {_by} 手动终止"
-            # ⚠️ 结果文案要说清「停在哪」而不是假装完成。
-            result = ("[System record: this background job was stopped manually by the "
-                      "user before it finished. Its result is unknown — do NOT assume "
-                      "it succeeded or failed.]")
-        except Exception as e:
-            _outcome = "failed"
-            _note = f"{type(e).__name__}: {e}"[:160]
-            result = f"执行失败：{e}"
-        meta = self._bg_tasks.pop(task_id, {})
-        # ⭐ 收掉权威记录。⚠️ 放在 `pop` 之后、通知之前：
-        #    先把「这件事结束了」落成事实，再去叫醒别人 ——
-        #    📌 顺序反了的话，被叫醒的那一方可能读到一条还自称 ACTIVE 的记录。
-        try:
-            from core.runtime import task as _rt_task
-            _rt_task.finish_background_job(meta.get("rt_task_id"), _outcome, _note)
-        except Exception as _e_ft:
-            logger.warning(f"[Task] 后台任务 {task_id} 收权威记录失败: {_e_ft}")
-        _ref = meta.get("suspension_ref")
-        # ⚠️⚠️ **被终止时也必须走通知** —— 否则等它的那条挂起就再也醒不了，
-        #    而那正是 2026-08-04 那条不死挂起的成因（background 源一去不回）。
-        #    📌 **「这件事没成」和「这件事没消息」对等着它的那一方完全不同** ——
-        #       前者能让它继续，后者让它永远等。
-        # ⚠️ 而这一段之所以要包一层 CancelledError：`cancel()` 有可能在协程不在
-        #    await 点时被调用，那时 `_must_cancel` 会置位、**下一个 await 再抛一次**
-        #    —— 于是它会打在下面这个 await 上，把通知吃掉。
-        #    ⭐ 权威记录已经在上面**同步**落好了（`finish_background_job` 不是协程），
-        #       所以最坏情况只丢一次通知，而挂起那边有 orphan 兜底会收 ——
-        #       📌 **把不可靠的那一步排在可靠的那一步之后。**
-        try:
-            if _ref:
-                # 后台进程是某个挂起在等的——唤醒接上，不另起诈尸气泡
-                await self.notify_background_done(_ref, result_hint=result)
-                return
-            with self._ui_scope():
-                await self._append_zombie_bubble(meta, result)
-        except asyncio.CancelledError:
-            logger.warning(
-                f"[Task] 后台任务 {task_id} 的收尾通知被第二次取消打断 —— "
-                f"权威记录已落（{_outcome}），挂起那边靠 orphan 兜底回收")
 
     async def notify_background_done(self, ref: str, result_hint: str | None = None):
         """background 唤醒入口：某个后台进程（ref）完成 → 唤醒等它的挂起。
@@ -8047,7 +7820,7 @@ class WebUI:
         self._render_chat_event(ev)
 
     async def _proactive_push(self, content: str, intervention_id: str = None):
-        """主动开口的旧入口，保留签名——orchestrator._push_callback / ProactiveSpeaker /
+        """主动开口的旧入口，保留签名——orchestrator._push_callback /
         IntelEngine 都持有它。现在只是 emit_chat 的薄包装。
 
         ⚠️ 已移除原来的 `self.agent.memory.add_message("assistant", content)`：
@@ -8437,7 +8210,7 @@ class WebUI:
 
         ⚠️ **气泡里的话由模型生成**（早先第五条：文字出现在哪里，
            决定它是不是「Nano 在说话」）。系统只交出事实。
-        ⚠️ **生成失败就什么都不说** —— 同 `proactive/speaker.py` 刚拆掉的那个兜底：
+        ⚠️ **生成失败就什么都不说**：
            API 调不通意味着 Nano 此刻恰恰不能思考，这时蹦一句写死的话是在谎报它的状态。
         """
         details = list(_STARTUP_INTERRUPTED or [])
@@ -8494,49 +8267,6 @@ class WebUI:
             crash_journal.mark_presented([r.get("id", "") for r in _recs])
         except Exception:
             pass
-
-    async def _append_zombie_bubble(self, meta: dict, result: str):
-        """后台任务完成通知（**没有**关联挂起的那一支）。
-
-        两条路径必须保持语义区分（外部评审推演出来、且已回代码核实）：
-          suspension_ref 存在 → 只唤醒，不单独发完成通知（否则会同时出现"后台完成"
-                                和"唤醒流程生成的新回答"两条，重复）
-          suspension_ref 不存在 → 发一条独立的 background_result
-        分流在 _run_bg_task 里，这里只负责后者。
-
-        改动：从"追加进上一条回复 + 改写它的状态标签"改成独立块。
-        原实现会把上一条的 "8.2s · 2.2K tok" 覆写成 "Nano · N s"，把那一轮的
-        用量统计抹掉；而且冷启动时 inner_col 为 None 会直接静默丢弃。
-        """
-        display = meta.get("display", "后台任务")
-
-        # 用 Claude 把原始结果润色成自然语言，失败则 fallback 原文
-        from core.i18n import language_clause as _lc_bg
-        _body = result or f"{display}已完成。"
-        try:
-            _polished, _ = await self.agent.provider.chat_without_tools(
-                context=[{"role": "user", "content":
-                    f"You just completed a background task ({display}). The execution result is below:\n\n{result}\n\n"
-                    f"Tell the user the result in 1-2 natural sentences. "
-                    # ⚠️ 同上：语言由 language_clause() 定，这里不自己判。
-                    f"{_lc_bg('your reply')} "
-                    f"Do not repeat the raw content. Do not say the task is completed. Keep Nano's usual brief style."
-                }],
-                system_guide="You are Nano, a desktop assistant. State the result directly, briefly, and naturally.",
-            )
-            if _polished and _polished.strip():
-                _body = _polished.strip()
-        except Exception:
-            pass
-
-        try:
-            from core.health import get_system_events
-            _elapsed = int(time.time() - meta.get("started_at", time.time()))
-            get_system_events().add(
-                f"Background task finished after {_elapsed}s: {display}")
-        except Exception:
-            pass
-        self.emit_chat(category="speech", body=_body)
 
     def _refresh_takeover_bar(self):
         """重画接管状态条。**整体重画，不做增量。**
@@ -11692,12 +11422,6 @@ class WebUI:
     # ══════════════════════════════════════════════════════════════════
     # 后台任务抽屉 —— Running / Finished
     # ══════════════════════════════════════════════════════════════════
-    #
-    # ⭐ 这一项的**认领人**是 `cancel_bg_task`：早先那一行原话
-    #    「⚠️⚠️ 它现在【零 UI 调用方】—— 这一行就是它的认领人」。
-    # 📌 **一个写好但没人调的函数，比没写更坏** —— 没写时缺口是可见的，
-    #    写了不接时缺口**看起来已经补上了**。
-    #    （本轮 的 `bridge.recall` 与 `get_store` 又各印证一次。）
 
     _BG_LABELS = {
         "COMPLETED": ("完成", "var(--nano-ok)"),
@@ -11770,13 +11494,11 @@ class WebUI:
             #       而载体还活着恰恰证明它还会回来。
             # ⚠️ 挂在这个 2 秒定时器上而不是新起一个：它本来就每 2 秒
             #    问一遍「谁还在跑」——📌 同一个事实不该被问两遍。
-            # ⚠️ 心跳的来源必须是 `_bg_tasks`（**内存里那份，谁还活着**），
-            #    不是 `running`（那是 runtime 记录，不带 `suspension_ref`）。
-            #    📌 「谁还在跑」这个事实有两个副本，而**只有一个副本知道载体的 ref** ——
-            #       拿错那个的表现是心跳静默失效（异常被 except 吞掉），不报错。
+            # 心跳的来源是载体表（内存里还活着的载体，带 `suspension_ref`），
+            # 不是 `running`（runtime 记录，不带 ref）。
             try:
                 from core.runtime import waitcond as _wc_hb
-                for _m in list(self._bg_tasks.values()):
+                for _m in list((getattr(self, "_handed_back_carriers", None) or {}).values()):
                     _aio = _m.get("aio")
                     if _aio is None or _aio.done():
                         continue          # 已经结束的不推 —— 推后 ≠ 让它不死
@@ -11932,7 +11654,7 @@ class WebUI:
                     ui.label('排队中').style(
                         'font-size:var(--nano-fs-xs); color:var(--nano-dim); font-family:var(--nano-mono);')
                 if live:
-                    # ⭐⭐ 那颗 `■` —— `cancel_bg_task()` 的**唯一 UI 调用方**。
+                    # `■`：终止这个后台任务（`_cancel_bg_from_ui`）。
                     ui.label('■').classes('cursor-pointer').style(
                         'font-size:var(--nano-fs-xs); color:var(--nano-danger); padding:0 4px;').on(
                         'click', lambda _, _t=rec: self._cancel_bg_from_ui(_t))
@@ -12212,40 +11934,16 @@ class WebUI:
             return name
 
     def _cancel_bg_from_ui(self, rec) -> None:
-        """那颗 `■`。⚠️ 终止的是**那个后台任务**，不是这场对话。
+        """抽屉里的 `■`：终止那个后台任务，不影响对话。
 
-        🔴🔴 **2026-08-20：它此前对【每一条】Running 都是失效的。**
-           `_bg_tasks` 的唯一写入方 `_start_bg_task()` 在 2026-08-10
-           「系统交还不再写后台 Task 权威记录」之后就**零生产调用方**了，
-           于是这张表恒空 → 这里永远走 `_ui_id is None` → 用户点 `■`
-           永远收到「这个任务已经不在跑了」，**而它正在跑**。
-           而抽屉里唯一的 Running（Subagent）走的是另一条路，从来不在这张表里。
-        📌 **一个只查一张表的查找，会随着「东西改从别的门进来」而静默失效** ——
-           它不报错，它只是永远找不到。
-        ⚠️ 而 `t_l5_bg_drawer` 第 2 项当时是绿的：它**自己 seed 了 `_bg_tasks`**，
-           证明的是「给它一张有货的表，查得对」，不是「有人往表里放货」。
-           📌 一条断言如果它声明的前提是自己建立的，它证明不了生产路径 ——
-              与早先那条互为镜像（那次是前提**没人**建立）。
+        在跑的后台任务（Subagent、被 `dont_wait` 的调用）都在载体表里。
         """
         _tid = getattr(rec, "task_id", "") or ""
         try:
-            # ⭐ 先问载体那张表 —— 今天所有真的在跑的东西都在它里面
-            #    （Subagent / 被 `dont_wait` 的调用）。
             if self._cancel_carrier(_tid):
                 ui.notify('已终止', type='positive')
-                self._refresh_tasks_panel()
-                return
-            _ui_id = None
-            for k, v in (self._bg_tasks or {}).items():
-                if (v or {}).get("rt_task_id") == _tid or k == _tid:
-                    _ui_id = k
-                    break
-            if _ui_id is None:
+            else:
                 ui.notify('这个任务已经不在跑了', type='info')
-                self._refresh_tasks_panel()
-                return
-            ok = self.cancel_bg_task(_ui_id, by="user")
-            ui.notify('已终止' if ok else '它已经结束了', type='positive' if ok else 'info')
         except Exception as e:
             logger.warning(f"[L5] UI 终止后台任务失败 {_tid}: {e}")
             ui.notify('终止失败，看日志', type='negative')
@@ -13017,7 +12715,6 @@ class WebUI:
         except Exception:
             pass
         async with self.pipeline_lock:
-            self._speaker.set_responding(True)
             self._intel_engine.set_responding(True)
             # 真正拿到锁、即将起唤醒 turn 时才把活 pill 定型（避免内核忙时提前定型）
             _settle_txt = {"timer": "▶ 时间到，继续", "manual": "▶ 已手动继续",
@@ -13164,7 +12861,6 @@ class WebUI:
                 except Exception:
                     pass
             finally:
-                self._speaker.set_responding(False)
                 self._intel_engine.set_responding(False)
         # ⭐⭐ 唤醒轮结束后**也要**排空队列。
         #

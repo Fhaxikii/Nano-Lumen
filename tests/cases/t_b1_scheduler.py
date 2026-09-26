@@ -146,19 +146,10 @@ def t_startup_terminates_and_still_speaks() -> None:
 
 
 def t_no_fixed_text_fallback_anywhere() -> None:
-    print("\n[4] ⭐⭐ 主动开口的固定文案兜底已拆干净")
-    sp = module_text("core.proactive.speaker")
-    check("_HOLIDAY_FALLBACK" not in sp.replace("`_HOLIDAY_FALLBACK`", ""),
-          "⭐ 节日兜底表没了")
-    fn = _fn(sp, "_generate")
-    src = ast.get_source_segment(sp, fn) or ""
-    check("return None" in src, "⭐⭐ 生成失败 → 返回 None（不说话）")
-    check("_get_fallback" not in src, "不再有兜底调用")
-    check("language_clause" in src, "⭐ 语言改成注入的事实，不让模型猜")
-    # `_fire` 那条「不说话」的路本来就通，只是从没被走到
-    fire = ast.get_source_segment(sp, _fn(sp, "_fire")) or ""
-    check("if not content:" in fire,
-          "📌 那条正确的退路一直存在 —— fallback 的存在让它永远跑不到")
+    print("\n[4] 旧的主动开口机制（ProactiveSpeaker）已删除，开口只由主动智能引擎决定")
+    import importlib.util as _ilu
+    check(_ilu.find_spec("core.proactive.speaker") is None, "core.proactive.speaker 模块不存在")
+    check("ProactiveSpeaker" not in APP and "_speaker" not in APP, "app 不再创建或调用旧 speaker")
 
 
 def t_the_torn_down_set_stays_torn_down() -> None:

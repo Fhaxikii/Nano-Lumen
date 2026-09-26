@@ -1,24 +1,12 @@
 # -*- coding: utf-8 -*-
-"""后台任务抽屉 —— **给 `cancel_bg_task` 认领**。
+"""后台任务抽屉 —— `■` 终止、Finished 的范围、载体心跳。
 
-═══ 这一套真正要守的东西 ═══
-
-早先那一行的原话：
-
-  > ⚠️⚠️ **`cancel_bg_task()` 现在【零 UI 调用方】—— 这一行就是它的认领人。**
-  > 📌 **一个写好但没人调的函数，比没写更坏** —— 没写时缺口是可见的，
-  >    写了不接时缺口**看起来已经补上了**。
-
-⭐ 所以本套件的第一项不是"抽屉画得对不对"，是 **`cancel_bg_task` 真的有人调**。
-   本轮 又撞了两次同形的（`bridge.recall` 零调用方 / `bridge.get_store`
-   名字根本不存在却有 28 项绿灯）—— 那两次都是**只验结构、没验行为**。
-   ⚠️ 所以这里除了 AST 找调用点，还**真的把取消路径走一遍**。
-
-其余三条：
+  ① `■` 的 handler 调到载体表（`_cancel_carrier`），并真的把在跑的载体取消
   ② Finished = **本次运行产生的**（不是"最近 N 条"），且**含**本次启动
      认定的 `INTERRUPTED_BY_RESTART`
   ③ 「本次运行」的起点取自**内核时钟**，不是模块级 `time.time()`
   ④ CANCELLED **不并进** FAILED
+  ⑤ 载体心跳（推后等待记录的 `orphan_at`）读的是载体表
 
 用法：
   py -3.10 tests\\cases\\t_l5_bg_drawer.py
@@ -67,102 +55,55 @@ def _func_src(src: str, name: str) -> str:
 
 
 def t_cancel_has_a_ui_caller() -> None:
-    print("\n[1] ⭐⭐⭐ `cancel_bg_task()` **真的有 UI 调用方了**（这一项就是那笔债）")
+    print("[1] `■` 的 handler 调到载体表")
     src = module_text("app")
+    seg = _func_src(src, "_cancel_bg_from_ui")
+    check("self._cancel_carrier(" in seg, "⭐⭐ `_cancel_bg_from_ui` 调用 `_cancel_carrier`")
     tree = ast.parse(src)
-
-    # ⚠️ 走 AST 找**调用**，不是在源码里搜字符串 ——
-    #    📌 那个名字在注释和 docstring 里出现过好几次（都在解释"它没人调"），
-    #       搜文本会被解释性注释本身喂绿。这是本项目第五次栽在同一个形状上。
-    callers = []
-    for fn in ast.walk(tree):
-        if not isinstance(fn, ast.FunctionDef):
-            continue
-        for n in ast.walk(fn):
-            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                    and n.func.attr == "cancel_bg_task"
-                    and fn.name != "cancel_bg_task"):
-                callers.append(fn.name)
-    check(bool(callers),
-          "⭐⭐⭐ 至少有一个函数**调用**了 `cancel_bg_task` —— "
-          "🔴 早先的原话：一个写好但没人调的函数，比没写更坏",
-          str(sorted(set(callers))))
-    check("_cancel_bg_from_ui" in callers,
-          "⭐⭐ 调用方是那颗 `■` 的 handler")
-
-    # 那颗 ■ 必须真的挂在渲染里
     _fn = next((f for f in ast.walk(tree)
                 if isinstance(f, ast.FunctionDef) and f.name == "_render_bg_row"), None)
     _seg = (ast.get_source_segment(src, _fn) or "") if _fn else ""
     check("_cancel_bg_from_ui" in _seg and "■" in _seg,
-          "⭐⭐⭐ 而那个 handler **被 `■` 的点击真的绑上了** —— "
-          "📌 「有 handler」和「handler 接上了」是两件事"
-          "（同 bridge 那次：函数写得完全正确，零调用方）")
+          "⭐⭐⭐ handler 被 `■` 的点击绑上了")
 
 
 def t_cancel_path_really_runs() -> None:
-    print("\n[2] ⭐⭐⭐ 取消路径**真的走一遍**（不是只看结构）")
+    print("[2] 没有对应载体时如实说「不在跑了」")
     from app import WebUI
+    import app as _app
 
     class _Host:
         def __init__(self):
-            self._bg_tasks = {"ui_1": {"rt_task_id": "rt_1"}}
             self._handed_back_carriers = {}
-            self.called = []
             self.refreshed = 0
-
-        # ⚠️ `_cancel_carrier` 用**真的那一个**（绑到 stub 上）——
-        #    📌 换成假的就退回「我两次想法相同」，而这一项要验的恰恰是
-        #       「点 `■` 之后到底有没有人接得住」。
+            self.notified = []
         _cancel_carrier = WebUI._cancel_carrier
-
-        def cancel_bg_task(self, task_id, by="user"):
-            self.called.append((task_id, by))
-            return True
 
         def _refresh_tasks_panel(self):
             self.refreshed += 1
 
     class _Rec:
-        task_id = "rt_1"
+        task_id = "rt_gone"
 
     h = _Host()
-    # ⚠️ 真的调 WebUI 上那个方法（绑到 stub 上），不重写一份逻辑 ——
-    #    📌 自制假对象 + 自己重写的逻辑，只能证明两次想法相同。
-    import app as _app
 
     class _Notify:
         @staticmethod
         def notify(*a, **k):
-            pass
+            h.notified.append(a[0] if a else "")
     _orig = _app.ui
     try:
         _app.ui = _Notify
         WebUI._cancel_bg_from_ui.__get__(h, _Host)(_Rec())
     finally:
         _app.ui = _orig
-    check(h.called == [("ui_1", "user")],
-          "⭐⭐⭐ **`rt_task_id` → UI 侧 id 的映射真的走通了**，"
-          "并且带上了 `by='user'` —— "
-          "🔴 映射写错的表现是「点了没反应」，不报错", str(h.called))
-    check(h.refreshed >= 1, "⚠️ 取消后重刷面板（否则那一行会一直显示在 Running）")
+    check(bool(h.notified) and "不在跑" in str(h.notified[0]), "⭐ 提示「这个任务已经不在跑了」",
+          str(h.notified))
+    check(h.refreshed >= 1, "⚠️ 之后重刷面板（否则那一行会一直显示在 Running）")
 
 
 def t_cancel_reaches_the_only_real_producer() -> None:
-    """🔴🔴 这一项补的是 [1][2] 都没能守住的那个洞（2026-08-20 发现）。
-
-    [1] 验「`cancel_bg_task` 有 UI 调用方」、[2] 验「给一张有货的 `_bg_tasks`，
-    映射查得对」—— 两项都绿，而生产环境里**那颗 `■` 对每一条 Running 都失效**：
-    `_bg_tasks` 的唯一写入方 `_start_bg_task()` 在 2026-08-10「系统交还不再写
-    后台 Task 权威记录」之后就零生产调用方了，这张表**恒空**；
-    而抽屉里唯一的 Running（Subagent）走的是 `_handed_back_carriers` 那条路。
-
-    📌 **一条断言如果它声明的前提是自己建立的，它证明不了生产路径** ——
-       [2] 自己 seed 了 `_bg_tasks`，于是它证明的是「查找逻辑对」，
-       不是「有人往表里放货」。
-    📌 与早先那条互为镜像：那次是前提**没人**建立，这次是前提
-       **只有测试**建立。两种都让断言测的不是它声称在测的东西。
-    """
+    """`■` 打到载体表里真的在跑的那一条（Subagent 的载体），并真的取消它。"""
     print("")
     print("[2b] 🔴 那颗 `■` 打到的是**真的有货的那张表**")
     from app import WebUI
@@ -170,14 +111,10 @@ def t_cancel_reaches_the_only_real_producer() -> None:
 
     class _Host2:
         def __init__(self):
-            self._bg_tasks = {}                 # ← 生产环境里它就是空的
             self._handed_back_carriers = {}
             self.refreshed = 0
             self.notified = []
         _cancel_carrier = WebUI._cancel_carrier
-
-        def cancel_bg_task(self, task_id, by="user"):
-            raise AssertionError("不该走到 _bg_tasks 那条路")
 
         def _refresh_tasks_panel(self):
             self.refreshed += 1
@@ -217,12 +154,10 @@ def t_cancel_reaches_the_only_real_producer() -> None:
 
     h2, _cancelled = _aio.run(_drive())
     check(_cancelled,
-          "⭐⭐⭐ **载体真的被 cancel 了** —— `_bg_tasks` 是空的，"
-          "而它照样找得到那条在跑的东西",
+          "⭐⭐⭐ **载体真的被 cancel 了**",
           f"cancelled={_cancelled}")
     check(bool(h2.notified) and "已终止" in str(h2.notified[0]),
-          "⭐ 而且告诉用户的是「已终止」，不是「这个任务已经不在跑了」—— "
-          "🔴 后者正是改造前每一次点击都会得到的那句假话",
+          "⭐ 告诉用户的是「已终止」",
           str(h2.notified))
 
 
@@ -311,18 +246,7 @@ def t_pill_and_button_are_two_clocks() -> None:
 
 
 def t_running_is_not_shown_as_queued() -> None:
-    """🔴 实测 2026-08-20：抽屉里一个**正在跑**的Subagent一直显示「排队中」。
-
-    根因是同一条死路的第三个受害者：`mark_background_running()` 的唯一调用方是
-    `_run_bg_task`，而它的唯一调用方是 `_start_bg_task` —— 后者在 2026-08-10
-    「系统交还不再写后台 Task 权威记录」之后就**零生产调用方**。
-    于是这行状态**再也没有人写过**，每一个真的后台任务都永久停在 ACTIVE+IDLE，
-    而抽屉按 `queued_background_jobs()` 把它画成「排队中」。
-
-    📌 **一条状态如果只有一个写入者，那个写入者一死，它就变成一个永远不会改变
-       的谎** —— 而读它的人不会报错，只会一直读到那个谎。
-    ⚠️ 前两个受害者：抽屉那颗 `■`（`_bg_tasks` 恒空）、后台任务权威记录本身。
-    """
+    """在跑的后台任务不显示成「排队中」：`mark_background_running` 必须有活着的调用方。"""
     print("")
     print("[2c] 🔴 在跑的**不许**显示成「排队中」")
     import ast as _ast
@@ -358,12 +282,8 @@ def t_running_is_not_shown_as_queued() -> None:
                 if (isinstance(_fn, (_ast.FunctionDef, _ast.AsyncFunctionDef))
                         and _fn.lineno <= n.lineno <= (_fn.end_lineno or 0)):
                     _hits.add if False else _hits.append((_f, _fn.name))
-    _live_callers = [h for h in _hits if h[1] not in ("_run_bg_task",)]
-    check(bool(_live_callers),
-          "⭐⭐⭐ **`mark_background_running` 有活着的调用方** —— "
-          "🔴 改造前唯一的调用方长在一条零生产调用方的死路上"
-          "（`_start_bg_task` → `_run_bg_task`），于是这行状态再没被写过",
-          str(_live_callers))
+    check(bool(_hits),
+          "⭐⭐⭐ **`mark_background_running` 有调用方**", str(_hits))
 
 
 def t_cancel_reason_reaches_the_model() -> None:
@@ -457,6 +377,15 @@ def t_pill_handle_cannot_outlive_its_element() -> None:
           "不是「什么都不做」")
 
 
+def t_carrier_heartbeat_reads_carriers() -> None:
+    print("[L5-hb] 载体心跳读的是载体表（D46）")
+    seg = _func_src(module_text("app"), "_refresh_tasks_panel")
+    k = seg.index("touch_by_bg_ref")
+    loop = seg[seg.rindex("for _m in", 0, k):k]
+    check("_handed_back_carriers" in loop,
+          "⭐⭐ 心跳遍历的是 `_handed_back_carriers`（真正在跑的载体）", loop[:80])
+
+
 def main() -> int:
     t_cancel_has_a_ui_caller()
     t_cancel_path_really_runs()
@@ -467,6 +396,7 @@ def main() -> int:
     t_run_marker_uses_kernel_clock()
     t_pill_and_button_are_two_clocks()
     t_pill_handle_cannot_outlive_its_element()
+    t_carrier_heartbeat_reads_carriers()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)
     print(f"结果：{ok}/{len(_results)} 通过")
