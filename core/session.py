@@ -4,17 +4,19 @@
 一次只能有一轮在跑（`lock`）。一轮起不来的时候（忙 / 预算到硬上限）进队列，
 上一轮结束后由 `drain` 接上 —— 闸的出口是失败，队列的出口是稍后处理。
 
-目前在这里的：
+在这里决定的：
+  · 用户消息（`submit_user_message`）：闲 → 立刻起一轮；忙且当前回应期还在跑 →
+    插话，切开回应期，排在当前轮之后续接同一个气泡；忙但接不上 → 排队。
+    回应期的段号（`seam_part`，第几段）也在这里记，交给 orchestrator 写进提示。
   · 唤醒轮：定时到点（`poll_due`，由后端心跳调用）、后台载体完成
     （`notify_background_done`，载体表的完成回调）、用户点「立即执行」（`wake_now`）
     与「取消计划」（`cancel_wait`）。
-  · 排队与排空：`parked`（内存侧）+ durable inbox（库侧，负责「不丢」）。
+  · 排队与排空：`parked`（内存侧，只放数据）+ durable inbox（库侧，负责「不丢」）。
+    附件字节只在内存里：重启后队列里那条保留文字、丢掉附件（已知缺口）。
   · 前台空了 → 给没安排回看的后台等待排第一次回看（60 秒）。
-用户消息的提交 / 排队 / 插话切开回应期仍由界面决定（S6-6b 第 4b 步下沉），
-它们进同一个队列，由登记的呈现方（`Presenter.run_parked_user_item`）接上。
 
-呈现方（界面）只负责画：唤醒轮的气泡与事件流（`run_wake_turn`）、
-等待 pill 的定型（`settle_wake` / `settle_cancelled_handback`）。
+呈现方（界面）只负责画：用户轮（`render_user_turn`）与唤醒轮（`run_wake_turn`）的
+气泡与事件流、等待 pill 的定型（`settle_wake` / `settle_cancelled_handback`）。
 每一轮开始 / 结束通知 `add_turn_listener` 登记的监听者（主动智能的「正在回复」等）。
 """
 from __future__ import annotations
@@ -92,8 +94,9 @@ class Presenter(Protocol):
     def settle_cancelled_handback(self, bg_ref: str) -> int:
         """载体完成但等待已取消：只收原动作的转圈，返回收了几条。"""
 
-    def run_parked_user_item(self, item_id: str, args: Any) -> None:
-        """排队的用户消息轮到了（第 4b 步之前由界面起这一轮）。"""
+    async def render_user_turn(self, key: str, payload: dict, continuation: bool) -> None:
+        """画一个用户轮：`key` 是提交时返回的那条消息的标识（界面据此找到它的占位）；
+        `continuation` 为真时续接当前气泡（插话之后的下一段）。锁由调度器持有。"""
 
 
 class TurnScheduler:
@@ -101,6 +104,7 @@ class TurnScheduler:
         self.lock = asyncio.Lock()
         self.parked: dict = {}                 # item_id → 排队项（dict 保序 = 入队顺序）
         self.running_inbox_id: Optional[str] = None
+        self.seam_part = 1                     # 当前回应期的第几段（插话一次 +1）
         self.presenter: Optional[Presenter] = None
         self.agent: Any = None                 # 提供 resume_suspension / memory
         self._turn_listeners: list[Callable[[bool], None]] = []
@@ -124,6 +128,73 @@ class TurnScheduler:
 
     def busy(self) -> bool:
         return self.lock.locked()
+
+    # ── 用户消息 ────────────────────────────────────────────────────────────
+    def submit_user_message(self, text: str, *, image_bytes: bytes | None = None,
+                            image_mime: str = "image/jpeg", temp_hint: str | None = None,
+                            can_continue: bool = False) -> tuple[str, str]:
+        """收下一条用户消息，决定它怎么跑。返回 `(key, mode)`：
+
+          · "run"    —— 闲：立刻起一轮（新回应期，段号归 1）
+          · "cont"   —— 忙且当前回应期还在跑（界面给 `can_continue`）：插话切开回应期，
+                        当前轮结束后续接同一个气泡
+          · "queued" —— 忙但接不上：排队，当前轮结束后起新一轮
+
+        无论忙不忙都先落库：`item_id` 是这句话在系统里的唯一身份，崩溃可能发生在任何时刻。
+        落库失败（`item_id` 为空）照样干活，用内存 key。
+        """
+        busy = self.lock.locked()
+        item_id = inbox_submit(text, {"had_image": bool(image_bytes),
+                                      "temp_hint": bool(temp_hint)})
+        payload = {"text": text, "image_bytes": image_bytes, "image_mime": image_mime,
+                   "temp_hint": temp_hint}
+        if busy:
+            if can_continue:
+                key = item_id or f"cont_{id(payload)}"
+                self.parked[key] = ("cont", payload)
+                logger.info(f"[Seam] 内核忙 → 切开回应期（{key}）：predecessor 留在原位，后续写入 successor")
+                return key, "cont"
+            key = item_id or f"mem_{id(payload)}"
+            self.parked[key] = ("user", payload)
+            logger.info(f"[Inbox] 内核忙 → 这条进队列（{key}），当前轮结束后自动接上")
+            return key, "queued"
+        key = item_id or f"mem_{id(payload)}"
+        # 认领失败（库挂了）也照样起轮：队列是为了不丢，不是多一道挡住用户的闸。
+        inbox_claim(item_id)
+        self.running_inbox_id = item_id
+        self._set_seam_part(1)
+        asyncio.ensure_future(self.run_user_turn(key, payload, continuation=False))
+        return key, "run"
+
+    def _set_seam_part(self, n: int) -> None:
+        """回应期的第几段；第 1 段 orchestrator 不加说明（交给它的是 0）。"""
+        self.seam_part = n
+        try:
+            self.agent._seam_continuation_part = 0 if n <= 1 else n
+        except Exception:
+            pass
+
+    async def run_user_turn(self, key: str, payload: dict, continuation: bool) -> None:
+        """持锁跑一个用户轮（由呈现方画），结束时收掉 inbox 记录，锁释放后排空。"""
+        async with self.lock:
+            self.turn_state(True)
+            self._activity_event("user_message")
+            try:
+                if self.presenter is not None:
+                    await self.presenter.render_user_turn(key, payload, continuation)
+                    self._activity_event("nano_responded")
+                else:
+                    logger.error(f"[Turn] 没有登记呈现方，用户消息 {key} 无法起轮（仍在库里）")
+            except Exception as e:
+                logger.error(f"[Turn] 用户轮异常: {e}")
+            finally:
+                self.turn_state(False)
+                self.consume_running()
+        # 锁已释放：这一轮跑的时候进来的消息 / 唤醒要在这里接上。
+        try:
+            await self.drain()
+        except Exception as e:
+            logger.error(f"[Inbox] 排空队列失败: {e}")
 
     # ── 唤醒 ──────────────────────────────────────────────────────────────
     def park_wake(self, suspension_id: str, trigger: str, note: str, why: str) -> None:
@@ -299,10 +370,17 @@ class TurnScheduler:
             asyncio.ensure_future(self.drive_wake(_sid, trigger=_trig, note=_note,
                                                   inbox_item_id=item_id))
             return
-        if self.presenter is not None:
-            self.presenter.run_parked_user_item(item_id, args)
-        else:
-            logger.error(f"[Inbox] 没有登记呈现方，排队项 {item_id} 无法接上（仍在库里）")
+        if isinstance(args, tuple) and len(args) == 2 and args[0] in ("cont", "user"):
+            _cont = args[0] == "cont"
+            if _cont:
+                # 插话之后的下一段：段号 +1，orchestrator 据此说明「这一段和上一段拼在同一个气泡里」。
+                self._set_seam_part(self.seam_part + 1)
+                logger.info(f"[Seam] 续接当前回应期（第 {self.seam_part} 段）—— 同一个 nano 气泡，不新建")
+            else:
+                self._set_seam_part(1)
+            asyncio.ensure_future(self.run_user_turn(item_id, args[1], continuation=_cont))
+            return
+        logger.error(f"[Inbox] 认不出的排队项 {item_id}（仍在库里）: {type(args).__name__}")
 
     def consume_running(self) -> None:
         """用户消息那一轮结束：收掉它对应的 inbox 记录。"""
@@ -312,6 +390,11 @@ class TurnScheduler:
     def discard_parked(self) -> None:
         """重置对话：用户显式丢掉排队项（库里记 DISCARDED，由调用方负责）。"""
         self.parked.clear()
+
+    def pending_user_items(self) -> int:
+        """队列里还有几条用户消息（续接或排队）没跑。"""
+        return sum(1 for v in self.parked.values()
+                   if isinstance(v, tuple) and v and v[0] in ("cont", "user"))
 
     @staticmethod
     def _activity_event(ev: str) -> None:

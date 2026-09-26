@@ -372,32 +372,37 @@ def t_app_wiring() -> None:
     check("内核正在处理中" in src,
           "⚠️ 但注释里留着原文 —— 📌 删的是「还在运行的东西」，"
           "不是「关于它的记忆」")
-    check("_rt_inbox_submit(effective_query" in live,
+    # S6-6b 第 4b 步：提交 / 排队 / 持锁 / 排空都在后端调度器（`core.session`）
+    _sess = module_text("core.session")
+    _sess_live = "\n".join(l for l in _sess.splitlines() if not l.strip().startswith("#"))
+    _submit = _sess_live.split("def submit_user_message")[1].split("\n    def ")[0]
+    check(_submit.index("inbox_submit(text") < _submit.index("if busy:"),
           "⭐ 每条消息都落库 —— **闲着也落**（`item_id` 是这句话的唯一身份，"
           "而崩溃可能发生在任何时刻）")
-    check("_rt_inbox_busy" in live and "self._rt_inbox_parked[" in live,
+    check('self.parked[key] = ("user", payload)' in _submit
+          and "get_scheduler().submit_user_message(" in live,
           "忙时进内存队列，不起 pipeline")
-    check("await _sched.drain()" in live,
+    check("await self.drain()" in _sess_live.split("async def run_user_turn")[1],
           "轮结束后排空队列")
 
-    # ⚠️ 排空必须在 `async with pipeline_lock` **之外**
-    seg = live.split("async def _safe_execute_pipeline")[1].split("async def ")[0]
-    lock_i = seg.index("async with _sched.lock")
-    drain_i = seg.index("await _sched.drain()")
+    # ⚠️ 排空必须在 `async with lock` **之外**
+    seg = _sess_live.split("async def run_user_turn")[1].split("\n    def ")[0].split("\n    async def ")[0]
+    lock_i = seg.index("async with self.lock")
+    drain_i = seg.index("await self.drain()")
     fin_i = seg.index("finally:")
     check(drain_i > fin_i,
           "⭐⭐ 排空写在 finally **之后**（= 锁已释放）。写在锁作用域里的话，"
           "被排空起的那一轮会立刻撞上还没释放的锁 → 又被判成「忙」→ "
           "又进队列 → **永远没人处理**。"
           "📌 一个「等锁释放后再做」的动作，不能写在还持有锁的作用域里")
-    check(seg[drain_i - 400:drain_i].count("async with _sched.lock") == 0,
+    check(seg[drain_i - 400:drain_i].count("async with self.lock") == 0,
           "⚠️ 且它前面没有重新进入锁", "")
 
     check("_ib.discard_all_pending" in live,
           "⭐ 重置对话 = 用户显式丢弃（唯一允许丢的路径）")
     check("payload={\"item_id\": item_id}" in module_text("core.session"),
           "⭐ 认领传的是**具体那一条**的 id")
-    check("库负责「不丢」" in src,
+    check("库侧，负责「不丢」" in module_text("core.session"),
           "⚠️ 两层分工留了痕：库负责不丢、内存负责接得上")
 
 
@@ -573,6 +578,7 @@ def t_wake_intent_wiring() -> None:
     _sess_live = "\n".join(l for l in _sess.splitlines() if not l.strip().startswith("#"))
     n_lock = live.count("async with _sched.lock") + _sess_live.count("async with self.lock")
     n_drain = live.count("await _sched.drain()") + _sess_live.count("await self.drain()")
+    # （4b 起用户轮也在调度器里持锁：两个持锁点都在 core.session）
     check(n_lock == n_drain == 2,
           "⭐⭐ **两个持锁点都跟着排空**。漏一处的后果是：在那条路径跑的时候"
           "进队列的消息会一直排着，直到下一次有别的 turn 结束 —— "
@@ -603,7 +609,8 @@ def t_seam_wiring() -> None:
           "⭐⭐⭐ 插话时**不移动旧 Nano 气泡** —— 插话前已经发生的工具事实必须留在用户新消息上方")
     check("_handoff_response_epoch" in live,
           "⭐⭐ 忙时不是拼接 DOM，而是显式交接 predecessor/successor 回应期")
-    check('args[0] == "cont"' in live and "_safe_execute_pipeline(_q, _box" in live,
+    check('args[0] in ("cont", "user")' in module_text("core.session")
+          and 'box = _rs_live.get("container")' in live,
           "⭐ 排空时喂进**已经存在的**那个气泡，不新建")
 
     # ⚠️ 用量不许在续接时被清零（token 计数器统计整段）
@@ -681,7 +688,7 @@ def t_seam_wiring() -> None:
           "⚠️ 并写清了「无条件新开」本身是被推翻的那个设计的遗留")
 
     # ⚠️ 兜底：找不到活着的回应期时退化成旧行为，不是不处理
-    check("找不到活着的回应期" in src or "退回「排队」那套" in src,
+    check("接不上时退化成排队，不退化成不处理" in src,
           "⚠️ 兜底留痕：📌 fail-safe 方向是**退化成旧行为，不退化成不处理** —— "
           "别让「无缝」变成一条新的失败路径")
     for dead in ("_last_reply_inner_col", "_last_reply_status_lbl",
@@ -765,7 +772,7 @@ def t_seam_cmd47_fix() -> None:
     start = next(n for n in ast.walk(tree)
                  if isinstance(n, ast.FunctionDef) and n.name == "start_pipeline_task")
     busy = next(n for n in ast.walk(start)
-                if isinstance(n, ast.If) and ast.unparse(n.test) == "_rt_inbox_busy")
+                if isinstance(n, ast.If) and ast.unparse(n.test) == "_mode == 'cont'")
     busy_body = ast.unparse(busy)
 
     check("_seam_live = getattr(self, \"_resp_state\", None) if _rt_inbox_busy" in live,
@@ -842,9 +849,10 @@ def t_seam_note() -> None:
           "拼进去模型就分不清哪句是用户说的、哪句是系统说的")
 
     alive = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
-    check("self._seam_part = 1" in alive,
-          "⭐ 首段把段计数归 1")
-    check('self.agent._seam_continuation_part = self._seam_part' in alive,
+    _sess = module_text("core.session")
+    check("self._set_seam_part(1)" in _sess,
+          "⭐ 首段把段计数归 1（后端调度器）")
+    check("self.agent._seam_continuation_part = 0 if n <= 1 else n" in _sess,
           "⭐ 续接时把段号交给 orchestrator")
 
 

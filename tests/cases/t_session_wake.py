@@ -97,8 +97,8 @@ class _Presenter:
         self.calls.append(("cancelled_handback", ref))
         return 1
 
-    def run_parked_user_item(self, item_id, args):
-        self.calls.append(("user", item_id, args))
+    async def render_user_turn(self, key, payload, continuation):
+        self.calls.append(("user", key, payload.get("text"), continuation))
 
 
 def setup():
@@ -257,12 +257,15 @@ def t_drain_user_item(tmp):
     k = make_kernel(tmp / "h")
     sched, agent, pres, turns = setup()
     iid = SS.inbox_submit("hello", {})
-    sched.parked[iid] = ("hello", "container")
-    asyncio.run(sched.drain())
-    check(pres.calls == [("user", iid, ("hello", "container"))], "呈现方接上这一条", str(pres.calls))
-    check(sched.running_inbox_id == iid, "记下正在处理的 inbox 记录")
-    sched.consume_running()
-    check(sched.running_inbox_id is None and IB.pending_count(k) == 0, "那一轮结束后收掉")
+    sched.parked[iid] = ("user", {"text": "hello", "image_bytes": None,
+                                  "image_mime": "image/jpeg", "temp_hint": None})
+
+    async def run():
+        await sched.drain()
+        await _settle()
+    asyncio.run(run())
+    check(pres.calls == [("user", iid, "hello", False)], "呈现方接上这一条（新回应期）", str(pres.calls))
+    check(sched.running_inbox_id is None and IB.pending_count(k) == 0, "那一轮结束后收掉 inbox 记录")
 
 
 def t_ui_wiring():
@@ -272,7 +275,7 @@ def t_ui_wiring():
                  "def notify_background_done", "def _drain_inbox", "self.pipeline_lock = asyncio.Lock()"):
         check(gone not in app, f"界面不再有 `{gone}`")
     for need in ("def run_wake_turn", "def settle_wake", "def settle_cancelled_handback",
-                 "def run_parked_user_item", "_sched.attach(self.agent, self)",
+                 "def render_user_turn", "_sched.attach(self.agent, self)",
                  "_carriers.set_completion_handler(_sched.notify_background_done)"):
         check(need in app, f"界面实现呈现方 / 登记：`{need}`")
 

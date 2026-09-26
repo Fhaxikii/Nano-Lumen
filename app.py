@@ -72,11 +72,6 @@ def _rt_auto_authorized() -> bool:
         return False
 
 
-# durable inbox 门面：实现在后端调度器模块（`core.session`）。
-from core.session import (inbox_submit as _rt_inbox_submit,  # noqa: E402
-                          inbox_claim as _rt_inbox_claim,
-                          inbox_consume as _rt_inbox_consume,
-                          inbox_submit_wake as _rt_inbox_submit_wake)
 
 
 #: 上个进程留下的、被启动恢复终止掉的那些活。
@@ -988,6 +983,9 @@ class WebUI:
         self.full_file_lbl  = None 
 
         self._cost_warning_bar  = None
+        # 用户消息 key（调度器返回）→ 它的 nano 占位气泡；排过队的 key 另记（接上时先清「排队中」）
+        self._user_views: dict = {}
+        self._queued_views: set = set()
         # 接管状态条。⚠️ 必须在 __init__ 里初始化：`render` 之前就有
         # 1 秒 timer 可能跑到（`_refresh_takeover_bar` 有 None 保护，但别依赖属性不存在）。
         self._takeover_bar      = None
@@ -4766,63 +4764,31 @@ class WebUI:
     async def _safe_execute_pipeline(self, query, loading_container, image_bytes: bytes | None = None, image_mime: str = "image/jpeg", temp_file_hint: str | None = None, thought_blocks_container=None):
         # 用户插话会创建 successor 并覆盖全局 `self._resp_state`。旧 pipeline
         # 随后若异常，异常兜底仍只能收它自己拥有的 predecessor，不能误伤新回应。
-        _owned_rs = None
-        from core.session import get_scheduler
-        _sched = get_scheduler()
-        async with _sched.lock:
-            _owned_rs = self._resp_state
-            _sched.turn_state(True)
-            self._activity.on_nano_event("user_message")
-            self._turn_suspended = False   # 本轮是否以挂起方式结束（挂起则不恢复 mini）
+        # 锁、「正在回复」、收 inbox 记录与排空由调度器负责（`TurnScheduler.run_user_turn`）。
+        _owned_rs = self._resp_state
+        self._turn_suspended = False   # 本轮是否以挂起方式结束（挂起则不恢复 mini）
+        try:
+            await self.navigate_pipeline(query, loading_container, image_bytes, image_mime, temp_file_hint, thought_blocks_container)
+        except Exception as e:
+            logger.error(f"UI 未捕获异常: {e}")
+            # 停止计时器
             try:
-                await self.navigate_pipeline(query, loading_container, image_bytes, image_mime, temp_file_hint, thought_blocks_container)
-                self._activity.on_nano_event("nano_responded")
-            except Exception as e:
-                logger.error(f"UI 未捕获异常: {e}")
-                # 停止计时器
+                _rs = _owned_rs or {}
+                _rs["running"] = False
+            except Exception:
+                pass
+            # 这里跑在调度器另起的 asyncio task 里（`TurnScheduler.run_user_turn`），
+            # 操作UI元素必须显式进入这个连接的 client slot，否则 NiceGUI 找不到
+            # slot 上下文，连"显示错误提示"这个兜底动作本身都会静默失败
+            with self._ui_scope():
                 try:
-                    _rs = _owned_rs or {}
-                    _rs["running"] = False
+                    self.chat_container.remove(loading_container)
                 except Exception:
                     pass
-                # 这是后台 asyncio task（_safe_execute_pipeline 由 create_task 启动），
-                # 操作UI元素必须显式进入这个连接的 client slot，否则 NiceGUI 找不到
-                # slot 上下文，连"显示错误提示"这个兜底动作本身都会静默失败
-                with self._ui_scope():
-                    try:
-                        self.chat_container.remove(loading_container)
-                    except Exception:
-                        pass
-                    self.status_lbl.set_text("ERROR")
-                    self.status_lbl.style('color:var(--nano-danger); font-size:var(--nano-fs-sm);')
-                    self.log_lbl.set_text(f"核心故障: {str(e)[:80]}")
-            finally:
-                _sched.turn_state(False)
-                # ⛔ [2026-08-23 已定：整段删除] 这里原来在 **turn 结束时无条件
-                #    把窗口恢复成 full**，理由写的是「避免 Nano 没机会调 full 时卡在 mini」。
-                #
-                # 🔴 那是**用系统兜底去代替提示词**，而它的代价比它防的问题大：
-                #    · **GUI 任务天生跨多轮**（缩小 → 看 → 点 → 再看），
-                #      每轮结束弹回 full、下一轮又缩回去 —— 用户看到的是窗口来回跳，
-                #      而且中间那次截图正好是**全屏挡着**的。
-                #    · 它还**夺走了模型的控制权**：`set_window_mode` 的描述里已经
-                #      写清了什么时候该恢复，而这条兜底让那句话变成一句空话。
-                # 📌 **一个「怕模型忘了」的系统兜底，如果会在模型【没忘】的时候
-                #    也生效，那它就不是兜底，是覆盖。**
-                # ⭐ 用户定的：**这里不需要任何系统强制机制** ——
-                #    该恢复的时候由 `set_window_mode` 的措辞提醒模型自己恢复。
-                # ⭐ 这一轮对应的那条 inbox 记录收尾
-                _sched.consume_running()
-
-        # ⭐⭐ **必须在 `async with` 之外** —— 锁已经释放了。
-        #    写在 finally 里的话，被排空起的那一轮会立刻撞上还没释放的锁，
-        #    于是它又被判成「忙」→ 又进队列 → 永远没人处理。
-        #    📌 **一个「等锁释放后再做」的动作，不能写在还持有锁的作用域里。**
-        #       （形状与早先那个「在 finally 里 release 却又在 finally 里 acquire」同族。）
-        try:
-            await _sched.drain()
-        except Exception as e:
-            logger.error(f"[Inbox] 排空队列失败: {e}")
+                self.status_lbl.set_text("ERROR")
+                self.status_lbl.style('color:var(--nano-danger); font-size:var(--nano-fs-sm);')
+                self.log_lbl.set_text(f"核心故障: {str(e)[:80]}")
+            raise
 
     # ── 队列排空 ───────────────────────────────────────────────
 
@@ -4844,45 +4810,35 @@ class WebUI:
         except Exception as e:
             logger.debug(f"[Inbox] 标记排队中失败（不影响入队）: {e}")
 
-    def run_parked_user_item(self, item_id: str, args) -> None:
-        """排队的用户消息轮到了（调度器排空时调用）：续接当前回应期，或起新的一轮。
+    async def render_user_turn(self, key: str, payload: dict, continuation: bool) -> None:
+        """画一个用户轮（调度器持锁调用）：找到这条消息的占位，渲染事件流。
 
-        排队项与认领由调度器处理（`core.session`）；第 4b 步之前，用户消息的这一段仍在界面。
+        `continuation` 为真 = 插话之后的下一段：喂进**已经存在的那个** nano 气泡，不新建。
+        排过队的那条先清掉「排队中」那行，让正常的 loading 接上。
         """
-        # ⭐⭐⭐ [无缝对话] 续接：喂进**已经存在的那个** nano 气泡，不新建。
-        if isinstance(args, tuple) and args and args[0] == "cont":
-            _, _q, _ib_, _im_, _th_ = args
+        box = self._user_views.pop(key, None)
+        if continuation:
             _rs_live = getattr(self, "_resp_state", None) or {}
             _rs_live["pending_epoch"] = False
-            _box = _rs_live.get("container")
-            if _box is None:
+            box = _rs_live.get("container")
+            if box is None:
                 logger.warning("[Seam] 续接时找不到 nano 块，放弃这一条（已在库里）")
                 return
-            # ⚠️ 这个标志由 `navigate_pipeline` 开头读一次就清 ——
-            #    它的作用范围只有「下一次调用的开头」，不是一个长命状态。
-            #    📌 本项目栽过的裸 bool 都是「长命 + 多处读写」；
-            #       这个是「即读即清 + 单一读点」，形状不同。
+            # 这个标志由 `navigate_pipeline` 开头读一次就清（即读即清 + 单一读点）。
             self._resp_continuation = True
-            # ⭐⭐ [无缝 · 措辞] 段号 +1 并交给 orchestrator ——
-            #    它据此往动态段里加一句「你这一段会和上一段拼在同一个气泡里」。
-            #    ⚠️ 注入的是**事实**（呈现方式），不是「请假装连贯」那种演出指令。
-            self._seam_part = int(getattr(self, "_seam_part", 1) or 1) + 1
+        elif key in self._queued_views:
+            self._queued_views.discard(key)
             try:
-                self.agent._seam_continuation_part = self._seam_part
+                with self._ui_scope():
+                    box.clear()
             except Exception:
                 pass
-            logger.info(f"[Seam] 续接当前回应期（第 {self._seam_part} 段）"
-                        f"—— 同一个 nano 气泡，不新建")
-            asyncio.create_task(
-                self._safe_execute_pipeline(_q, _box, _ib_, _im_, _th_, None))
+        if box is None:
+            logger.error(f"[Turn] 找不到消息 {key} 的界面占位，这一轮无法渲染（仍在库里）")
             return
-
-        try:
-            with self._ui_scope():
-                args[1].clear()          # 清掉「排队中」那行，让正常的 loading 接上
-        except Exception:
-            pass
-        asyncio.create_task(self._safe_execute_pipeline(*args))
+        await self._safe_execute_pipeline(
+            payload.get("text", ""), box, payload.get("image_bytes"),
+            payload.get("image_mime") or "image/jpeg", payload.get("temp_hint"), None)
 
     # ── 回复状态计时器 ────────────────────────────────────────────────────
 
@@ -6033,65 +5989,25 @@ class WebUI:
         #    而崩溃可能发生在任何时刻（包括「正在处理第一条」）。
         #    只在忙的时候落库，就等于说「不忙时丢了不算丢」。
         #    📌 **一条「不丢」的保证，不能有「除了这种情况」。**
-        _rt_inbox_id = _rt_inbox_submit(effective_query, {
-            "had_image": bool(_img_bytes),
-            "temp_hint": bool(_temp_hint),
-        })
-        _rt_inbox_args = (effective_query, loading_container, _img_bytes,
-                          _img_mime, _temp_hint, None)
-
-        if _rt_inbox_busy:
-            # ── 忙：用户插话切开 predecessor / successor 两段回应期 ─────────
-            # ⭐⭐⭐ [2026-08-09] 旧形态把**整个** predecessor 移到新用户消息
-            # 后面，再删除 successor。于是插话前已经真实发生的工具调用也被搬到了
-            # 插话后，时间线变成了假话。
-            #
-            # 正确顺序是：旧用户 → predecessor 已发生事实 → 新用户 → successor。
-            # predecessor 里被新输入推翻的自然语言稍后由 `turn_interrupted` 撤回；
-            # 已执行工具不回滚。仍活着的等待只迁移「未来输出写到哪里」，执行体不死。
-            # 📌 **用户插话是回应期边界，不是 DOM 搬家指令。**
-            _rs_live = _seam_live or {}
-            _live_box = _rs_live.get("container")
-            if _live_box is not None and _rs_live.get("running"):
-                self._handoff_response_epoch(_rs_live, self._resp_state)
-                self._rt_inbox_parked[_rt_inbox_id or f"cont_{id(loading_container)}"] = \
-                    ("cont", effective_query, _img_bytes, _img_mime, _temp_hint)
-                logger.info(f"[Seam] 内核忙 → 切开回应期（{_rt_inbox_id}）："
-                            f"predecessor 留在原位，后续写入 successor")
-                return
-
-            # ── 兜底：找不到活着的回应期 → 退回「排队」那套 ──────────────────
-            # ⚠️ 这条路存在的意义是**别让无缝变成一条新的失败路径**：
-            #    读不到活着的 `_resp_state` 时（比如锁被别的东西持有），
-            #    宁可退化成上一版那种「排队 + 稍后起一轮」，也不要把消息卡死。
-            #    📌 fail-safe 方向：**退化成旧行为，不退化成不处理。**
-            # ⚠️ **附件字节留在内存里，不落库。** 两层分工要写清：
-            #    · **库负责「不丢」** —— 这句话本身跨重启存活
-            #    · **内存负责「接得上」** —— UI 句柄和图片字节只在本进程有意义
-            #      （进程死了 UI 本来就没了，句柄落库也没用）
-            #    ⚠️ 于是有个**已知缺口**：重启后队列里那条会保留文字、丢掉附件，
-            #       且不会自动接上。**但它在库里，没丢。**
-            self._rt_inbox_parked[_rt_inbox_id or f"mem_{id(loading_container)}"] = \
-                _rt_inbox_args
+        # ⭐⭐ 这条消息怎么跑由后端调度器决定（`core.session.TurnScheduler.submit_user_message`）：
+        #    闲 → 立刻起一轮；忙且当前回应期还在跑 → 插话，切开回应期、排在当前轮之后续接；
+        #    忙但接不上 → 排队。无论哪种都先落库（这句话在系统里的唯一身份）。
+        # ⚠️ 「接得上」只看界面有没有一个活着、正在跑的回应期气泡（`_seam_live` 在函数开头就快照了，
+        #    中间两百行会覆盖 `_resp_state`）。接不上时退化成排队，不退化成不处理。
+        from core.session import get_scheduler
+        _rs_live = _seam_live or {}
+        _can_cont = bool(_rt_inbox_busy and _rs_live.get("container") is not None
+                         and _rs_live.get("running"))
+        _key, _mode = get_scheduler().submit_user_message(
+            effective_query, image_bytes=_img_bytes, image_mime=_img_mime,
+            temp_hint=_temp_hint, can_continue=_can_cont)
+        self._user_views[_key] = loading_container
+        if _mode == "cont":
+            # 用户插话是回应期边界，不是 DOM 搬家指令：predecessor 留在原位，后续写入 successor。
+            self._handoff_response_epoch(_rs_live, self._resp_state)
+        elif _mode == "queued":
+            self._queued_views.add(_key)
             self._rt_inbox_mark_queued(loading_container)
-            logger.info(f"[Inbox] 内核忙 → 这条进队列（{_rt_inbox_id}），"
-                        f"当前轮结束后自动接上")
-            return
-
-        # ── 闲：立刻认领并开跑 ────────────────────────────────────────────
-        # ⚠️ 认领失败（库挂了）**不许因此不干活** —— 照旧起 pipeline。
-        #    📌 队列是为了「不丢」，不是为了「多一道能挡住用户的闸」。
-        #       在这里 return 就等于亲手造出本项要消灭的那个东西。
-        _rt_inbox_claim(_rt_inbox_id)
-        self._rt_inbox_running_id = _rt_inbox_id
-        # ⭐ [无缝 · 措辞] 这是回应期的**第一段** —— 计数归 1，且不注入任何说明。
-        #    ⚠️ 首段一个字都不许加：那时候压根没有「上一段」。
-        self._seam_part = 1
-        try:
-            self.agent._seam_continuation_part = 0
-        except Exception:
-            pass
-        asyncio.create_task(self._safe_execute_pipeline(*_rt_inbox_args))
 
 
     # ── 记忆管理（user_note）────────────────────────────────────────────────
@@ -10034,6 +9950,8 @@ class WebUI:
             from core.runtime import inbox as _ib
             _n = _ib.discard_all_pending("用户重置对话")
             self._rt_inbox_parked.clear()
+            self._user_views.clear()
+            self._queued_views.clear()
             if _n:
                 logger.info(f"[Inbox] 重置对话 → 丢弃 {_n} 条排队消息（用户显式要求）")
         except Exception as e:
