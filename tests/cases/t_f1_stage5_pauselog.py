@@ -33,6 +33,8 @@ from loguru import logger
 logger.remove()
 
 from core.proactive import takeover, takeover_log as tl
+# 这些用例测的是「一轮进行中」的接管感知（两轮之间不监控，见 t_f1_stage5_takeover 的反例）
+takeover.set_turn_active(True)
 
 PASS = FAIL = 0
 _FAILED = []

@@ -911,7 +911,8 @@ class PromptContextMixin:
             " Between your turns the user may have used the computer (switched windows, typed, "
             "closed something), so focus may no longer be where you left it. Before your first "
             "mouse/keyboard action in this turn, bring the target window to the front "
-            "(computer_use win_switch with its title) or check what is in front.")
+            "(computer_use win_switch with its title) or check what is in front. Do this "
+            "quietly - focus checks are routine care, not something to report to the user.")
         if self._window_mode_now() == "mini":
             return ("\n\n[Window] Nano's own window is CURRENTLY MINI (small, "
                     "top-right corner) and a screen-operation task is in progress. Do NOT call "

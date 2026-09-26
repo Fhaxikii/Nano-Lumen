@@ -246,6 +246,21 @@ _COALESCE_SEC = 0.5
 _lock = threading.Lock()
 _last_submit_at: float = 0.0
 
+# Nano 有没有正在进行的一轮（由 orchestrator 在每轮开始 / 结束时设置）。
+# GUI 任务可以跨多轮；两轮之间 Nano 不动，用户用电脑不算接管。
+_turn_active = threading.Event()
+
+
+def set_turn_active(on: bool) -> None:
+    if on:
+        _turn_active.set()
+    else:
+        _turn_active.clear()
+
+
+def turn_active() -> bool:
+    return _turn_active.is_set()
+
 
 def _reset_for_test() -> None:
     """测试用：清掉合并窗口。生产不调。"""
@@ -417,6 +432,10 @@ def _on_user_signal_impl(kind: str, detail: str = "", *, injected: bool = False,
         #    只要在 GUI 模式，**Nano 在做什么都不重要** —— 命令行、MCP、skill、
         #    键鼠，一律监控。**同时也不用再判断动作种类了**，复杂度反而降了。
         if not oslease.gui_session_active(kernel):
+            return TakeoverResult.IGNORED_NANO_IDLE
+        # 并且要有正在进行的一轮：GUI 任务跨轮，两轮之间 Nano 不动，用户用电脑不算接管
+        # （否则下一条消息也得等完用户持有的那段倒计时）。
+        if not _turn_active.is_set():
             return TakeoverResult.IGNORED_NANO_IDLE
 
         cur = oslease.current_activity(kernel)

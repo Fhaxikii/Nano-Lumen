@@ -755,6 +755,7 @@ class ScreenMixin:
         GUI 任务不随轮结束，也不随终止按钮结束（只有急停结束它）。"""
         suspended = False
         self._turn_running = True
+        self._set_takeover_turn_active(True)
         try:
             async for ev in events:
                 if isinstance(ev, dict):
@@ -764,10 +765,20 @@ class ScreenMixin:
                 yield ev
         finally:
             self._turn_running = False
+            self._set_takeover_turn_active(False)
             self._last_turn_suspended = suspended
             # 轮结束也算一次活动：空闲从轮结束时起算，而不是从最后一个屏幕动作起算。
             if self._gui_task_active():
                 self._gui_task_touch()
+
+    @staticmethod
+    def _set_takeover_turn_active(on: bool) -> None:
+        """告诉接管感知层「现在有没有正在进行的一轮」（两轮之间不监控用户）。"""
+        try:
+            from core.proactive import takeover as _tk
+            _tk.set_turn_active(on)
+        except Exception:
+            pass
 
     def _gui_task_idle_check(self, now: float | None = None) -> bool:
         """GUI 任务的空闲兜底：没有进行中的轮、没有等待唤醒的挂起、且空闲满

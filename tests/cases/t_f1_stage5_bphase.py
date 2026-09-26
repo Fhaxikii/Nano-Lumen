@@ -57,6 +57,8 @@ from core.runtime.store import RuntimeStore
 from core.runtime import task as _task
 from core.runtime import oslease as L
 from core.proactive import takeover as T
+# 这些用例测的是「一轮进行中」的接管感知（两轮之间不监控，见 t_f1_stage5_takeover 的反例）
+T.set_turn_active(True)
 
 BASE_T = 1_700_000_000.0
 _results: list[tuple[bool, str, str]] = []

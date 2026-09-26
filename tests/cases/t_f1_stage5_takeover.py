@@ -49,6 +49,8 @@ from core.runtime.store import RuntimeStore
 from core.runtime import task as _task
 from core.runtime import oslease as L
 from core.proactive import takeover as T
+# 这些用例测的是「一轮进行中」的接管感知（两轮之间不监控，见 t_f1_stage5_takeover 的反例）
+T.set_turn_active(True)
 from core.proactive.takeover import TakeoverResult as R
 
 BASE_T = 1_700_000_000.0
@@ -512,6 +514,24 @@ def t_wiring() -> None:
           "`reconcile_tick` 当初就是漏了这一步，整层白写")
 
 
+def t_not_armed_between_turns(tmp: pathlib.Path) -> None:
+    print(chr(10) + "[12] 两轮之间不监控：GUI 任务还在，但 Nano 没有正在进行的一轮")
+    k, _ = make_kernel(tmp / "between")
+    _gui_mode_only(k)
+    T.set_turn_active(False)
+    try:
+        check(T.on_user_signal(T.CLICK, hwnd=0xF00D) == R.IGNORED_NANO_IDLE,
+              "没有进行中的一轮：用户点别的窗口不算接管（下一条消息不必等倒计时）")
+        check(L.current_activity(k) is None, "没有产生用户租约")
+    finally:
+        T.set_turn_active(True)
+    check(T.on_user_signal(T.CLICK, hwnd=0xF00D) != R.IGNORED_NANO_IDLE,
+          "一轮进行中：照常接管")
+    osrc = module_text("core.orchestrator")
+    check("self._set_takeover_turn_active(True)" in osrc and "self._set_takeover_turn_active(False)" in osrc,
+          "orchestrator 在每轮开始 / 结束时设置")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = pathlib.Path(d)
@@ -524,6 +544,7 @@ def main() -> int:
         t_judge_by_target_not_by_kind(tmp)
         t_armed_by_gui_mode_not_by_mouse(tmp)
         t_never_breaks_main_flow(tmp)
+        t_not_armed_between_turns(tmp)
     t_wiring()
     passed = sum(1 for r in _results if r[0])
     total = len(_results)

@@ -4568,6 +4568,9 @@ class WebUI:
                             # 擦掉这一段已经吐出来的文字（可能一个字都没有 —— 那更好）
                             _rs["content_md"].set_content("")
                             _rs["current_text"] = ""
+                        else:
+                            # 终止：保留已说出的文字，但去掉流式光标 ▋（否则会一直闪）
+                            _rs["content_md"].set_content(_rs.get("current_text", "") or "")
                         # ⭐ 收掉工具 pill 批次是**两支都要做**的：那批工具确实结束了，
                         #    留一个还在转的 pill 无论哪一支都是假的。
                         self._settle_tool_pill(_rs)

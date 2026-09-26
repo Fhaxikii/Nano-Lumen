@@ -246,6 +246,10 @@ def t_wiring() -> None:
     check('if _rs.get("ui_stopped"):' in app and "self._discard_after_stop(step, _rs)" in app,
           "界面收尾后到达的事件不再显示")
     code = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
+    import re as _re
+    check(bool(_re.search(r'# 终止：保留已说出的文字，但去掉流式光标[^\n]*\n\s*_rs\["content_md"\]\.set_content\('
+                          r'_rs\.get\("current_text", ""\) or ""\)', app)),
+          "终止分支保留已说出的文字并去掉流式光标 ▋")
     check('f"已终止 · {_el}s{self._turn_tok_suffix(_tok)}"' in code and "{_tok} tok\")" not in code,
           "终止的状态行按「Token 计数器」设置显示 token（与正常收尾同一个函数）")
     check("the user pressed Stop" not in code, "界面不再写终止事实")

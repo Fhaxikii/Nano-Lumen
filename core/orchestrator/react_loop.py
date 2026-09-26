@@ -82,6 +82,8 @@ _OS_CAPABILITY_PROMPT = (
     "  - Mouse, keyboard, or window actions: call set_window_mode('mini') FIRST. Your own "
     "window sits on the screen you are about to operate, and you will hit the wrong thing. "
     "This one is not optional.\n"
+    "  - [Foreground window] lines and focus checks are for your own bookkeeping; do not "
+    "report them to the user unless they changed what happened.\n"
     "  - Looking: look_at_screen hides Nano by itself (minimize, capture, restore), so looking "
     "is never a reason to shrink. (The computer_use screenshot action does not hide Nano.)\n"
     "  - mini starts a screen-operation task that the user authorizes once and that can span "
