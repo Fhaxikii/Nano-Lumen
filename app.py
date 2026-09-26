@@ -72,59 +72,11 @@ def _rt_auto_authorized() -> bool:
         return False
 
 
-# ── durable inbox 门面 ─────────────────────────────────────────
-# ⚠️⚠️ **这四个全部吞异常，而且退化方向必须朝「照旧干活」，不是朝「不干活」。**
-#    队列的目的是**不丢**，不是**多一道能挡住用户的闸**。
-#    📌 如果库挂了就不让用户发消息，那就亲手造出了本项要消灭的那个东西。
-def _rt_inbox_submit(body: str, detail: dict | None = None) -> str | None:
-    try:
-        from core.runtime import inbox as _ib
-        return _ib.submit_user_message(body, detail)
-    except Exception as e:
-        logger.error(f"[Inbox] 落库失败（不阻断，照旧处理这条）: {e}")
-        return None
-
-
-def _rt_inbox_claim(item_id: str | None) -> None:
-    """把**这一条**标成「正在处理」。
-
-    ⚠️⚠️ **必须传 `item_id`，不能让内核「认领最早那条」** ——
-       UI 侧是从自己的内存队列里取出某一条去跑的，而库里最早那条可能是
-       上个进程遗留、被启动收尾退回队列的另一条。
-       📌 **「取哪一条去做」和「把哪一条标成在做」必须是同一条**，
-          否则跑的是 A、标记的是 B，两条都被记错，而库里看起来完全正常。
-    ⚠️ 拿不到 id（落库失败）就跳过，**不影响主流程**。
-    """
-    if not item_id or item_id.startswith("mem_"):
-        return
-    try:
-        from core.runtime import inbox as _ib
-        from core.runtime.kernel import get_kernel, Command
-        get_kernel().submit(Command(kind=_ib.CLAIM,
-                                    payload={"item_id": item_id}))
-    except Exception as e:
-        logger.debug(f"[Inbox] 认领失败（忽略）: {e}")
-
-
-def _rt_inbox_consume(item_id: str | None) -> None:
-    if not item_id:
-        return
-    try:
-        from core.runtime import inbox as _ib
-        _ib.consume(item_id)
-    except Exception as e:
-        logger.debug(f"[Inbox] 标记已消费失败（忽略）: {e}")
-
-
-def _rt_inbox_submit_wake(suspension_id: str, trigger: str) -> str | None:
-    """收下一个「继续」意图。⚠️ 与用户消息**分开的 kind**，因为处理路径不同：
-    用户消息要起一轮新 turn，唤醒意图要走 `resume_suspension` 恢复一个已有挂起。"""
-    try:
-        from core.runtime import inbox as _ib
-        return _ib.submit_wake_intent(suspension_id, trigger)
-    except Exception as e:
-        logger.error(f"[Inbox] 唤醒意图落库失败（不阻断）: {e}")
-        return None
+# durable inbox 门面：实现在后端调度器模块（`core.session`）。
+from core.session import (inbox_submit as _rt_inbox_submit,  # noqa: E402
+                          inbox_claim as _rt_inbox_claim,
+                          inbox_consume as _rt_inbox_consume,
+                          inbox_submit_wake as _rt_inbox_submit_wake)
 
 
 #: 上个进程留下的、被启动恢复终止掉的那些活。
@@ -136,13 +88,7 @@ def _rt_inbox_submit_wake(suspension_id: str, trigger: str) -> str | None:
 _STARTUP_INTERRUPTED: list = []
 
 
-def _rt_inbox_pending() -> int:
-    try:
-        from core.runtime import inbox as _ib
-        from core.runtime.kernel import get_kernel
-        return _ib.pending_count(get_kernel())
-    except Exception:
-        return 0
+from core.session import inbox_pending as _rt_inbox_pending  # noqa: E402
 
 
 from dotenv import load_dotenv
@@ -462,7 +408,7 @@ _patch_webview_min_size()
 # ═══ 它解决的是什么 ═══
 #
 # 🔴 问题一：**两个构造点，两份逐字相同的 20 键字面量**（`start_pipeline_task`
-#    与 `_drive_wake_inner`）。📌 同一件事有两个实现，它们只在
+#    与 `run_wake_turn`）。📌 同一件事有两个实现，它们只在
 #    「我两次想法相同」的前提下一致 —— 而这两处相隔六千行。
 # 🔴 问题二：代码实际读写 **28** 个键，字面量里只有 20 个。多出来的 8 个
 #    （`is_waiting_pill` / `pill_settled` / `waiting_for_carrier` /
@@ -560,7 +506,7 @@ class ViewSession:
     """一段回应期（一个 `nano ❯` 气泡）的 UI 状态。
 
     ⭐ 「一段回应期」而不是「一轮」：它可以跨多轮（无缝续接、回看续接）。
-       判据见 `_sync_task_pill` 与 `_drive_wake_inner` 里那条气泡合并规则。
+       判据见 `_sync_task_pill` 与 `run_wake_turn` 里那条气泡合并规则。
     """
 
     # ── 声明式字段集 —— **这里就是「一个回应期有哪些字段」的唯一答案** ──
@@ -981,8 +927,13 @@ class WebUI:
         self.agent._push_callback = self._proactive_push
         # 后台载体结束 → 唤醒等它的挂起；载体状态变化 → 刷新抽屉与 Skill 活动态。
         from core.runtime import carriers as _carriers
-        _carriers.set_completion_handler(self.notify_background_done)
         _carriers.add_listener(self._on_carrier_change)
+        # 谁在什么时候起一轮由后端调度器决定；界面是它的呈现方（唤醒轮的气泡、等待 pill）。
+        from core.session import get_scheduler as _get_sched
+        _sched = _get_sched()
+        _sched.attach(self.agent, self)
+        _sched.add_turn_listener(lambda active: self._intel_engine.set_responding(active))
+        _carriers.set_completion_handler(_sched.notify_background_done)
         # 🔴 衰减发生在**本轮 `final_result` 之后**（orchestrator 的 finally 里），
         #    所以 UI 不能在 `final_result` 那一刻去问"有没有东西被移出去" —— 那时还没有。
         #    2026-08-14 实测：模型侧 3 段已经移出、聊天区**一个字没变**，
@@ -1013,11 +964,6 @@ class WebUI:
         # 临时 auto：GUI 任务期间的免确认授权，由后端随 GUI 任务开始 / 结束（授权租约）。
         # 任一为真 → OS 确认自动通过。急停 Ctrl+` / 甩角 failsafe 仍生效。
         self._global_auto = self._load_global_auto()
-        # durable inbox 的内存侧：item_id → pipeline 参数（含 UI 句柄）
-        # ⚠️ **库负责「不丢」，这个 dict 负责「接得上」** ——
-        #    UI 句柄和图片字节只在本进程有意义，落库也没用。
-        self._rt_inbox_parked: dict = {}
-        self._rt_inbox_running_id = None
         self._auto_chip   = None
         self._auto_label  = None
         self._auto_menu   = None
@@ -1120,7 +1066,6 @@ class WebUI:
         self._load_app_config()
         self._save_app_config()  # 立即写入当前状态
 
-        self.pipeline_lock = asyncio.Lock()
         self._ui_client    = None
         self._suppress_skill_watcher_until = 0.0
         self._skill_refresh_requested = False
@@ -4796,13 +4741,37 @@ class WebUI:
 
     # ── Safe wrapper ──────────────────────────────────────────────────────
 
+    @property
+    def pipeline_lock(self):
+        """同一时刻只能有一轮在跑的那把锁（在后端调度器上）。"""
+        from core.session import get_scheduler
+        return get_scheduler().lock
+
+    @property
+    def _rt_inbox_parked(self) -> dict:
+        """排队项（在后端调度器上；用户消息的排队项第 4b 步前仍带界面句柄）。"""
+        from core.session import get_scheduler
+        return get_scheduler().parked
+
+    @property
+    def _rt_inbox_running_id(self):
+        from core.session import get_scheduler
+        return get_scheduler().running_inbox_id
+
+    @_rt_inbox_running_id.setter
+    def _rt_inbox_running_id(self, v):
+        from core.session import get_scheduler
+        get_scheduler().running_inbox_id = v
+
     async def _safe_execute_pipeline(self, query, loading_container, image_bytes: bytes | None = None, image_mime: str = "image/jpeg", temp_file_hint: str | None = None, thought_blocks_container=None):
         # 用户插话会创建 successor 并覆盖全局 `self._resp_state`。旧 pipeline
         # 随后若异常，异常兜底仍只能收它自己拥有的 predecessor，不能误伤新回应。
         _owned_rs = None
-        async with self.pipeline_lock:
+        from core.session import get_scheduler
+        _sched = get_scheduler()
+        async with _sched.lock:
             _owned_rs = self._resp_state
-            self._intel_engine.set_responding(True)
+            _sched.turn_state(True)
             self._activity.on_nano_event("user_message")
             self._turn_suspended = False   # 本轮是否以挂起方式结束（挂起则不恢复 mini）
             try:
@@ -4828,7 +4797,7 @@ class WebUI:
                     self.status_lbl.style('color:var(--nano-danger); font-size:var(--nano-fs-sm);')
                     self.log_lbl.set_text(f"核心故障: {str(e)[:80]}")
             finally:
-                self._intel_engine.set_responding(False)
+                _sched.turn_state(False)
                 # ⛔ [2026-08-23 已定：整段删除] 这里原来在 **turn 结束时无条件
                 #    把窗口恢复成 full**，理由写的是「避免 Nano 没机会调 full 时卡在 mini」。
                 #
@@ -4843,8 +4812,7 @@ class WebUI:
                 # ⭐ 用户定的：**这里不需要任何系统强制机制** ——
                 #    该恢复的时候由 `set_window_mode` 的措辞提醒模型自己恢复。
                 # ⭐ 这一轮对应的那条 inbox 记录收尾
-                _rt_inbox_consume(getattr(self, "_rt_inbox_running_id", None))
-                self._rt_inbox_running_id = None
+                _sched.consume_running()
 
         # ⭐⭐ **必须在 `async with` 之外** —— 锁已经释放了。
         #    写在 finally 里的话，被排空起的那一轮会立刻撞上还没释放的锁，
@@ -4852,7 +4820,7 @@ class WebUI:
         #    📌 **一个「等锁释放后再做」的动作，不能写在还持有锁的作用域里。**
         #       （形状与早先那个「在 finally 里 release 却又在 finally 里 acquire」同族。）
         try:
-            await self._drain_inbox()
+            await _sched.drain()
         except Exception as e:
             logger.error(f"[Inbox] 排空队列失败: {e}")
 
@@ -4876,96 +4844,11 @@ class WebUI:
         except Exception as e:
             logger.debug(f"[Inbox] 标记排队中失败（不影响入队）: {e}")
 
-    async def _drain_inbox(self) -> None:
-        """当前轮结束 → 把排队的下一条接上。
+    def run_parked_user_item(self, item_id: str, args) -> None:
+        """排队的用户消息轮到了（调度器排空时调用）：续接当前回应期，或起新的一轮。
 
-        ⭐⭐ **一次只处理一条，然后靠新那一轮的收尾再次调用本函数。**
-        ⚠️ 不写 `while` 循环，两个理由：
-           ① 新那一轮是 `create_task` 起的，本函数**不等它结束**——
-              循环会在它还没跑完时就去取下一条，两轮并跑。
-           ② level-triggered 天然更稳：每轮结束都重新看一次「还有没有」，
-              中途新来的消息、失败退回的消息都会被自然带上。
-              📌 **与 Reconciler 同一条：让每次检查都问「现在的真实状态是什么」，
-                 而不是维护一个「还剩几条」的计数。**
+        排队项与认领由调度器处理（`core.session`）；第 4b 步之前，用户消息的这一段仍在界面。
         """
-        if self.pipeline_lock.locked():
-            return                      # 有别的轮在跑，等它结束时会再来
-        parked = getattr(self, "_rt_inbox_parked", None)
-        if not parked:
-            # ⭐⭐⭐ [2026-08-22] **前台空了 → 👁 视线转向后台。**
-            #
-            # 走到这里的含义很精确：锁没人持有、队列里也没有排队的 ——
-            # **手上确实没活了**。这正是建模原图里那条支线的触发点：
-            #   「next_step 做完／前台空了／用户否决了前台那件事
-            #     → 👁 视线转向后台『那件事好了没』
-            #     → 没好 → set_next_checkin」
-            #
-            # 🔴 此前代码把「转入后台」做成单向门：撤了回看就再也不看，只剩完成唤醒。
-            #    于是「这个办法坏了我换一个」永远等到跑完才可能发生。
-            # ⚠️ 这**不是**把东西从后台拿回前台 —— pill 不变、抽屉那行不搬。
-            #    📌 位置和注意力正交：转过去的只是视线。
-            # ⚠️ 排的是 `_FIRST_RECHECK_SEC`（60s）那一档，之后由模型自己
-            #    `set_next_checkin` 接管 —— 📌 系统只负责「什么时候看第一眼」，
-            #    「下一眼隔多久」始终是模型的判断。
-            # ⚠️ 挂在 `_drain_inbox` 而不是新起一个定时器：**每一个持有过
-            #    pipeline_lock 的地方结束时都会调它**，天然覆盖全部出口。
-            #    📌 与那条既有判据同形：一个「锁释放后要做的动作」，
-            #       必须挂在每一个持有那把锁的地方。
-            try:
-                from core.runtime import waitcond as _wc_lb
-                for _wid in _wc_lb.parked_without_recheck():
-                    _wc_lb.reschedule_wait(_wid, 60.0)
-                    logger.info(f"[B1] 前台空了 → 视线转回后台（{_wid}，60s 后看一眼）")
-            except Exception as _e_lb:
-                logger.debug(f"[B1] 转视线回后台失败（完成唤醒仍在）: {_e_lb}")
-            return
-        # 按入队顺序取第一条（dict 在 3.7+ 保序）
-        item_id = next(iter(parked))
-        args = parked.pop(item_id)
-        logger.info(f"[Inbox] 上一轮结束 → 接上排队的那条（{item_id}）"
-                    f"，队列里还剩 {len(parked)} 条")
-        _rt_inbox_claim(item_id)
-        self._rt_inbox_running_id = (
-            None if item_id.startswith(("mem_", "memwake_")) else item_id)
-
-        # ⚠️ 两种排队项走**两条不同的恢复路径**，不能混：
-        #    · 用户消息 → 起一轮新 turn，把原话喂进去
-        #    · 唤醒意图 → 走 `_drive_wake` 恢复一个**已有的**挂起
-        #    📌 这正是 `ItemKind` 刻意分两种的原因（答的不是同一个问题，就不合并）。
-        if isinstance(args, tuple) and args and args[0] == "wake":
-            # ⚠️ [] 现在可能带第四项 `note` —— 后台唤醒必须把**结果**一起带回去，
-            #    否则模型醒过来手上没有那个结果，只能再问一遍。
-            #    📌 **一个「稍后再处理」的队列，必须把「处理它需要的东西」一起排进去** ——
-            #       只排一个 id 等于把上下文丢在了原地。
-            # ⭐ 仍然兼容 3 元组（历史入队项 / 手动继续那条路）。
-            _susp = args[1]
-            _trig = args[2] if len(args) > 2 else "manual"
-            _note = args[3] if len(args) > 3 else ""
-            # 🔴🔴 [2026-08-22 实测] **唤醒这条路认领了，却从来没人消费它。**
-            #
-            # 上面 `_rt_inbox_claim(item_id)` 把它标成 CLAIMED，而消费只发生在
-            # `_safe_execute_pipeline` 的收尾里 —— **唤醒不走那个函数**。
-            # 于是这条记录**永远停在 CLAIMED**，而 `_claim` 的第一道闸是
-            # 「已经有一条 CLAIMED → 直接返回 None」：
-            #   → 此后**每一次**认领都静默失效
-            #   → `delivery_count` 再也不涨
-            #   → 之后每一次 consume 都破 `inbox_consumed_was_delivered`
-            # 实测 里这条 ERROR 连着出现了 **5 次**，第一次正好在
-            # 第一次 wake 走 drain 的 58 秒之后。
-            #
-            # 📌 **一条卡住的 CLAIMED，会把整条队列的投递记账全废掉** ——
-            #    而 `delivery_count` 存在的唯一理由，就是回答
-            #    「崩溃时这条给模型看过没有」。它一坏，那个问题就永远答不了了。
-            # 📌 更一般的那条：**认领和消费必须在同一个人手里闭合。**
-            #    这里认领在 `_drain_inbox`、消费在另一个函数，
-            #    于是「新加一条不走那个函数的路径」就必然漏掉 —— 而且不报错。
-            # ⭐ 修法不是「再补一个消费点」，是把这一条的收尾**交给它自己那条路**：
-            #    谁起的 turn，谁负责收。
-            asyncio.create_task(
-                self._drive_wake(_susp, trigger=_trig, note=_note,
-                                 inbox_item_id=item_id))
-            return
-
         # ⭐⭐⭐ [无缝对话] 续接：喂进**已经存在的那个** nano 气泡，不新建。
         if isinstance(args, tuple) and args and args[0] == "cont":
             _, _q, _ib_, _im_, _th_ = args
@@ -7314,44 +7197,6 @@ class WebUI:
 
 
 
-    async def notify_background_done(self, ref: str, result_hint: str | None = None):
-        """background 唤醒入口：某个后台进程（ref）完成 → 唤醒等它的挂起。
-
-        生产者（未来的 MCP 长任务/OS 长命令）拿到 wait_for 返回的 bg_task_ref 后，
-        完成时调用本方法即可。消费者端（resume_suspension）已就绪。
-        """
-        try:
-            from core.runtime.kernel import get_kernel
-            from core.runtime import waitcond as _wc
-            _active = _wc.list_live(get_kernel(), oldest_first=True)
-        except Exception:
-            _active = []
-        _hit = [r for r in _active
-                if _wc.WakeSource.BACKGROUND in r.wake_on and r.bg_ref == ref]
-        if not _hit:
-            _settled = self._settle_cancelled_handback_actions(ref)
-            if _settled:
-                logger.info(f"[Suspension] background 完成 ref={ref}；等待已取消，"
-                            f"仅收 {_settled} 条原始动作 UI，不唤醒 Nano")
-                return
-            logger.info(f"[Suspension] background 完成 ref={ref}，但无匹配 active 挂起（可能已被其它源唤醒）")
-            return
-        for r in _hit:
-            sid = r.wait_id
-            # ⚠️⚠️ [] **这里原来先把 pill 定型成「▶ 后台完成，继续」再去唤醒。**
-            #    而 `_drive_wake` 内部早就把「定型」挪到了**拿到锁之后**，
-            #    注释写得很清楚：「真正拿到锁、即将起唤醒 turn 时才把活 pill 定型
-            #    （避免内核忙时提前定型）」。
-            # 🔴 **但那次修改只改了它自己那条路径，这一处仍在提前定型** ——
-            #    于是内核忙时用户看到的是绿色的「后台完成，继续」，
-            #    **而后面什么都不会发生**。截图里就是这个。
-            # 📌 **一个「等拿到锁再定型」的修法，如果只改了其中一条调用路径，
-            #    另一条路径上的 UI 仍然在说谎** —— 而它说的还是「完成了，继续」，
-            #    比什么都不说更糟。
-            # ⭐ 现在统一交给 `_drive_wake`：它要么拿到锁并定型，
-            #    要么把唤醒意图排进队列（pill 保持转圈，那是**真实状态**）。
-            await self._drive_wake(sid, trigger="background", note=(result_hint or ""))
-
     # ══════════════════════════════════════════════════════════════════════
     # 异步产出与后台故障的统一出口（ChatEmitter）
     # ══════════════════════════════════════════════════════════════════════
@@ -7882,7 +7727,7 @@ class WebUI:
         📌 **「不丢」和「替用户做决定」是两件事。**
 
         ═══ 三个刻意的选择 ═══
-        ⚠️ **呈现完必须丢弃。** 留着 PENDING 的话，下一次 `_drain_inbox` 会把它
+        ⚠️ **呈现完必须丢弃。** 留着 PENDING 的话，下一次排空（`TurnScheduler.drain`）会把它
            捡起来真的执行 —— 那正是被否掉的那一支。
            📌 **「不执行」不是靠没人去执行它，是靠它不再处于可被执行的状态。**
         ⚠️ 只画在界面上：不进模型上下文（模型看见一条没人处理的用户请求会去做，
@@ -12245,364 +12090,120 @@ class WebUI:
         return fallback_text, fallback_color
 
     async def _wake_now(self, suspension_id: str):
-        """[立即执行]：用户提前触发自己委托的定时计划。"""
-        from core.runtime.kernel import get_kernel
-        from core.runtime import waitcond as _wc
-        rec = _wc.find_by_id(get_kernel(), suspension_id)
-        if rec is None or not rec.is_live:
-            ui.notify('这个等待已经结束了', type='info')
-            self._settle_waiting_pill(suspension_id, '✓ 已结束')
-            return
-        # ⭐⭐ 这里原来是 `notify + return` —— **点了「继续」但内核忙 →
-        #    那个意图就没了**，用户得自己记着再点一次。
-        #    这是 `pipeline_lock` 五个使用点里最后一个还在丢用户意图的。
-        #    📌 同 ①②：**闸的出口是失败，队列的出口是稍后处理。**
-        # ⚠️ 而 `_drive_wake` 那处（定时/后台唤醒）**本来就是对的** ——
-        #    它写着「内核忙：稍后由 poller 再尝试（记录仍 active）」。
-        #    📌 一个正确做法已经在代码里存在、却没被推广到同类场景，
-        #       缺的不是想法，是一致性。
-        if self.pipeline_lock.locked():
-            _wid = _rt_inbox_submit_wake(suspension_id, "manual")
-            self._rt_inbox_parked[_wid or f"memwake_{suspension_id}"] = \
-                ("wake", suspension_id, "manual")
-            self._settle_waiting_pill(suspension_id, '▶ 已排队，稍后继续',
+        """[立即执行]：用户提前触发自己委托的定时计划（调度器决定现在起还是排队）。"""
+        from core.session import get_scheduler
+        st = get_scheduler().wake_now(suspension_id)
+        if st == "ended":
+            ui.notify("这个等待已经结束了", type="info")
+            self._settle_waiting_pill(suspension_id, "✓ 已结束")
+        elif st == "parked":
+            self._settle_waiting_pill(suspension_id, "▶ 已排队，稍后继续",
                                       color="var(--nano-fg-soft)")
-            logger.info(f"[Inbox] 内核忙 → 手动继续进队列（{suspension_id}）")
-            return
-        self._settle_waiting_pill(suspension_id, '▶ 已手动继续', color="var(--nano-ok)")
-        await self._drive_wake(suspension_id, trigger="manual")
+        else:
+            self._settle_waiting_pill(suspension_id, "▶ 已手动继续", color="var(--nano-ok)")
 
     async def _cancel_suspension(self, suspension_id: str):
         """[取消计划]：取消用户委托的定时计划，不再唤醒。"""
-        from core.runtime import waitcond as _wc
-        ok = _wc.cancel_wait(suspension_id)
-        # ⚠️ 这一处**差点漏掉**。前面四个镜像点都在 orchestrator 里，
-        # 唯独 UI 的「取消」按钮在这里 —— 漏了它会造成"旧死新活"的**假分歧**，
-        # 而那正是对答案里最危险的那个方向（它本该意味着"有条关闭路径没镜像到"）。
-        # 📌 判据：**镜像点要按"权威被改动的地方"去找，不是按模块去找。**
-        # ⚠️ 这里原本还会关闭一次观测期的镜像。
-        #    上一行已经直接把权威那条关掉；镜像关闭是**对同一件事关第二次**，
-        #    而且依赖一个重启就丢失的内存映射。
-        # ⭐ 而这一处当年是**四个镜像点里差点漏掉的那一个**（早先的判据：
-        #    「镜像点要按『权威被改动的地方』去找，不是按模块去找」）——
-        #    现在它连同镜像机制一起退役了。
-        # 📌 **一条当年靠「别漏掉」才立住的规则，最好的结局是那件要做的事本身消失。**
-        self._settle_waiting_pill(suspension_id, '✕ 已取消等待', color="var(--nano-fg-soft)")
-        if ok:
+        from core.session import get_scheduler
+        get_scheduler().cancel_wait(suspension_id)
+        self._settle_waiting_pill(suspension_id, "✕ 已取消等待", color="var(--nano-fg-soft)")
+
+    # ── 呈现方（`core.session.TurnScheduler` 调用）：唤醒轮的气泡与等待 pill ──
+
+    async def run_wake_turn(self, suspension_id: str, trigger: str,
+                            continue_bubble: bool, source) -> None:
+        """画一个唤醒轮：同一段回应期（触发那一刻前台上有东西）续接进原气泡，否则新开一个；
+        然后把事件流 `source`（`agent.resume_suspension`）渲染完。锁由调度器持有。"""
+        _live_rs = getattr(self, "_resp_state", None)
+        _same_epoch = bool(continue_bubble) and _live_rs is not None
+        # ⭐⭐ **续接分支还需要一样只在 `else` 里被创建的东西：`loading_container`。**
+        #    它下面要传给 `navigate_pipeline`。续接时它必须是**活着那个容器**。
+        # 📌 **一个 if/else 里只在 else 分支赋值的局部变量，是 if 分支的
+        #    隐藏依赖** —— 只打开开关不补依赖，if 分支必然 NameError。
+        #    （这正是上面那个 bug 的第二层，原来的补丁两层都错了。）
+        # ⚠️ 拿不到容器就**退回新开一个**，而不是崩掉 ——
+        #    唤醒轮的价值在于「Nano 接着说下去」，气泡长相是次要的。
+        loading_container = None
+        if _same_epoch:
+            loading_container = (_live_rs or {}).get("container")
+            if loading_container is None:
+                logger.warning(f"[Wake] {suspension_id} 判为同一回应期，但活着的"
+                               f"容器已经不在了 → 退回新开一个 nano ❯")
+                _same_epoch = False
+        if _same_epoch:
+            logger.info(f"[Wake] {suspension_id} 仍在同一段回应期 → 续接进原气泡"
+                        f"（不新开 nano ❯）")
+            # ⚠️ 同一段回应期 → **跳过整段「重建 nano 块」**，只打开续接开关。
+            #    ⚠️ 也**不许删 `_last_meta_row`** —— 那是这一段自己的元信息行，
+            #       续接之后它还要继续用（token 统计等整段结束才写）。
+            #       📌 「上一条的元信息行」这个说法在续接场景里不成立：
+            #          此刻那个元信息行不是上一条的，是**当前这一段**的。
+            self._resp_continuation = True
+        else:
+            with self._ui_scope():
+              self._clear_empty_state_greeting()
+              try:
+                  if getattr(self, '_last_meta_row', None):
+                      self._last_meta_row.delete()
+              except Exception:
+                  pass
+              with self.chat_container:
+                  loading_container = ui.column().classes('w-full py-1 mb-8')
+                  with loading_container:
+                      with ui.row().classes('items-start gap-2 no-wrap w-full min-w-0'):
+                          ui.label('nano ❯').style(
+                              'color:var(--nano-ok); font-size:var(--nano-fs-lg); line-height:1.75rem; flex-shrink:0; min-width:64px; text-align:right;'
+                              'font-family:var(--nano-mono);')
+                          _inner_col = ui.column().classes('w-full gap-0 min-w-0')
+                          with _inner_col:
+                              _c_md = nano_md()
+                      with ui.row().classes('items-center gap-1.5 mt-1').style('padding-left:72px;') as _meta_row:
+                          _spin_lbl = ui.label('⠋').style('font-size:var(--nano-fs-md); color:var(--nano-dim); font-family:var(--nano-mono);')
+                          _svg_el = ui.html(NANO_AVATAR_SVG).style('width:16px; height:16px; flex-shrink:0; display:none;')
+                          _s_lbl = ui.label('thinking · 0s').style(
+                              'font-size:var(--nano-fs-base); color:var(--nano-dim); letter-spacing:0.01em; font-family:var(--nano-mono);'
+                          )
+                  self._last_meta_row = _meta_row
+                  self._resp_state = ViewSession(container=loading_container, meta_row=_meta_row,
+                      pending_epoch=False,
+                      status_lbl=_s_lbl, spin_lbl=_spin_lbl, svg_el=_svg_el,
+                      start_time=time.time(), tok_base=sum(usage_tracker.session_tokens()), running=True,
+                      content_md=_c_md, current_text="", loading_col=_inner_col,
+                      tool_count=0, had_text_since_tool=True, batch_tool_count=0,
+                      tool_pill_lbl=None, tool_pill_arrow=None, tool_details_col=None,
+                      action_refs={}, text_checkpoint="",)
+                  self._current_loading_label = _s_lbl
+                  # 🪦 这里曾经回填 `_pill_entry["resp_state"] = self._resp_state`
+                  #    —— 那是给上一版「对象身份比对」续命的补丁。
+                  # 2026-08-22 判据换成「触发那一刻前台上有东西」之后，
+                  # `_pill_entry` 的那个字段**再没有任何读取点**，所以一并拆掉。
+                  # 📌 **留着一个零读取点的写入，是「写好但没人调」的反面镜像** ——
+                  #    它同样会让下一个人以为这里有一套还在生效的机制。
+              try:
+                  self.scroll_area.scroll_to(percent=1.0, duration=0.1)
+              except Exception:
+                  pass
+        try:
+            await self.navigate_pipeline(None, loading_container, event_source=source)
+        except Exception:
             try:
-                self.agent.memory.add_system_note(
-                    "assistant", "[System record: the user cancelled the pending wait above; Nano will not continue waiting.]"
-                )
+                self._resp_state["running"] = False
             except Exception:
                 pass
+            raise
 
-    def _park_wake(self, suspension_id: str, trigger: str, note: str,
-                   why: str) -> None:
-        """唤醒起不来 → **把它排进 durable inbox**，锁/预算恢复后由排空接上。
+    def settle_wake(self, suspension_id: str, trigger: str) -> None:
+        """唤醒轮拿到锁、即将开始：定型等待 pill；background 还要收掉原动作的转圈
+        （只有载体的完成信号能结束动作 spinner，timer 回看不冒充完成）。"""
+        if trigger == "background":
+            self._settle_waiting_action(suspension_id, ok=True)
+        _txt = {"timer": "▶ 时间到，继续", "manual": "▶ 已手动继续",
+                "background": "▶ 后台完成，继续"}.get(trigger, "▶ 继续")
+        self._settle_waiting_pill(suspension_id, _txt, color="var(--nano-ok)")
 
-        ⚠️⚠️ **两条早退路径共用这一个门面，是被自己的判据逼出来的。**
-        `_drive_wake` 有两处会提前返回：① 内核忙 ② 预算到硬上限。
-        修的是 ①，而 ② **原样留着静默 `return`** ——
-        对 `timer` 无害（poller 会重试，`fire_at` 在过去、记录仍 active），
-        但对 `background` 又是**同一个静默丢失**，只是触发原因从「忙」换成「超预算」。
-        📌 **刚写下「一个修法只改了其中一条调用路径，另一条仍在说谎」，
-           然后在同一个函数里重复了它** ——
-           所以这里不是各修一遍，而是**把出口收成一个**。
-        📌 **同一种失败要走同一个出口，否则「补齐所有出口」这件事永远做不完。**
+    def settle_cancelled_handback(self, bg_ref: str) -> int:
+        return self._settle_cancelled_handback_actions(bg_ref)
 
-        ⚠️ **去重**：预算硬上限不是瞬时状态，可能连续多轮都满。
-           每次重新入队都会写一条 durable inbox 行 → 那是个泄漏。
-           所以先看这条挂起是不是已经排着了。
-           📌 **一个「稍后再试」的队列必须对同一件事去重，
-              否则「稍后」的次数会变成行数。**
-        """
-        parked = getattr(self, "_rt_inbox_parked", None)
-        if parked is None:
-            logger.error(f"[Suspension] 🔴 {trigger} 唤醒无处可排（{why}）"
-                         f"—— 这个完成通知丢了：{suspension_id}")
-            return
-        for _v in parked.values():
-            if (isinstance(_v, tuple) and len(_v) > 1
-                    and _v[0] == "wake" and _v[1] == suspension_id):
-                logger.debug(f"[Inbox] {suspension_id} 的唤醒已在队列里，不重复排（{why}）")
-                return
-        try:
-            _wid = _rt_inbox_submit_wake(suspension_id, trigger)
-            parked[_wid or f"memwake_{suspension_id}"] = (
-                "wake", suspension_id, trigger, note)
-            logger.info(f"[Inbox] {why} → {trigger} 唤醒进队列（{suspension_id}）")
-        except Exception as e:
-            # ⚠️ 连队列都进不去 → **响亮报错**。这条路径丢掉的是
-            #    「后台任务已经完成」这个事实，而它不会有第二次机会。
-            logger.error(f"[Suspension] 🔴 {trigger} 唤醒既起不来也进不了队列 "
-                         f"（{suspension_id}，{why}）—— 这个完成通知丢了: {e}")
-
-    async def _drive_wake(self, suspension_id: str, trigger: str, note: str = "",
-                          inbox_item_id: str | None = None):
-        """唤醒轮的**唯一出口**：不管里面从哪条路返回，那条 inbox 记录都要收掉。
-
-        🔴🔴 [2026-08-22 实测] 问题：`_drain_inbox` 的 wake 分支
-           `claim` 了一条记录，而消费只发生在 `_safe_execute_pipeline` 的收尾里
-           —— **唤醒不走那个函数**。于是记录永远停在 `CLAIMED`，
-           而 `_claim` 的第一道闸是「已经有一条 CLAIMED → 直接返回 None」：
-             → 此后每一次认领静默失效 → `delivery_count` 再也不涨
-             → 之后每一次 consume 都破 `inbox_consumed_was_delivered`
-           实测里这条 ERROR 连着出现 **5 次**，第一次正好在第一次 wake 走 drain 之后。
-        📌 **一条卡住的 CLAIMED，会把整条队列的投递记账全废掉** ——
-           而 `delivery_count` 存在的唯一理由，是回答「崩溃时这条给模型看过没有」。
-
-        ⚠️⚠️ **为什么是包一层，而不是在每个出口各收一次**：
-           里面有三条早退（无处可排 / 内核忙 / 预算满）加正常路径加异常路径。
-           第一版就是逐个补，**当场漏了预算满那条** ——
-           📌 **逐出口补丁的正确性依赖「我数全了」，而包一层不依赖任何人记得。**
-              前者还会随着将来新增一条 `return` 再次失效，且失效时不报错。
-        ⚠️ 收账失败不许影响能力：它是**记账**，不是这一轮该干的事。
-        """
-        try:
-            # ⭐ `inbox_item_id` 有值 ⟺ 这条唤醒当初**触发时前台上有东西**
-            #    （忙才会走 `_park_wake` 进队列）。见 `_drive_wake_inner` 里
-            #    气泡规则那段：**走了哪条路，本身就记录了触发那一刻的状态。**
-            await self._drive_wake_inner(suspension_id, trigger, note,
-                                         busy_at_trigger=bool(inbox_item_id))
-        finally:
-            if inbox_item_id:
-                try:
-                    _rt_inbox_consume(inbox_item_id)
-                except Exception as _e_ic:
-                    logger.warning(f"[Inbox] 唤醒轮收尾消费失败: {_e_ic}")
-
-    async def _drive_wake_inner(self, suspension_id: str, trigger: str,
-                                note: str = "", busy_at_trigger: bool = False):
-        """定时/后台/手动唤醒：起一个新回复 turn，复用 navigate_pipeline 整套渲染，
-        事件源换成 orchestrator.resume_suspension。"""
-        if self.pipeline_lock.locked():
-            # ⭐⭐⭐ [2026-08-09 实测] **这里原来是静默 `return`**，注释写着
-            #    「内核忙：稍后由 poller 再尝试（记录仍 active）」。
-            #
-            # 🔴 **那句承诺对 `background` 唤醒是【假的】**：poller
-            #    （`_suspension_poll_tick`）走的是 `due_timers()`，SQL 条件是
-            #    `fire_at IS NOT NULL AND fire_at <= now` —— 而后台等待的
-            #    `fire_at` 是 `None`，**它永远不会被轮到**。
-            #
-            # ⚠️ 而 MCP 自动后台化**必然**撞上这个：调用是在**一轮进行中**被转后台的，
-            #    页面往往几百毫秒后就完成，那时那一轮还握着 `pipeline_lock` →
-            #    唤醒被丢掉 → Nano 永远停在「等着看结果」。
-            #    实测现象：网页确实打开了，pill 甚至显示「▶ 后台完成，继续」，
-            #    **但那一轮再也没有下文**。
-            #
-            # 📌 **一句「稍后由 X 再试」的注释，必须能指出 X 真的会再试。**
-            #    此前把这一处判成「本来就是对的」，依据正是这句注释本身 ——
-            #    而没去看 poller 到底轮什么。
-            #    📌 **判断一处「本来就是对的」，不能只读它的注释说它交给了谁，
-            #       要去看那个「谁」是不是真的会接。**
-            #
-            # ⭐ 修法不是给 poller 加一条「也轮 background」——那还是 edge 思维，
-            #    而是用**已经存在的那条正确做法**：`_wake_now` 在内核忙时把唤醒意图
-            #    落进 durable inbox，锁一释放就被排空接上。
-            #    📌 **闸的出口是失败，队列的出口是稍后处理**（本项目第五次用到）。
-            #    📌 **一个正确做法已经在代码里存在、却没被推广到同类场景 ——
-            #       缺的不是想法，是一致性。**（这条判据当初就是从 `_wake_now`
-            #       那一处立的，而它当时把 `_drive_wake` 当成了正面例子。）
-            self._park_wake(suspension_id, trigger, note, "内核忙")
-            return
-        # 预算已满就别起唤醒 turn。orchestrator.resume_suspension 里也有一道
-        # 同样的检查（那道是保护挂起记录不被白白消费，是正确性防线）；这里这道
-        # 纯粹是为了 UI 不说谎——下面 _settle_waiting_pill 会把等待 pill 定型成
-        # "▶ 时间到，继续"，要是随后什么都没发生，用户看到的就是一句空承诺。
-        try:
-            from core.usage import sync_budget_health
-            if sync_budget_health() == "hard":
-                # ⭐ [2026-08-09] 这里原来也是静默 `return` + 一行 warning。
-                #    对 `timer` 无害（poller 会重试），但 `background` 的 `fire_at`
-                #    是 `None`，**poller 永远轮不到它** —— 于是同一个静默丢失
-                #    换了个触发原因（超预算而不是忙）。
-                # 📌 **同一种失败要走同一个出口**，见 `_park_wake` 的说明。
-                logger.warning(f"[Suspension] 预算已达硬上限，本次不唤醒 "
-                               f"{suspension_id}（记录保持 active，唤醒进队列）")
-                self._park_wake(suspension_id, trigger, note, "预算已达硬上限")
-                return
-        except Exception:
-            pass
-        async with self.pipeline_lock:
-            self._intel_engine.set_responding(True)
-            # 真正拿到锁、即将起唤醒 turn 时才把活 pill 定型（避免内核忙时提前定型）
-            _settle_txt = {"timer": "▶ 时间到，继续", "manual": "▶ 已手动继续",
-                           "background": "▶ 后台完成，继续"}.get(trigger, "▶ 继续")
-            if trigger == "background":
-                # 只有载体的完成信号能结束动作 spinner；timer 回看绝不冒充完成。
-                self._settle_waiting_action(suspension_id, ok=True)
-            self._settle_waiting_pill(suspension_id, _settle_txt, color="var(--nano-ok)")
-            # ⭐⭐⭐ [2026-08-09] **同一段回应期里的唤醒，续接进同一个气泡。**
-            #
-            # 用户的原话：「并没有插话进去，所以这里不应该产生后两次 >NANO，
-            # 而是在一个气泡当中继续（**回看同理**），只要不出现用户插话。」
-            # ⭐ 判据成立：`nano ❯` 那个头代表的是「**Nano 对用户的一次回应**」——
-            #    用户没说话，就不该有第二个头。
-            # 📌 **一个 nano 气泡 = 一段连续的回应期**（这条判据早先就立了）。
-            #
-            # ⭐ 这里**不新增代码路径**，直接打开 `navigate_pipeline` 已有的
-            #    `_resp_continuation` 那条续接分支 —— 它会复用 markdown 元素、
-            #    把 `running` 拨回 True、重新显示转圈、藏掉已经亮出来的 ✦，
-            #    并且跳过 `usage_tracker.reset_session()`（token 页脚仍只在
-            #    整段结束时算一次）。
-            #    📌 **复用一条已经被实测验过的路径，比新写一条等价的更安全。**
-            #
-            # 🔴🔴 **这一段原来落在了 `_safe_execute_pipeline` 里** —— 那个函数
-            #    没有 `suspension_id` 这个名字，于是实测上每一次普通发送都
-            #    `NameError`。而消费它的 `if _same_epoch:` 留在了这里。
-            #    ⚠️ 全库 1630 条全绿，是因为**没有一条断言验作用域**：那条
-            #       结构断言只问了「`_resp_continuation = True` 在不在
-            #       `if _same_epoch:` 底下」，而 `_same_epoch` 在哪定义、
-            #       和它同不同函数，没人问。
-            #    📌 **一条验「消费者在不在」的断言，不等于验了「它读的名字
-            #       在同一个作用域里被定义过」** —— 跨函数搬代码时，
-            #       前者永远通过。
-            # ⭐⭐⭐ [2026-08-22] **合并判据换成一条能直接读的事实。**
-            #
-            #     合并 ⟺ 最新气泡是 nano 的 ∧ **触发那一刻前台上有东西**
-            #
-            # 🔴 这里原来比对的是 `_waiting_pills[sid]["resp_state"]` 与当前
-            #    `_resp_state` 的**对象身份** —— 而那个指针记的是【交还那一刻】
-            #    是哪个回应期。回看轮和用户新消息**都会换掉 `_resp_state`**，
-            #    于是它一路过期：实测 里 6 次唤醒只有 2 次续接成功，
-            #    里又漏一次。补一条路径就再漏一条 ——
-            #    📌 **一个需要多处同步才能保持正确的记录点，
-            #       换成一个随时可直接读的事实。**
-            #
-            # ⭐ 为什么判据是「前台」而不是「有没有转圈的 pill」：
-            #    后台的东西没完成时 pill **本来就该转**（UI 如实报事实）——
-            #    那条 pill 说的是「它还没好」，不是「Nano 还在忙」。
-            #    📌 **用一个回答 A 的信号去回答 B，它再准也是错的。**
-            #    而「前台」正好是比喻里**唯一的独占资源**（后台可并行、
-            #    前台一次一个），所以「前台空了」精确对应
-            #    「Nano 这一口气说完了」—— 正是人类聊天换气泡的那个瞬间。
-            #
-            # ⚠️⚠️ **必须是「触发那一刻」，不是「渲染那一刻」。**
-            #    忙时触发的唤醒会先进 inbox 排队，等排到它时上一轮早已结束、
-            #    锁也释放了 —— 那时再问「前台有没有东西」得到的是**另一个时刻**
-            #    的答案（空），会把该并入的判成新气泡。
-            #    ⭐ 而代码天然已经把两条路分开了：触发时忙 → `_park_wake` 进队列；
-            #       触发时闲 → 直接进来。**走了哪条路本身就是那个记录**，
-            #       所以不用新加时间戳（`busy_at_trigger` 就是它）。
-            #
-            # ⚠️ 这条判据刻意**一个字都没提**回看/后台唤醒/主动开口 ——
-            #    📌 以后再加多少种触发源，它都不用改：它问的只是
-            #       「上一个气泡还是不是 Nano 正在说的那一口气」。
-            _live_rs = getattr(self, "_resp_state", None)
-            _same_epoch = bool(busy_at_trigger) and _live_rs is not None
-            # ⭐⭐ **续接分支还需要一样只在 `else` 里被创建的东西：`loading_container`。**
-            #    它下面要传给 `navigate_pipeline`。续接时它必须是**活着那个容器**。
-            # 📌 **一个 if/else 里只在 else 分支赋值的局部变量，是 if 分支的
-            #    隐藏依赖** —— 只打开开关不补依赖，if 分支必然 NameError。
-            #    （这正是上面那个 bug 的第二层，原来的补丁两层都错了。）
-            # ⚠️ 拿不到容器就**退回新开一个**，而不是崩掉 ——
-            #    唤醒轮的价值在于「Nano 接着说下去」，气泡长相是次要的。
-            loading_container = None
-            if _same_epoch:
-                loading_container = (_live_rs or {}).get("container")
-                if loading_container is None:
-                    logger.warning(f"[Wake] {suspension_id} 判为同一回应期，但活着的"
-                                   f"容器已经不在了 → 退回新开一个 nano ❯")
-                    _same_epoch = False
-            if _same_epoch:
-                logger.info(f"[Wake] {suspension_id} 仍在同一段回应期 → 续接进原气泡"
-                            f"（不新开 nano ❯）")
-                # ⚠️ 同一段回应期 → **跳过整段「重建 nano 块」**，只打开续接开关。
-                #    ⚠️ 也**不许删 `_last_meta_row`** —— 那是这一段自己的元信息行，
-                #       续接之后它还要继续用（token 统计等整段结束才写）。
-                #       📌 「上一条的元信息行」这个说法在续接场景里不成立：
-                #          此刻那个元信息行不是上一条的，是**当前这一段**的。
-                self._resp_continuation = True
-            else:
-                with self._ui_scope():
-                  self._clear_empty_state_greeting()
-                  try:
-                      if getattr(self, '_last_meta_row', None):
-                          self._last_meta_row.delete()
-                  except Exception:
-                      pass
-                  with self.chat_container:
-                      loading_container = ui.column().classes('w-full py-1 mb-8')
-                      with loading_container:
-                          with ui.row().classes('items-start gap-2 no-wrap w-full min-w-0'):
-                              ui.label('nano ❯').style(
-                                  'color:var(--nano-ok); font-size:var(--nano-fs-lg); line-height:1.75rem; flex-shrink:0; min-width:64px; text-align:right;'
-                                  'font-family:var(--nano-mono);')
-                              _inner_col = ui.column().classes('w-full gap-0 min-w-0')
-                              with _inner_col:
-                                  _c_md = nano_md()
-                          with ui.row().classes('items-center gap-1.5 mt-1').style('padding-left:72px;') as _meta_row:
-                              _spin_lbl = ui.label('⠋').style('font-size:var(--nano-fs-md); color:var(--nano-dim); font-family:var(--nano-mono);')
-                              _svg_el = ui.html(NANO_AVATAR_SVG).style('width:16px; height:16px; flex-shrink:0; display:none;')
-                              _s_lbl = ui.label('thinking · 0s').style(
-                                  'font-size:var(--nano-fs-base); color:var(--nano-dim); letter-spacing:0.01em; font-family:var(--nano-mono);'
-                              )
-                      self._last_meta_row = _meta_row
-                      self._resp_state = ViewSession(container=loading_container, meta_row=_meta_row,
-                          pending_epoch=False,
-                          status_lbl=_s_lbl, spin_lbl=_spin_lbl, svg_el=_svg_el,
-                          start_time=time.time(), tok_base=sum(usage_tracker.session_tokens()), running=True,
-                          content_md=_c_md, current_text="", loading_col=_inner_col,
-                          tool_count=0, had_text_since_tool=True, batch_tool_count=0,
-                          tool_pill_lbl=None, tool_pill_arrow=None, tool_details_col=None,
-                          action_refs={}, text_checkpoint="",)
-                      self._current_loading_label = _s_lbl
-                      # 🪦 这里曾经回填 `_pill_entry["resp_state"] = self._resp_state`
-                      #    —— 那是给上一版「对象身份比对」续命的补丁。
-                      # 2026-08-22 判据换成「触发那一刻前台上有东西」之后，
-                      # `_pill_entry` 的那个字段**再没有任何读取点**，所以一并拆掉。
-                      # 📌 **留着一个零读取点的写入，是「写好但没人调」的反面镜像** ——
-                      #    它同样会让下一个人以为这里有一套还在生效的机制。
-                  try:
-                      self.scroll_area.scroll_to(percent=1.0, duration=0.1)
-                  except Exception:
-                      pass
-            try:
-                await self.navigate_pipeline(
-                    None, loading_container,
-                    event_source=self.agent.resume_suspension(suspension_id, trigger, note=note),
-                )
-                self._activity.on_nano_event("nano_responded")
-            except Exception as e:
-                logger.error(f"[Suspension] 唤醒 turn UI 异常: {e}")
-                try:
-                    self._resp_state["running"] = False
-                except Exception:
-                    pass
-            finally:
-                self._intel_engine.set_responding(False)
-        # ⭐⭐ 唤醒轮结束后**也要**排空队列。
-        #
-        # ⚠️⚠️ 漏了这一处的后果：用户在**唤醒轮**跑的时候发的消息会一直排着，
-        #    直到下一次有普通 turn 结束才被处理 —— 而如果没有下一次，就是永远。
-        #    📌 **一个「锁释放后要做的动作」，必须挂在每一个持有那把锁的地方** ——
-        #       只挂一处等于只在一半情况下生效。
-        #    ⭐ 这和「`pipeline_lock` 五个使用点被处理成四种语义」是同一个问题：
-        #       **缺的不是想法，是一致性。**
-        # ⚠️ 同样必须在 `async with` **之外**（锁已释放）—— 见 `_safe_execute_pipeline`。
-        try:
-            await self._drain_inbox()
-        except Exception as e:
-            logger.error(f"[Inbox] 唤醒轮后排空队列失败: {e}")
-
-    async def _suspension_poll_tick(self):
-        """周期轮询 store：到点的定时挂起 → 驱动唤醒。基于 store 状态，
-        已被用户唤醒/取消的记录不再 active，不会重复触发（无孤儿定时器）。"""
-        try:
-            from core.runtime.kernel import get_kernel
-            from core.runtime import waitcond as _wc
-            # 这里是副作用驱动查询，不是状态推进查询：DUE_FOR_REVIEW 也必须继续
-            # 被捞到，否则一次唤醒尝试失败就会永久失联。
-            due = _wc.list_due_wakeups(get_kernel())
-        except Exception as e:
-            logger.warning(f"[Suspension] 轮询失败: {e}")
-            return
-        for rec in due:
-            sid = rec.wait_id
-            if not sid:
-                continue
-            # pill 定型移到 _drive_wake 内部（拿到锁后才定型，内核忙时不会提前定型）
-            await self._drive_wake(sid, trigger="timer")
 
 
     def _copy_visual(self, code: str) -> None:
@@ -14877,11 +14478,8 @@ class WebUI:
         # 真正的 LLM 成本只在某条定时挂起到点、驱动唤醒 turn 时才发生——
         # 到点与否由模型当初设的 timer_seconds 决定（已在 wait_for 描述里按
         # "缓存窗口/隔多久值得回看一次"引导）。5 秒一轮给足响应度。
+        # 到点的定时唤醒由后端心跳轮询（`core.session.TurnScheduler.poll_due`）；这里只收 pill。
         async def _suspension_tick():
-            try:
-                await gui._suspension_poll_tick()
-            except Exception as e:
-                logger.warning(f"[Suspension] tick 异常: {e}")
             # ⭐⭐⭐ [2026-08-09 实测] **等待 pill 的收尾挂进 tick。**
             #
             # 🔴 实测问题：Nano 自己调 `cancel_wait` 之后 pill 不收 ——

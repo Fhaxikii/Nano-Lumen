@@ -561,7 +561,7 @@ def discard(item_id: str, reason: str = "") -> None:
     ⚠️ 与 `discard_all_pending` 一样，这是**允许丢用户消息**的路径，
        所以调用点必须先把它**呈现给用户**（定的是「呈现，不执行」）。
        📌 呈现完再丢，和悄悄丢，是两件事。
-    🔴 而且**必须丢**：留着 PENDING 的话，下一次 `_drain_inbox` 会把它捡起来
+    🔴 而且**必须丢**：留着 PENDING 的话，下一次排空（`TurnScheduler.drain`）会把它捡起来
        真的执行 —— 那正是被否掉的那一支。
     """
     try:

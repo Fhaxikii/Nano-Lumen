@@ -377,25 +377,25 @@ def t_app_wiring() -> None:
           "而崩溃可能发生在任何时刻）")
     check("_rt_inbox_busy" in live and "self._rt_inbox_parked[" in live,
           "忙时进内存队列，不起 pipeline")
-    check("await self._drain_inbox()" in live,
+    check("await _sched.drain()" in live,
           "轮结束后排空队列")
 
     # ⚠️ 排空必须在 `async with pipeline_lock` **之外**
     seg = live.split("async def _safe_execute_pipeline")[1].split("async def ")[0]
-    lock_i = seg.index("async with self.pipeline_lock")
-    drain_i = seg.index("await self._drain_inbox()")
+    lock_i = seg.index("async with _sched.lock")
+    drain_i = seg.index("await _sched.drain()")
     fin_i = seg.index("finally:")
     check(drain_i > fin_i,
           "⭐⭐ 排空写在 finally **之后**（= 锁已释放）。写在锁作用域里的话，"
           "被排空起的那一轮会立刻撞上还没释放的锁 → 又被判成「忙」→ "
           "又进队列 → **永远没人处理**。"
           "📌 一个「等锁释放后再做」的动作，不能写在还持有锁的作用域里")
-    check(seg[drain_i - 400:drain_i].count("async with self.pipeline_lock") == 0,
+    check(seg[drain_i - 400:drain_i].count("async with _sched.lock") == 0,
           "⚠️ 且它前面没有重新进入锁", "")
 
     check("_ib.discard_all_pending" in live,
           "⭐ 重置对话 = 用户显式丢弃（唯一允许丢的路径）")
-    check("payload={\"item_id\": item_id}" in live,
+    check("payload={\"item_id\": item_id}" in module_text("core.session"),
           "⭐ 认领传的是**具体那一条**的 id")
     check("库负责「不丢」" in src,
           "⚠️ 两层分工留了痕：库负责不丢、内存负责接得上")
@@ -562,25 +562,28 @@ def t_wake_intent_wiring() -> None:
     check("内核正在处理中" in src,
           "⚠️ 但注释里留着原文 —— 📌 删的是「还在运行的东西」，不是「关于它的记忆」")
 
-    check("_rt_inbox_submit_wake" in live,
-          "⭐ 手动「继续」被拒时改成落库 + 进队列")
-    check('args[0] == "wake"' in live,
-          "⭐ 排空认得两种项：用户消息起新 turn / 唤醒意图走 `_drive_wake`。"
+    _sess = module_text("core.session")
+    check("inbox_submit_wake(suspension_id, \"manual\")" in _sess,
+          "⭐ 手动「继续」被拒时改成落库 + 进队列（后端调度器）")
+    check('args[0] == "wake"' in _sess,
+          "⭐ 排空认得两种项：用户消息起新 turn / 唤醒意图走 `drive_wake`。"
           "📌 这正是 `ItemKind` 刻意分两种的原因")
 
-    # ⚠️⚠️ 每一个持锁点后面都必须有排空
-    n_lock = len(re.findall(r"async with self\.pipeline_lock", live))
-    n_drain = live.count("await self._drain_inbox()")
+    # ⚠️⚠️ 每一个持锁点后面都必须有排空（用户消息轮在界面，唤醒轮在后端调度器）
+    _sess_live = "\n".join(l for l in _sess.splitlines() if not l.strip().startswith("#"))
+    n_lock = live.count("async with _sched.lock") + _sess_live.count("async with self.lock")
+    n_drain = live.count("await _sched.drain()") + _sess_live.count("await self.drain()")
     check(n_lock == n_drain == 2,
           "⭐⭐ **两个持锁点都跟着排空**。漏一处的后果是：在那条路径跑的时候"
           "进队列的消息会一直排着，直到下一次有别的 turn 结束 —— "
           "没有下一次就是永远。"
           "📌 **一个「锁释放后要做的动作」，必须挂在每一个持有那把锁的地方**",
           f"lock={n_lock} drain={n_drain}")
-    for m in re.finditer(r"async with self\.pipeline_lock", live):
-        seg = live[m.end():m.end() + 6000]
-        check("await self._drain_inbox()" in seg,
-              "⚠️ 这个持锁点后面有排空", "")
+    for _src_l, _lock, _drain in ((live, "async with _sched.lock", "await _sched.drain()"),
+                                  (_sess_live, "async with self.lock", "await self.drain()")):
+        for m in re.finditer(re.escape(_lock), _src_l):
+            seg = _src_l[m.end():m.end() + 6000]
+            check(_drain in seg, "⚠️ 这个持锁点后面有排空", "")
 
 
 def t_seam_wiring() -> None:
@@ -1086,35 +1089,35 @@ def t_wake_never_silently_dropped() -> None:
           而它当时把 `_drive_wake` 当成了**正面例子**。
     """
     print("\n[11] ⭐⭐⭐ 唤醒在内核忙时进队列，不许静默丢掉")
-    app = module_text("app")
+    app = module_text("core.session")
     tree = ast.parse(app)
 
     fn = None
     for n in ast.walk(tree):
         if isinstance(n, ast.AsyncFunctionDef) and n.name == "_drive_wake_inner":
             fn = n
-    check(fn is not None, "前置：找到 `_drive_wake`")
+    check(fn is not None, "前置：找到后端调度器的 `_drive_wake_inner`")
     body = ast.unparse(fn) if fn else ""
 
     # ① 忙的时候必须落队列，不许只是 return
     # ⚠️ 2026-08-09 收成门面  之后，这两条改成断言"两条早退路径共用它"
-    check("_park_wake" in body,
+    check("park_wake" in body,
           "⭐⭐⭐ 内核忙时**把唤醒意图落进 durable inbox** —— "
           "🔴 这一格红了就回到了那个「后台完成了但 Nano 永远不说话」的老问题")
     pw = None
     for n in ast.walk(tree):
-        if isinstance(n, ast.FunctionDef) and n.name == "_park_wake":
+        if isinstance(n, ast.FunctionDef) and n.name == "park_wake":
             pw = n
     pwb = ast.unparse(pw) if pw else ""
-    check(pw is not None, "前置：找到门面 `_park_wake`")
+    check(pw is not None, "前置：找到门面 `park_wake`")
 
-    check(body.count("_park_wake") >= 2,
+    check(body.count("park_wake") >= 2,
           "⭐⭐⭐ **两条早退路径（内核忙 / 预算硬上限）共用同一个出口** —— "
           "🔴 cmd53 我只修了「忙」那条，「预算」那条原样留着静默 return，"
           "对 background 又是同一个静默丢失（只是触发原因换了）。"
           "📌 **同一种失败要走同一个出口，否则「补齐所有出口」这件事永远做不完**",
-          f"{body.count('_park_wake')} 处")
-    check("_rt_inbox_submit_wake" in pwb and "_rt_inbox_parked" in pwb,
+          f"{body.count('park_wake')} 处")
+    check("inbox_submit_wake" in pwb and "self.parked" in pwb,
           "⭐ 门面里真的落进 durable inbox + 排空表")
     check("_v[1] == suspension_id" in pwb.replace(chr(39), chr(34)).replace(chr(34)+chr(34),chr(34)) or "suspension_id" in pwb,
           "⭐⭐ 门面**对同一条挂起去重** —— 预算硬上限不是瞬时状态，可能连续多轮都满，"
@@ -1131,14 +1134,14 @@ def t_wake_never_silently_dropped() -> None:
           "只排一个 id 等于把上下文丢在原地")
 
     # ③ 连队列都进不去时要响亮
-    check("logger.error" in body,
+    check("logger.error" in pwb,
           "⭐ 连队列都进不去时**响亮报错** —— 这条路径丢掉的是"
           "「后台任务已经完成」这个事实，而它不会有第二次机会")
 
     # ④ 排空侧要认 4 元组，且仍兼容 3 元组
     dr = None
     for n in ast.walk(tree):
-        if isinstance(n, ast.AsyncFunctionDef) and n.name == "_drain_inbox":
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "drain":
             dr = n
     dbody = ast.unparse(dr) if dr else ""
     check("len(args) > 3" in dbody,
@@ -1152,7 +1155,7 @@ def t_wake_never_silently_dropped() -> None:
         if isinstance(n, ast.AsyncFunctionDef) and n.name == "notify_background_done":
             nb = n
     nbody = ast.unparse(nb) if nb else ""
-    check("_settle_waiting_pill" not in nbody,
+    check(nb is not None and "settle_wake" not in nbody,
           "⭐⭐⭐ `notify_background_done` **不再自己定型 pill** —— "
           "`_drive_wake` 内部早就把定型挪到了「拿到锁之后」，"
           "但那次改动只改了它自己那条路径。"
@@ -1161,7 +1164,7 @@ def t_wake_never_silently_dropped() -> None:
           "比什么都不说更糟")
 
     # ⑥ 反向：poller 只轮定时这件事本身要留痕（免得有人以为它什么都轮）
-    check("due_timers" in app,
+    check("定时轮询永远轮不到它" in app,
           "⭐ poller 走的是 `due_timers()` —— 它**只轮定时**，"
           "这就是为什么 background 不能指望它")
 

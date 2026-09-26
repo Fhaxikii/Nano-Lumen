@@ -241,9 +241,12 @@ def t_no_dangling_method_calls() -> None:
 
     # ⭐ 那条唤醒主路径上的四个方法单独钉一次 —— 它们是这次事故的受害者，
     #   而且其中三个**只被 lambda / 定时器引用**，最容易被静默删掉还没人发现。
-    for name in ("_wake_now", "_cancel_suspension", "_drive_wake",
-                 "_suspension_poll_tick"):
-        check(f"def {name}" in src, f"⭐ `{name}` 在（唤醒主路径）")
+    for name in ("_wake_now", "_cancel_suspension", "run_wake_turn", "settle_wake"):
+        check(f"def {name}" in src, f"⭐ `{name}` 在（唤醒主路径的界面一侧）")
+    # 唤醒驱动与定时轮询在后端调度器（S6-6b 第 4a 步）
+    _sess = module_text("core.session")
+    for name in ("drive_wake", "poll_due", "notify_background_done", "park_wake"):
+        check(f"def {name}" in _sess, f"⭐ `{name}` 在（后端调度器）")
 
 
 def t_l7_viewsession_declares_the_whole_field_set() -> None:

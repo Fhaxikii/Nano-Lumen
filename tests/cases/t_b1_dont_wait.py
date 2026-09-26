@@ -628,23 +628,28 @@ def t_cmd71_recheck_continues_into_the_same_bubble() -> None:
     print("\n[气泡] 合并 = 最新气泡是 nano 的 AND 触发那刻前台上有东西")
     app = module_text("app")
     tree = ast.parse(app)
+    _sess = module_text("core.session")
     wake = "\n".join(
+        ast.unparse(n) for n in ast.walk(ast.parse(_sess))
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and n.name in ("drive_wake", "_drive_wake_inner"))
+    _rwt = "\n".join(
         ast.unparse(n) for n in ast.walk(tree)
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and n.name in ("_drive_wake", "_drive_wake_inner"))
+        and n.name == "run_wake_turn")
     check("busy_at_trigger" in wake,
           "⭐⭐⭐ 判据是**触发那一刻**前台忙不忙（`busy_at_trigger`）—— "
           "⚠️ 不能在渲染那刻再问：排队的唤醒被排到时上一轮早已结束、锁也释放了，"
           "那时读到的是**另一个时刻**的答案，会把该并入的判成新气泡")
-    check("_same_epoch = bool(busy_at_trigger)" in wake,
-          "⭐⭐ 合并条件就是它 —— 不再有任何对象身份比对")
-    check("_pill_entry['resp_state'] = self._resp_state" not in wake
-          and '_pill_entry["resp_state"] = self._resp_state' not in wake,
+    check("bool(busy_at_trigger)" in wake and "_same_epoch = bool(continue_bubble)" in _rwt,
+          "⭐⭐ 合并条件就是它（调度器传给呈现方的 continue_bubble）—— 不再有任何对象身份比对")
+    check("_pill_entry['resp_state'] = self._resp_state" not in _rwt
+          and '_pill_entry["resp_state"] = self._resp_state' not in _rwt,
           "🔴 **那个会过期的指针不许回来**（负向断言）—— 判据换掉后它再无读取点；"
           "📌 留着一个零读取点的写入，是「写好但没人调」的反面镜像："
           "它同样会让下一个人以为这里还有机制在生效")
-    check("走了哪条路" in app,
-          "⭐ 留痕：**为什么不用新加时间戳** —— 触发时忙走 `_park_wake` 进队列、"
+    check("触发那一刻前台上有东西（忙才会进队列）" in _sess,
+          "⭐ 留痕：**为什么不用新加时间戳** —— 触发时忙走 `park_wake` 进队列、"
           "闲则直接进来，**走了哪条路本身就是那个记录**")
 
     # ── 空气泡：插话时折叠「什么都没产出」的占位 ──────────────────────
@@ -680,11 +685,10 @@ def t_cmd71_wake_closes_its_own_inbox_row() -> None:
     📌 `delivery_count` 存在的唯一理由，是回答「崩溃时这条给模型看过没有」。
     """
     print("\n[cmd71-3] 🔴 唤醒轮要收自己那条 inbox 记录")
-    app = module_text("app")
-    tree = ast.parse(app)
+    tree = ast.parse(module_text("core.session"))
     outer = next((n for n in ast.walk(tree)
                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  and n.name == "_drive_wake"), None)
+                  and n.name == "drive_wake"), None)
     inner = next((n for n in ast.walk(tree)
                   if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
                   and n.name == "_drive_wake_inner"), None)
@@ -697,13 +701,13 @@ def t_cmd71_wake_closes_its_own_inbox_row() -> None:
 
     # ⭐⭐⭐ 收尾必须在 `finally` 里，且**壳里只有一条路**
     _fins = [n for n in ast.walk(outer) if isinstance(n, ast.Try) and n.finalbody]
-    check(bool(_fins) and any("_rt_inbox_consume" in ast.unparse(f2)
+    check(bool(_fins) and any("inbox_consume" in ast.unparse(f2)
                               for n2 in _fins for f2 in n2.finalbody),
           "⭐⭐⭐ 消费挂在 `finally` 上 —— **这一轮怎么结束的都要收**")
     # 🔴 负向：内层里**不许**再各自补一次
     #    📌 逐出口补丁的正确性依赖「我数全了」；第一版就是逐个补，
     #       当场漏了「预算满」那条。包一层不依赖任何人记得。
-    check("_rt_inbox_consume" not in ast.unparse(inner),
+    check("inbox_consume" not in ast.unparse(inner),
           "🔴 内层里**没有**逐出口的收尾 —— "
           "📌 里面有三条早退，逐个补的写法会随着将来新增 return 再次失效，"
           "而且失效时不报错",

@@ -246,8 +246,9 @@ def t_source_invariants() -> None:
           "📌 快照的意义就是「不再依赖那个会变的东西」，"
           "顺手把它塞进来等于没快照")
 
-    _dw = ast.unparse(_fn("_drive_wake"))
-    check("_settle_pill_snapshot" not in _dw,
+    _dw = ast.unparse(_fn("settle_wake"))
+    check("_settle_pill_snapshot" not in _dw
+          and _dw.index("if trigger == 'background':") < _dw.index("_settle_waiting_action"),
           "⭐⭐ 唤醒路径上**没有**收 pill 的动作 —— "
           "📌 **定时回看只证明「该看一眼」，不证明载体完成**；"
           "两件事共用一个出口，就会得到实测看到的那个假勾")

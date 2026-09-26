@@ -1,0 +1,338 @@
+# -*- coding: utf-8 -*-
+"""会话调度器：谁在什么时候起一轮（S6-6b 业务状态下沉）。
+
+一次只能有一轮在跑（`lock`）。一轮起不来的时候（忙 / 预算到硬上限）进队列，
+上一轮结束后由 `drain` 接上 —— 闸的出口是失败，队列的出口是稍后处理。
+
+目前在这里的：
+  · 唤醒轮：定时到点（`poll_due`，由后端心跳调用）、后台载体完成
+    （`notify_background_done`，载体表的完成回调）、用户点「立即执行」（`wake_now`）
+    与「取消计划」（`cancel_wait`）。
+  · 排队与排空：`parked`（内存侧）+ durable inbox（库侧，负责「不丢」）。
+  · 前台空了 → 给没安排回看的后台等待排第一次回看（60 秒）。
+用户消息的提交 / 排队 / 插话切开回应期仍由界面决定（S6-6b 第 4b 步下沉），
+它们进同一个队列，由登记的呈现方（`Presenter.run_parked_user_item`）接上。
+
+呈现方（界面）只负责画：唤醒轮的气泡与事件流（`run_wake_turn`）、
+等待 pill 的定型（`settle_wake` / `settle_cancelled_handback`）。
+每一轮开始 / 结束通知 `add_turn_listener` 登记的监听者（主动智能的「正在回复」等）。
+"""
+from __future__ import annotations
+
+import asyncio
+from typing import Any, Awaitable, Callable, Optional, Protocol
+
+from loguru import logger
+
+_FIRST_RECHECK_SEC = 60.0
+
+
+# ── durable inbox 门面 ────────────────────────────────────────────────────
+# 全部吞异常，退化方向朝「照旧干活」：队列的目的是不丢，不是多一道挡住用户的闸。
+def inbox_submit(body: str, detail: dict | None = None) -> str | None:
+    try:
+        from core.runtime import inbox as _ib
+        return _ib.submit_user_message(body, detail)
+    except Exception as e:
+        logger.error(f"[Inbox] 落库失败（不阻断，照旧处理这条）: {e}")
+        return None
+
+
+def inbox_claim(item_id: str | None) -> None:
+    """把**这一条**标成「正在处理」（取哪一条去做，就标哪一条；`mem_` 开头的没落库）。"""
+    if not item_id or item_id.startswith("mem_"):
+        return
+    try:
+        from core.runtime import inbox as _ib
+        from core.runtime.kernel import get_kernel, Command
+        get_kernel().submit(Command(kind=_ib.CLAIM, payload={"item_id": item_id}))
+    except Exception as e:
+        logger.debug(f"[Inbox] 认领失败（忽略）: {e}")
+
+
+def inbox_consume(item_id: str | None) -> None:
+    if not item_id:
+        return
+    try:
+        from core.runtime import inbox as _ib
+        _ib.consume(item_id)
+    except Exception as e:
+        logger.debug(f"[Inbox] 标记已消费失败（忽略）: {e}")
+
+
+def inbox_submit_wake(suspension_id: str, trigger: str) -> str | None:
+    """收下一个「继续」意图（与用户消息分开的 kind：它恢复一个已有挂起，不起新话题）。"""
+    try:
+        from core.runtime import inbox as _ib
+        return _ib.submit_wake_intent(suspension_id, trigger)
+    except Exception as e:
+        logger.error(f"[Inbox] 唤醒意图落库失败（不阻断）: {e}")
+        return None
+
+
+def inbox_pending() -> int:
+    try:
+        from core.runtime import inbox as _ib
+        from core.runtime.kernel import get_kernel
+        return _ib.pending_count(get_kernel())
+    except Exception:
+        return 0
+
+
+class Presenter(Protocol):
+    """界面（呈现方）要实现的接口。"""
+
+    async def run_wake_turn(self, suspension_id: str, trigger: str,
+                            continue_bubble: bool, source) -> None:
+        """画一个唤醒轮：续接当前气泡或新开一个，把事件流 `source` 渲染完。"""
+
+    def settle_wake(self, suspension_id: str, trigger: str) -> None:
+        """唤醒轮拿到锁、即将开始：把等待 pill 定型（background 还要收掉原动作的转圈）。"""
+
+    def settle_cancelled_handback(self, bg_ref: str) -> int:
+        """载体完成但等待已取消：只收原动作的转圈，返回收了几条。"""
+
+    def run_parked_user_item(self, item_id: str, args: Any) -> None:
+        """排队的用户消息轮到了（第 4b 步之前由界面起这一轮）。"""
+
+
+class TurnScheduler:
+    def __init__(self):
+        self.lock = asyncio.Lock()
+        self.parked: dict = {}                 # item_id → 排队项（dict 保序 = 入队顺序）
+        self.running_inbox_id: Optional[str] = None
+        self.presenter: Optional[Presenter] = None
+        self.agent: Any = None                 # 提供 resume_suspension / memory
+        self._turn_listeners: list[Callable[[bool], None]] = []
+
+    # ── 登记 ──────────────────────────────────────────────────────────────
+    def attach(self, agent: Any, presenter: Presenter) -> None:
+        self.agent = agent
+        self.presenter = presenter
+
+    def add_turn_listener(self, fn: Callable[[bool], None]) -> None:
+        if fn not in self._turn_listeners:
+            self._turn_listeners.append(fn)
+
+    def turn_state(self, active: bool) -> None:
+        """一轮开始（True）/ 结束（False）：通知监听者。持锁的一方调用。"""
+        for fn in list(self._turn_listeners):
+            try:
+                fn(active)
+            except Exception as e:
+                logger.debug(f"[Turn] 监听者出错（忽略）: {e}")
+
+    def busy(self) -> bool:
+        return self.lock.locked()
+
+    # ── 唤醒 ──────────────────────────────────────────────────────────────
+    def park_wake(self, suspension_id: str, trigger: str, note: str, why: str) -> None:
+        """唤醒起不来 → 排进队列（库 + 内存），锁 / 预算恢复后由排空接上。
+
+        同一条挂起只排一次：预算硬上限可能连续多轮都满，每次重排都写一行就是泄漏。
+        """
+        for _v in self.parked.values():
+            if (isinstance(_v, tuple) and len(_v) > 1
+                    and _v[0] == "wake" and _v[1] == suspension_id):
+                logger.debug(f"[Inbox] {suspension_id} 的唤醒已在队列里，不重复排（{why}）")
+                return
+        try:
+            _wid = inbox_submit_wake(suspension_id, trigger)
+            self.parked[_wid or f"memwake_{suspension_id}"] = ("wake", suspension_id, trigger, note)
+            logger.info(f"[Inbox] {why} → {trigger} 唤醒进队列（{suspension_id}）")
+        except Exception as e:
+            # 连队列都进不去 → 响亮报错：丢掉的是「后台任务已经完成」这个事实。
+            logger.error(f"[Suspension] 🔴 {trigger} 唤醒既起不来也进不了队列 "
+                         f"（{suspension_id}，{why}）—— 这个完成通知丢了: {e}")
+
+    async def drive_wake(self, suspension_id: str, trigger: str, note: str = "",
+                         inbox_item_id: str | None = None) -> None:
+        """唤醒轮的唯一出口：不管从哪条路返回，排队时认领的那条 inbox 记录都要收掉。"""
+        try:
+            # inbox_item_id 有值 ⟺ 触发那一刻前台上有东西（忙才会进队列）。
+            await self._drive_wake_inner(suspension_id, trigger, note,
+                                         busy_at_trigger=bool(inbox_item_id))
+        finally:
+            if inbox_item_id:
+                inbox_consume(inbox_item_id)
+
+    async def _drive_wake_inner(self, suspension_id: str, trigger: str,
+                                note: str = "", busy_at_trigger: bool = False) -> None:
+        if self.lock.locked():
+            # 后台等待的 fire_at 为空，定时轮询永远轮不到它：忙时必须进队列，不能静默返回。
+            self.park_wake(suspension_id, trigger, note, "内核忙")
+            return
+        try:
+            from core.usage import sync_budget_health
+            if sync_budget_health() == "hard":
+                logger.warning(f"[Suspension] 预算已达硬上限，本次不唤醒 "
+                               f"{suspension_id}（记录保持 active，唤醒进队列）")
+                self.park_wake(suspension_id, trigger, note, "预算已达硬上限")
+                return
+        except Exception:
+            pass
+        async with self.lock:
+            self.turn_state(True)
+            try:
+                p = self.presenter
+                if p is not None:
+                    # 真正拿到锁、即将起唤醒轮时才定型 pill（内核忙时不提前定型）。
+                    p.settle_wake(suspension_id, trigger)
+                    source = self.agent.resume_suspension(suspension_id, trigger, note=note)
+                    # 同一段回应期（触发那一刻前台上有东西）→ 续接进原气泡。
+                    await p.run_wake_turn(suspension_id, trigger, bool(busy_at_trigger), source)
+                else:
+                    logger.error(f"[Suspension] 没有登记呈现方，唤醒 {suspension_id} 无法起轮")
+                self._activity_event("nano_responded")
+            except Exception as e:
+                logger.error(f"[Suspension] 唤醒轮异常: {e}")
+            finally:
+                self.turn_state(False)
+        # 锁已释放：唤醒轮跑的时候进来的消息 / 唤醒要在这里接上。
+        try:
+            await self.drain()
+        except Exception as e:
+            logger.error(f"[Inbox] 唤醒轮后排空队列失败: {e}")
+
+    async def notify_background_done(self, ref: str, result_hint: str | None = None) -> None:
+        """后台载体（ref）完成 → 唤醒等它的挂起；等待已取消则只收原动作的界面。"""
+        try:
+            from core.runtime.kernel import get_kernel
+            from core.runtime import waitcond as _wc
+            _active = _wc.list_live(get_kernel(), oldest_first=True)
+            _hit = [r for r in _active
+                    if _wc.WakeSource.BACKGROUND in r.wake_on and r.bg_ref == ref]
+        except Exception:
+            _hit = []
+        if not _hit:
+            _settled = 0
+            if self.presenter is not None:
+                try:
+                    _settled = self.presenter.settle_cancelled_handback(ref)
+                except Exception as e:
+                    logger.debug(f"[Suspension] 收原动作界面失败: {e}")
+            if _settled:
+                logger.info(f"[Suspension] background 完成 ref={ref}；等待已取消，"
+                            f"仅收 {_settled} 条原始动作 UI，不唤醒 Nano")
+            else:
+                logger.info(f"[Suspension] background 完成 ref={ref}，但无匹配 active 挂起（可能已被其它源唤醒）")
+            return
+        for r in _hit:
+            await self.drive_wake(r.wait_id, trigger="background", note=(result_hint or ""))
+
+    async def poll_due(self) -> None:
+        """到点的定时挂起 → 驱动唤醒（后端心跳周期调用）。
+
+        副作用驱动查询：DUE_FOR_REVIEW 也要捞到，否则一次唤醒尝试失败就永久失联。
+        """
+        try:
+            from core.runtime.kernel import get_kernel
+            from core.runtime import waitcond as _wc
+            due = _wc.list_due_wakeups(get_kernel())
+        except Exception as e:
+            logger.warning(f"[Suspension] 轮询失败: {e}")
+            return
+        for rec in due:
+            if rec.wait_id:
+                await self.drive_wake(rec.wait_id, trigger="timer")
+
+    def wake_now(self, suspension_id: str) -> str:
+        """用户点「立即执行」。返回 "ended"（等待已结束）/ "parked"（忙，已排队）/ "started"。"""
+        try:
+            from core.runtime.kernel import get_kernel
+            from core.runtime import waitcond as _wc
+            rec = _wc.find_by_id(get_kernel(), suspension_id)
+        except Exception:
+            rec = None
+        if rec is None or not rec.is_live:
+            return "ended"
+        if self.lock.locked():
+            _wid = inbox_submit_wake(suspension_id, "manual")
+            self.parked[_wid or f"memwake_{suspension_id}"] = ("wake", suspension_id, "manual")
+            logger.info(f"[Inbox] 内核忙 → 手动继续进队列（{suspension_id}）")
+            return "parked"
+        asyncio.ensure_future(self.drive_wake(suspension_id, trigger="manual"))
+        return "started"
+
+    def cancel_wait(self, suspension_id: str) -> bool:
+        """用户点「取消计划」：取消那条等待，并在对话里留一条系统记录。"""
+        from core.runtime import waitcond as _wc
+        ok = _wc.cancel_wait(suspension_id)
+        if ok:
+            try:
+                self.agent.memory.add_system_note(
+                    "assistant", "[System record: the user cancelled the pending wait above; "
+                                 "Nano will not continue waiting.]")
+            except Exception:
+                pass
+        return ok
+
+    # ── 排空 ──────────────────────────────────────────────────────────────
+    async def drain(self) -> None:
+        """当前轮结束 → 接上排队的下一条。一次只处理一条，由新那一轮的收尾再次调用
+        （新轮是另起的 task，这里不等它；每次都重新看「还有没有」，而不是维护计数）。"""
+        if self.lock.locked():
+            return
+        if not self.parked:
+            # 前台空了 → 视线转向后台：没安排回看的后台等待排第一次回看，
+            # 之后由模型自己 `set_next_checkin`。
+            try:
+                from core.runtime import waitcond as _wc
+                for _wid in _wc.parked_without_recheck():
+                    _wc.reschedule_wait(_wid, _FIRST_RECHECK_SEC)
+                    logger.info(f"[B1] 前台空了 → 视线转回后台（{_wid}，60s 后看一眼）")
+            except Exception as e:
+                logger.debug(f"[B1] 转视线回后台失败（完成唤醒仍在）: {e}")
+            return
+        item_id = next(iter(self.parked))
+        args = self.parked.pop(item_id)
+        logger.info(f"[Inbox] 上一轮结束 → 接上排队的那条（{item_id}），"
+                    f"队列里还剩 {len(self.parked)} 条")
+        inbox_claim(item_id)
+        self.running_inbox_id = None if item_id.startswith(("mem_", "memwake_")) else item_id
+        if isinstance(args, tuple) and args and args[0] == "wake":
+            # 唤醒这一条的收尾交给它自己那条路（drive_wake 的 finally）：谁起的轮，谁收。
+            self.running_inbox_id = None
+            _sid = args[1]
+            _trig = args[2] if len(args) > 2 else "manual"
+            _note = args[3] if len(args) > 3 else ""
+            asyncio.ensure_future(self.drive_wake(_sid, trigger=_trig, note=_note,
+                                                  inbox_item_id=item_id))
+            return
+        if self.presenter is not None:
+            self.presenter.run_parked_user_item(item_id, args)
+        else:
+            logger.error(f"[Inbox] 没有登记呈现方，排队项 {item_id} 无法接上（仍在库里）")
+
+    def consume_running(self) -> None:
+        """用户消息那一轮结束：收掉它对应的 inbox 记录。"""
+        inbox_consume(self.running_inbox_id)
+        self.running_inbox_id = None
+
+    def discard_parked(self) -> None:
+        """重置对话：用户显式丢掉排队项（库里记 DISCARDED，由调用方负责）。"""
+        self.parked.clear()
+
+    @staticmethod
+    def _activity_event(ev: str) -> None:
+        try:
+            from core.proactive.activity import get_buffer
+            get_buffer().on_nano_event(ev)
+        except Exception:
+            pass
+
+
+_scheduler: Optional[TurnScheduler] = None
+
+
+def get_scheduler() -> TurnScheduler:
+    global _scheduler
+    if _scheduler is None:
+        _scheduler = TurnScheduler()
+    return _scheduler
+
+
+def reset_for_tests() -> TurnScheduler:
+    global _scheduler
+    _scheduler = TurnScheduler()
+    return _scheduler

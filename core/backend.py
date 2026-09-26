@@ -5,7 +5,7 @@
 （orchestrator、runtime、health、proactive），不依赖任何界面框架。
 
 周期心跳（间隔秒）：
-  runtime_reconcile 5 · capability_probe 15 · budget_health 20 · intel_tick 20 · carrier_heartbeat 30 ·
+  runtime_reconcile 5 · suspension_poll 5 · capability_probe 15 · budget_health 20 · intel_tick 20 · carrier_heartbeat 30 ·
   cpu_sample 60 · ambient_trail 240 · canary 300
 一次性：asyncio 崩溃处理器（立即）· mcp_startup（1.5 秒后）
 """
@@ -71,6 +71,9 @@ def start_backend_services(agent: Any, intel_engine: Optional[Any] = None) -> No
         logger.debug(f"[CrashJournal] asyncio handler 未安装: {e}")
 
     heartbeat.register("runtime_reconcile", 5, _runtime_reconcile)
+    # 到点的定时挂起 → 唤醒轮（只是本地 SQLite 查询；真正的模型调用只在到点时发生）
+    from core.session import get_scheduler
+    heartbeat.register("suspension_poll", 5, get_scheduler().poll_due)
     heartbeat.register("capability_probe", 15, _capability_probe)
     heartbeat.register("budget_health", 20, _budget_health)
     heartbeat.register("canary", 300, agent.maybe_run_canary)

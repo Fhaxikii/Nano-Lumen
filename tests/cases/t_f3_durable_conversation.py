@@ -412,7 +412,7 @@ def t_no_system_note_still_uses_add_message() -> None:
             out.append(a.values[0].value)
 
     bad, good = [], 0
-    for f in ("app", "core.orchestrator"):
+    for f in ("app", "core.orchestrator", "core.session"):
         src = module_text(f)
         for n in ast.walk(ast.parse(src)):
             if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)

@@ -749,9 +749,11 @@ def t_wake_continues_same_bubble() -> None:
     print("\n[12] ⭐⭐⭐ 唤醒续接进同一个气泡")
     app = module_text("app")
     tree = ast.parse(app)
-    fn = [n for n in ast.walk(tree)
+    # S6-6b 第 4a 步：唤醒驱动在后端调度器（`core.session` 的 drive_wake / _drive_wake_inner），
+    # 气泡续接的判断在界面的呈现方法 `run_wake_turn`。
+    fn = [n for n in ast.walk(ast.parse(module_text("core.session")))
           if isinstance(n, ast.AsyncFunctionDef)
-          and n.name in ("_drive_wake", "_drive_wake_inner")]
+          and n.name in ("drive_wake", "_drive_wake_inner")]
     # ⚠️⚠️ [2026-08-22] **唤醒这条路现在是两个函数**：`_drive_wake` 是一层很薄的
     #    包壳（只负责收那条 inbox 记录，见它的 docstring），流程在
     #    `_drive_wake_inner` 里。
@@ -761,12 +763,14 @@ def t_wake_continues_same_bubble() -> None:
     check(len(fn) == 2, "前置：找到唤醒那条路的两个函数（壳 + 内层）",
           f"实际 {sorted(x.name for x in fn)}")
     node = None
-    for _f in fn:
+    _rwt = [n for n in ast.walk(tree)
+            if isinstance(n, ast.AsyncFunctionDef) and n.name == "run_wake_turn"]
+    for _f in _rwt:
         for n in ast.walk(_f):
             if isinstance(n, ast.If) and ast.unparse(n.test) == "_same_epoch":
                 node = n
     check(node is not None,
-          "⭐⭐⭐ `_drive_wake` 里有「是不是同一段回应期」的判断")
+          "⭐⭐⭐ 唤醒轮的呈现（`run_wake_turn`）里有「是不是同一段回应期」的判断")
     if node is not None:
         body = "\n".join(ast.unparse(s) for s in node.body)
         els = "\n".join(ast.unparse(s) for s in node.orelse)
@@ -827,8 +831,7 @@ def t_handback_action_spinner_finishes_honestly() -> None:
     #       于是断言在一次纯粹的重构之后变红，红得像"行为没了"。
     wake_body = "\n".join(
         ast.unparse(n) for n in ast.walk(tree)
-        if isinstance(n, ast.AsyncFunctionDef)
-        and n.name in ("_drive_wake", "_drive_wake_inner"))
+        if isinstance(n, ast.FunctionDef) and n.name == "settle_wake")
     check("trigger == 'background'" in wake_body and
           "_settle_waiting_action" in wake_body,
           "⭐⭐ 只有 background 完成信号收动作明细；timer 回看不冒充完成")
@@ -926,7 +929,8 @@ def t_cancelled_handback_still_closes_its_original_action() -> None:
     check("intent='condition_recheck'" in wait_open_body and
           "intent=intent" in wait_open_body and "intent=_plan_intent" in orch,
           "wait_for 写入时的 intent 能穿过运行时封装")
-    check("_settle_cancelled_handback_actions(ref)" in app and
+    check("settle_cancelled_handback(ref)" in module_text("core.session")
+          and "self._settle_cancelled_handback_actions(bg_ref)" in app and
           '"bg_ref": bg_ref' in app,
           "取消后的完成通知仍能按 carrier ref 找到原 action")
     check("does not cancel a process" in module_text("core.tools.manifests"),
