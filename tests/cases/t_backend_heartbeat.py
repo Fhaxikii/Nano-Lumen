@@ -150,6 +150,69 @@ def t_app_no_longer_drives_them() -> None:
     check("nicegui" not in bsrc and "from app" not in bsrc, "core.backend 不依赖界面")
 
 
+def t_chat_outlet_and_intel() -> None:
+    print("\n▶ 主动开口出口与主动智能引擎在后端")
+    from core import backend as B
+    from core.runtime import events as E
+    from core import session as SS
+
+    async def run():
+        E._reset_for_tests()
+        q = E.subscribe()
+        await B.speak("周五了，要不要把本周改动理一份清单？", "iv1")
+        B.emit_chat_event(category="fault", title="有个能力出问题了", lines=["x"],
+                          capabilities=["rag"], dedupe_key="k1")
+        out = []
+        while not q.empty():
+            out.append(q.get_nowait())
+        E._reset_for_tests()
+        return out
+    out = asyncio.run(run())
+    check(len(out) == 2 and all(t is None for t, _ in out), "两条都是轮外事件", str([t for t, _ in out]))
+    sp, fl = out[0][1], out[1][1]
+    check(sp.get("event") == "chat_message" and sp.get("category") == "speech"
+          and sp.get("intervention_id") == "iv1" and sp.get("body", "").startswith("周五了"),
+          "主动开口 → chat_message（speech，带 intervention_id）", str(sp)[:80])
+    check(fl.get("category") == "fault" and fl.get("capabilities") == ["rag"] and fl.get("dedupe_key") == "k1",
+          "故障卡 → chat_message（fault，带能力清单与去重 key）")
+
+    SS.reset_for_tests()
+    B._intel_engine = None
+
+    class _Agent:
+        provider = object()
+
+        async def maybe_run_canary(self):
+            pass
+
+        def record_ambient_trail(self):
+            pass
+
+    ag = _Agent()
+    real_start = H.start
+    H.start = lambda: None
+    try:
+        H.reset_for_tests()
+        asyncio.run(_register(B, ag, None))
+    finally:
+        H.start = real_start
+    eng = B.get_intel_engine()
+    check(eng is not None and ag._push_callback is B.speak,
+          "后端创建引擎；orchestrator 的主动开口出口指向 `core.backend.speak`")
+    SS.get_scheduler().turn_state(True)
+    _on = getattr(eng, "_is_responding", None)
+    SS.get_scheduler().turn_state(False)
+    check(_on is True and eng._is_responding is False, "「正在回复」由调度器的轮次监听设置")
+    B._intel_engine = None
+    SS.reset_for_tests()
+    H.reset_for_tests()
+
+    src = S.module_text("app")
+    check("_IntelEngine(" not in src and "self._intel_engine" not in src,
+          "界面不再创建 / 持有主动智能引擎")
+    check('elif _kind == "chat_message":' in src, "界面把轮外 chat_message 交给聊天区渲染")
+
+
 if __name__ == "__main__":
     print("=" * 74)
     print("后端周期任务")
@@ -157,6 +220,7 @@ if __name__ == "__main__":
     t_scheduler()
     t_backend_registration()
     t_app_no_longer_drives_them()
+    t_chat_outlet_and_intel()
 
     _ok = sum(1 for r in _results if r[0])
     print("")

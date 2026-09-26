@@ -34,7 +34,7 @@ def _start_backend_services(gui) -> None:
     """事件循环启动后开始后端心跳（`core.backend`）。"""
     try:
         from core.backend import start_backend_services
-        start_backend_services(gui.agent, getattr(gui, "_intel_engine", None))
+        start_backend_services(gui.agent)
     except Exception as e:
         logger.error(f"[Backend] 后端心跳启动失败: {e}")
 
@@ -101,7 +101,6 @@ load_dotenv()
 # 所以 core.* 与 nano_koala 全部放到 _bootstrap_core_modules()，只在主进程启动时导入。
 Orchestrator = None
 _get_activity_buffer = None
-_IntelEngine = None
 _ISignal = None
 _start_proactive_hooks = None
 os_dsl = None
@@ -125,7 +124,7 @@ def _bootstrap_core_modules() -> None:
     注意：native 窗口子进程 import 本文件时不会执行 __main__，因此不会走到这里；
     它只需要读取 app.native.start_args/window_args 这类轻量窗口参数。
     """
-    global Orchestrator, _get_activity_buffer, _IntelEngine, _ISignal
+    global Orchestrator, _get_activity_buffer, _ISignal
     global _start_proactive_hooks, os_dsl
     global ClaudeProvider, get_provider, GeminiProvider, CLAUDE_MODELS, CLAUDE_MODEL_MAP, GEMINI_MODELS, GEMINI_MODEL_MAP
     global usage_tracker, _fmt_tokens, registry, rag_engine, MemoryManager, render_nano_koala_avatar
@@ -133,7 +132,6 @@ def _bootstrap_core_modules() -> None:
     from nano_koala import render_nano_koala_avatar as _render_nano_koala_avatar
     from core.orchestrator import Orchestrator as _Orchestrator
     from core.proactive.activity import get_buffer as __get_activity_buffer
-    from core.proactive.intel.engine import ProactiveEngine as __IntelEngine
     from core.proactive.intel.feedback import Signal as __ISignal
     from core.proactive.hooks import start_hooks as __start_proactive_hooks
     from core.os_layer import dsl as _os_dsl
@@ -154,7 +152,6 @@ def _bootstrap_core_modules() -> None:
     render_nano_koala_avatar = _render_nano_koala_avatar
     Orchestrator = _Orchestrator
     _get_activity_buffer = __get_activity_buffer
-    _IntelEngine = __IntelEngine
     _ISignal = __ISignal
     _start_proactive_hooks = __start_proactive_hooks
     os_dsl = _os_dsl
@@ -919,7 +916,6 @@ class WebUI:
         # 用的是模块级那个，用户改完 key 后 RAG 还在用旧凭据直到重启。
         self.provider = get_provider()
         self.agent  = Orchestrator(self.provider, registry, self.memory)
-        self.agent._push_callback = self._proactive_push
         # 后台载体结束 → 唤醒等它的挂起；载体状态变化 → 刷新抽屉与 Skill 活动态。
         from core.runtime import carriers as _carriers
         _carriers.add_listener(self._on_carrier_change)
@@ -927,7 +923,6 @@ class WebUI:
         from core.session import get_scheduler as _get_sched
         _sched = _get_sched()
         _sched.attach(self.agent, self)
-        _sched.add_turn_listener(lambda active: self._intel_engine.set_responding(active))
         _carriers.set_completion_handler(_sched.notify_background_done)
         # 🔴 衰减发生在**本轮 `final_result` 之后**（orchestrator 的 finally 里），
         #    所以 UI 不能在 `final_result` 那一刻去问"有没有东西被移出去" —— 那时还没有。
@@ -939,9 +934,6 @@ class WebUI:
         # 看屏幕前 Nano 要把自己最小化让开；core 不直接依赖 UI 框架，由这里交给它取主窗口的方法。
         from nicegui import app as _napp_for_agent
         self.agent._native_window = lambda: _napp_for_agent.native.main_window
-        # 主动智能 v0：默认 SHADOW（只决策记日志、不真说话）。
-        # 复核 data/proactive_shadow.jsonl 后，把 engine.SHADOW_MODE 改 False 即上线。
-        self._intel_engine = _IntelEngine(self.provider, self._proactive_push)
         self._activity = _get_activity_buffer()
 
         self.scroll_area    = None
@@ -2395,7 +2387,7 @@ class WebUI:
         """轮外事件（不属于任何一轮，如 Subagent 跨过它那一轮之后的授权请求）。
 
         一个跨过了自己那一轮的执行者，不能再用那一轮的通道去要 UI：它的事件走总线上
-        不带轮 id 的那一路（`core.runtime.events.OUT_OF_TURN`）。只认需要用户回应的那几种。
+        不带轮 id 的那一路（`core.runtime.events.OUT_OF_TURN`）。还有聊天区的异步产出（`chat_message`：主动开口、故障卡）。
         """
         try:
             _kind = (_ev or {}).get("event", "")
@@ -2409,6 +2401,11 @@ class WebUI:
                     self._confirm_owner = _prev_owner
             elif _kind == "confirm_dismiss":
                 self._dismiss_pending_confirms(_ev.get("why", ""))
+            elif _kind == "chat_message":
+                # 聊天区的异步产出（主动开口 / 故障卡 …，`core.backend.emit_chat_event`）
+                self.emit_chat(**{k: _ev.get(k) for k in (
+                    "category", "body", "title", "lines", "hints",
+                    "intervention_id", "dedupe_key", "capabilities") if _ev.get(k) is not None})
             else:
                 logger.warning(f"[OOB] 轮外通道收到不认识的事件：{_kind}")
         except Exception as e:
@@ -7272,7 +7269,10 @@ class WebUI:
 
             def _send(sig, dismiss=False):
                 try:
-                    self._intel_engine.feedback(sig, intervention_id)
+                    from core.backend import get_intel_engine
+                    _eng = get_intel_engine()
+                    if _eng is not None:
+                        _eng.feedback(sig, intervention_id)
                 except Exception:
                     pass
                 try:
@@ -7318,19 +7318,9 @@ class WebUI:
         self._render_chat_event(ev)
 
     async def _proactive_push(self, content: str, intervention_id: str = None):
-        """主动开口的旧入口，保留签名——orchestrator._push_callback /
-        IntelEngine 都持有它。现在只是 emit_chat 的薄包装。
-
-        ⚠️ 已移除原来的 `self.agent.memory.add_message("assistant", content)`：
-        异步写对话历史会撕裂 tool_calls/tool_results 事务（见本节顶部第 4 层）。
-        模型侧的知情改走 RecentSystemEvents。
-        """
-        try:
-            from core.health import get_system_events
-            get_system_events().add(f"Nano spoke up on its own: {content[:120]}")
-        except Exception:
-            pass
-        self.emit_chat(category="speech", body=content, intervention_id=intervention_id)
+        """Nano 主动开口：交给后端出口（`core.backend.speak`），作为轮外事件回到界面渲染。"""
+        from core.backend import speak
+        await speak(content, intervention_id)
 
     # ── 健康登记表的唯一 UI 消费者 ────────────────────────────────────────
     async def _health_consumer_tick(self):

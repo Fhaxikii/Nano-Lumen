@@ -85,7 +85,7 @@ class Orchestrator(
         # 而那个裸 bool 漏写一次 False 就永久停摆且一声不响（实测停了 61 分钟）。
         # 📌 **一个裸 bool 表达不了「谁持有、持有多久、过期算谁的」，所以它防不住任何一种泄漏。**
         self._canary = None  # lazy init，见 maybe_run_canary
-        self._push_callback = None  # async (content: str) -> None，由 app.py 注入
+        self._push_callback = None  # async (content: str) -> None，由后端 start_backend_services 注入（core.backend.speak）
         # () -> Nano 主窗口对象（有 minimize / restore），由 app.py 注入；core 不直接依赖 UI 框架。
         # 看屏幕前用它把自己最小化让开；没有注入时（测试、无界面运行）不让开。
         self._native_window = None
