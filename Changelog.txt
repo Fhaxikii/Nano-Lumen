@@ -2213,6 +2213,7 @@
 - Fixed user activity while Nano was idle starting a takeover countdown that delayed the next message.
 - Fixed the status line of a stopped reply ignoring the Token counter setting.
 - Fixed a background task that Nano handed off and that ran longer than 30 minutes losing its result when it finished.
+- Fixed the confirm dialog for a command that Auto did not approve looking the same as an ordinary confirmation and not saying why it was stopped.
 
 
 ### 新增
@@ -2239,5 +2240,6 @@
 - 修复 Nano 空闲时用户操作电脑也会触发接管倒计时、导致下一条消息需要等待的问题。
 - 修复回复被终止后，状态行不遵守 Token 计数器设置的问题。
 - 修复 Nano 转入后台、运行超过 30 分钟的任务完成时结果丢失的问题。
+- 修复 Auto 下被安全检查拦下的命令，确认弹窗与普通确认一模一样、也不说明拦截原因的问题。
 
 ---
