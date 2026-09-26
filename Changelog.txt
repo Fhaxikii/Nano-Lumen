@@ -2143,16 +2143,16 @@
 - Fixed a Skill whose name matched a built-in tool passing the audit and installing, then never being available to Nano.
 
 ### Improvements
-- Redundant model copies (unusable .bin weights and duplicate download caches, about 4 GB) are removed automatically.
-- The installer and Nano now share one implementation for downloading and preparing the knowledge-base models.
-- The console shows only startup readiness (skills loaded, provider configured, knowledge base ready, MCP servers connected, Nano started), warnings and errors by default. Per-request diagnostics, module start-up details, self-check results and restart-recovery details are logged at DEBUG.
-- Developer switches moved to config/dev_flags.json, shipped with every switch off and a description for each. A switch that is on is reported with a WARNING at startup. DEBUG console output is enabled with the console_debug switch. data/dev_flags.json is no longer read.
-- The "System settings" OS permission is renamed "System control"; its description now lists everything it covers: launching and closing applications, writing to the clipboard, volume, services, environment variables, scheduled tasks, startup items and network settings.
-- All runtime data paths are resolved in one place; the NANO_DATA_DIR environment variable sets the data directory. Tests run in a temporary data directory.
-- Tests are run with `python tests/run_all.py` (run_tests.sh removed). Tests that need a real desktop or real models are skipped unless `--live` is given; the run fails if anything under data/ changed.
-- Error cards with repair suggestions are removed from the chat once every capability they report is available again (confirmed by a successful call or a health probe of the capability itself).
-- Test cases moved to tests/cases/; the tests/ folder root holds only the runner and helper modules, with a README.
-- Internal restructuring with no change in behaviour: core/orchestrator.py (about 16,000 lines) is now the core/orchestrator/ package, one module per responsibility. Built-in tool schemas moved to core/tools/manifests.py, Skill code checks to core/skill_check.py, and knowledge-base start-up indexing to core/rag.py; the core no longer imports the UI framework.
+- Redundant knowledge-base model copies (about 4 GB) are removed automatically.
+- The installer and Nano share one routine for downloading and preparing the models.
+- The console shows only startup readiness, warnings and errors by default; details moved to DEBUG.
+- Developer switches moved to config/dev_flags.json, all off by default; a switch that is on is reported at startup.
+- The "System settings" OS permission is renamed "System control" and its description lists everything it covers.
+- All data paths are resolved in one place; NANO_DATA_DIR sets the data directory.
+- Tests run with `python tests/run_all.py`; tests needing a real desktop or real models run only with `--live`.
+- Error cards are removed once the capability they report works again.
+- Test cases moved to tests/cases/.
+- Internal restructuring (no behaviour change): core/orchestrator.py split into the core/orchestrator/ package.
 
 
 ### 修复
@@ -2174,15 +2174,68 @@
 - 修复与内置工具同名的 Skill 能通过审计并安装，但 Nano 始终无法使用它的问题。
 
 ### 优化
-- 自动清理多余的模型副本（无法使用的 .bin 权重与重复的下载缓存，约 4 GB）。
-- 安装器与 Nano 使用同一份知识库模型下载与准备逻辑。
-- 控制台默认只显示启动就绪信息（已加载技能数、Provider 已配置、知识库就绪、MCP 服务连接数、Nano 已启动）以及警告与错误。逐次请求的诊断、各模块启动细节、自检结果与重启恢复细节改为 DEBUG 级别。
-- 开发者开关移至 config/dev_flags.json，随仓库分发，所有开关默认关闭并各附说明；任何处于开启状态的开关都会在启动时以 WARNING 提示。控制台 DEBUG 输出通过 console_debug 开关开启。不再读取 data/dev_flags.json。
-- OS 权限「系统设置」更名为「系统控制」，说明中列出它实际管理的全部操作：启动或结束程序、写入剪贴板、调节音量，以及管理服务、环境变量、计划任务、开机启动项和网络设置。
-- 所有运行期数据路径统一由一处解析；环境变量 NANO_DATA_DIR 可指定数据目录。测试在临时数据目录中运行。
-- 测试改用 `python tests/run_all.py` 运行（删除 run_tests.sh）。需要真实桌面或真实模型的测试默认跳过，加 `--live` 才运行；运行期间 data/ 下有任何改动即判为失败。
-- 带修复建议的错误卡片在其列出的能力全部恢复可用后自动从聊天区移除（以能力本身的真实调用成功或健康探针确认为准）。
-- 测试用例移至 tests/cases/，tests/ 根目录只放运行器与辅助模块，并附 README。
-- 内部结构调整（行为不变）：core/orchestrator.py（约 1.6 万行）拆为 core/orchestrator/ 包，按职责一个模块一个文件；内置工具的 schema 移至 core/tools/manifests.py，Skill 代码校验移至 core/skill_check.py，知识库启动索引移至 core/rag.py；核心代码不再导入 UI 框架。
+- 自动清理多余的知识库模型副本（约 4 GB）。
+- 安装器与 Nano 共用同一套模型下载与准备逻辑。
+- 控制台默认只显示启动就绪信息、警告与错误，其余改为 DEBUG。
+- 开发者开关移至 config/dev_flags.json，默认全部关闭；开启的开关启动时会提示。
+- OS 权限「系统设置」更名为「系统控制」，说明列出它管理的全部操作。
+- 所有数据路径统一由一处解析；可用 NANO_DATA_DIR 指定数据目录。
+- 测试改用 `python tests/run_all.py` 运行；需要真实桌面或真实模型的测试加 `--live` 才运行。
+- 带修复建议的错误卡片在相应能力恢复后自动移除。
+- 测试用例移至 tests/cases/。
+- 内部结构调整（行为不变）：core/orchestrator.py 拆为 core/orchestrator/ 包。
+
+---
+
+## v1.99 (beta)
+
+### What's New
+- Screen operation works as a task: you authorize it once when it starts, and it can span several turns. It ends when Nano restores its window, on emergency stop, on Reset conversation, or after 15 idle minutes.
+- While a screen task is authorized, the permission chip under the input box shows Temp Auto.
+- New tool end_screen_task: ends the current screen task.
+
+### Improvements
+- The per-click confirmation (with the red-circle image) is removed; mouse and keyboard actions run only inside a screen task.
+- Emergency stop (Ctrl+`) works for the whole screen task and also stops the turn and revokes the authorization.
+- The Stop button takes effect in the interface immediately and no longer ends the screen task.
+- Nano can send several screen steps at once; if one fails, the rest are skipped.
+- Clicks are located by the real control name or ID from the window's control tree.
+- Internal restructuring (no behaviour change): confirmation dialogs reply by ID, background heartbeats run outside the UI timers, and one module decides which windows are Nano's own.
+
+### Fixes
+- Fixed programs that Nano opened being treated as Nano's own window, so using them did not make Nano pause.
+- Fixed windows with "nano" in the title (including the console that started Nano) being skipped as Nano's own.
+- Fixed the screen task never ending and its authorization staying active when Nano did not restore its window.
+- Fixed Nano reading its own window's control tree instead of the target window's.
+- Fixed buttons not being found by name in apps whose interface language differs from Nano's.
+- Fixed the first screen action of each new turn in a screen task failing once.
+- Fixed Nano not noticing that the user had switched windows between two turns of a screen task.
+- Fixed user activity while Nano was idle starting a takeover countdown that delayed the next message.
+- Fixed the status line of a stopped reply ignoring the Token counter setting.
+
+
+### 新增
+- 屏幕操作以「任务」为单位：开始时授权一次，任务可跨多轮；Nano 恢复窗口、急停、重置对话或空闲 15 分钟时结束。
+- 屏幕操作任务授权期间，输入框下方的权限芯片显示 Temp Auto。
+- 新增工具 end_screen_task：结束当前屏幕操作任务。
+
+### 优化
+- 删除逐次点击确认（含红圈标注图）；鼠标键盘操作只能在屏幕操作任务中进行。
+- 急停（Ctrl+`）在整个屏幕操作任务期间有效，并同时终止本轮、收回授权。
+- 终止按钮在界面上即时生效，且不再结束屏幕操作任务。
+- Nano 可一次连发多步屏幕操作，某步失败则跳过剩余步骤。
+- 点击优先按窗口控件树中的真实名称或 ID 定位。
+- 内部结构调整（行为不变）：确认弹窗改为按编号回复，后台心跳移出界面定时器，统一判断哪些窗口属于 Nano 自己。
+
+### 修复
+- 修复 Nano 打开的程序被当成 Nano 自己的窗口，用户使用这些程序时 Nano 不会停手的问题。
+- 修复标题含「nano」的窗口（包括启动 Nano 的控制台）被当成 Nano 自己而跳过的问题。
+- 修复 Nano 未恢复窗口时，屏幕操作任务一直不结束、授权一直有效的问题。
+- 修复 Nano 读取的是自己窗口而非目标窗口的控件树的问题。
+- 修复界面语言与 Nano 不同的程序中，按名称找不到按钮的问题。
+- 修复屏幕操作任务跨轮继续时，每轮第一次屏幕操作都会失败一次的问题。
+- 修复屏幕操作任务中，用户在两轮之间切换窗口后 Nano 察觉不到的问题。
+- 修复 Nano 空闲时用户操作电脑也会触发接管倒计时、导致下一条消息需要等待的问题。
+- 修复回复被终止后，状态行不遵守 Token 计数器设置的问题。
 
 ---
