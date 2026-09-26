@@ -72,7 +72,7 @@ class CpuSample:
 @dataclass
 class NanoInternalEvent:
     ts: float
-    event: str  # "user_message" | "user_rejection" | "nano_responded"
+    event: str  # "user_message" | "nano_responded"
 
 
 class ActivityBuffer:
