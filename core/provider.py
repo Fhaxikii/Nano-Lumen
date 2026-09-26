@@ -1058,6 +1058,8 @@ class ClaudeProvider:
                 tools=tools if tools else anthropic.NOT_GIVEN,
                 messages=self._mark_last_message_cacheable(messages),
             ) as stream:
+                # 流已建立（响应头已到）：从这里起是模型在处理，之前是连接 / 等待（裁决 74）
+                yield {"type": "stream_open"}
                 async for event in stream:
                     etype = type(event).__name__
                     if etype == "ThinkingEvent":

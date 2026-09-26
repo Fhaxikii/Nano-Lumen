@@ -536,6 +536,8 @@ class ViewSession:
         "stop_evt": None,           # asyncio.Event，由 `_stoppable_stream` 创建
         "ui_stopped": False,        # 界面已收尾，之后到达的事件不再显示
         "reply_ids": None,          # 本回应期显示过的确认：[(reply_id, actions)]，终止时回「取消」
+        "model_phase": "connecting",  # 状态行：connecting（到流建立为止）/ thinking（裁决 74）
+        "phase_start": None,        # 进入 thinking 的时刻（thinking 系列措辞按它算时长）
     }
 
     __slots__ = tuple(_FIELDS) + ("_extra",)
@@ -838,6 +840,7 @@ _CHAT_EVENTS_NOT_IN_CHAT = frozenset({
     "window_mode", "suspend_waiting", "long_task_handback",
     "carrier_detached",                      # → 抽屉 / pill，不写聊天流
     "tool_still_running",                    # 终止后停不掉的那一步：只改工具行（裁决 73）
+    "model_request_start", "model_stream_open",  # 状态行 connecting / thinking（裁决 74）
     "user_note_pending",                     # 状态行
 })
 
@@ -4276,6 +4279,15 @@ class WebUI:
                 self._mark_tool_still_running(_rs, step["action_id"])
                 continue
 
+            # 状态行：每次调用模型先是 connecting，流建立后才是 thinking 系列（裁决 74）
+            if step.get("event") == "model_request_start":
+                _rs["model_phase"] = "connecting"
+                continue
+            if step.get("event") == "model_stream_open":
+                _rs["model_phase"] = "thinking"
+                _rs["phase_start"] = time.time()
+                continue
+
             if step.get("event") == "tool_end" and step.get("action_id"):
                 if step.get("ok") is False:
                     _rs["batch_fail_count"] = _rs.get("batch_fail_count", 0) + 1
@@ -4870,11 +4882,17 @@ class WebUI:
             await asyncio.sleep(0.12)
             _i += 1
             elapsed = int(time.time() - state["start_time"])
-            stage = "almost done thinking"
-            for thr, lbl in STAGES:
-                if elapsed < thr:
-                    stage = lbl
-                    break
+            # 连接 / 等待服务端开始处理的那段说 connecting；流建立后才按思考时长选 thinking 系列
+            #（时长从流建立算起；显示的秒数仍是整段回复的总用时）。
+            if state.get("model_phase", "connecting") == "connecting":
+                stage = "connecting"
+            else:
+                _think = int(time.time() - (state.get("phase_start") or state["start_time"]))
+                stage = "almost done thinking"
+                for thr, lbl in STAGES:
+                    if _think < thr:
+                        stage = lbl
+                        break
             lbl_el = state.get("status_lbl")
             spin_el = state.get("spin_lbl")
             if not lbl_el:
@@ -5920,7 +5938,7 @@ class WebUI:
                 with ui.row().classes('items-center gap-1.5 mt-1').style('padding-left:72px;') as _meta_row:
                     _spin_lbl = ui.label('⠋').style('font-size:var(--nano-fs-md); color:var(--nano-dim); font-family:var(--nano-mono);')
                     _svg_el = ui.html(NANO_AVATAR_SVG).style('width:16px; height:16px; flex-shrink:0; display:none;')
-                    _s_lbl = ui.label('thinking · 0s').style(
+                    _s_lbl = ui.label('connecting · 0s').style(
                         'font-size:var(--nano-fs-base); color:var(--nano-dim); letter-spacing:0.01em; font-family:var(--nano-mono);'
                     )
                 self._last_meta_row = _meta_row
@@ -11901,7 +11919,7 @@ class WebUI:
                       with ui.row().classes('items-center gap-1.5 mt-1').style('padding-left:72px;') as _meta_row:
                           _spin_lbl = ui.label('⠋').style('font-size:var(--nano-fs-md); color:var(--nano-dim); font-family:var(--nano-mono);')
                           _svg_el = ui.html(NANO_AVATAR_SVG).style('width:16px; height:16px; flex-shrink:0; display:none;')
-                          _s_lbl = ui.label('thinking · 0s').style(
+                          _s_lbl = ui.label('connecting · 0s').style(
                               'font-size:var(--nano-fs-base); color:var(--nano-dim); letter-spacing:0.01em; font-family:var(--nano-mono);'
                           )
                   self._last_meta_row = _meta_row

@@ -250,8 +250,13 @@ class ReactLoopMixin:
         #    provider 只回答「发不发得出去」；**回收历史的权力在这一层** ——
         #    📌 provider 不该碰 memory：一个为了少写一层而拉进来的依赖，
         #       会让「谁有权改什么」这件事从此说不清。
+        # 这次模型调用开始：界面状态行显示 connecting，直到流建立（裁决 74）
+        yield {"event": "model_request_start", **_scope}
         async for _ev in self._stream_with_window_guard(
             context, tools_manifest, system_guide):
+            if _ev.get("type") == "stream_open":
+                yield {"event": "model_stream_open", **_scope}
+                continue
             # ⭐ 消费判定：**"模型确实收到了"，不是"我们拼进了 system_guide"。**
             #    任一真实模型流事件出现 → 它一定读到了 system prompt。
             #    ⚠️ `provider_error` 不算（见下面 done 分支）：API 层 400 / 网络失败时
