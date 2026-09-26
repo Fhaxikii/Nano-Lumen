@@ -2201,6 +2201,8 @@
 - Nano can send several screen steps at once; if one fails, the rest are skipped.
 - Disabling or enabling a Skill takes effect right away; only deleting one asks for confirmation.
 - The status line shows "connecting" while waiting for the model service, and "thinking" only once the model has started.
+- "x running task(s)" follows the timer of the latest reply instead of taking a line of its own.
+- The countdown on high-risk confirmations is 3 seconds.
 - Clicks are located by the real control name or ID from the window's control tree.
 - Internal restructuring (no behaviour change): confirmation dialogs reply by ID, background heartbeats run outside the UI timers, one module decides which windows are Nano's own, Auto approval is decided by the core instead of the interface, background tasks are held by the core, messages and wake-ups are scheduled by the core, all core-to-interface events go through one channel, proactive speech, startup messages, fault cards and Skill reloading are produced by the core, and unused code for the old proactive speech was removed.
 
@@ -2220,6 +2222,11 @@
 - Fixed Nano carrying on after the reply was stopped: a command still running at that moment kept going in the background and Nano reported its result afterwards.
 - Fixed a message sent right after stopping being attached to the stopped reply.
 - Fixed the task drawer's stop button not actually ending the command process.
+- Fixed the reply to a message sent around a Stop never appearing, with its status line stuck on "queued".
+- Fixed work handed back during a reply still waking Nano with its result after that reply was stopped.
+- Fixed the per-reply token count showing 0 after a reply that used a sub-agent.
+- Fixed disabling or enabling a Skill, and managing an MCP server, showing ✕ in the tool row although it succeeded.
+- Fixed files given with an environment-variable path such as %USERPROFILE% not being found when read.
 
 
 ### 新增
@@ -2234,6 +2241,8 @@
 - Nano 可一次连发多步屏幕操作，某步失败则跳过剩余步骤。
 - 禁用或启用 Skill 立即生效，只有删除才需要确认。
 - 状态行在等待模型服务时显示 connecting，模型真正开始处理后才显示 thinking。
+- 「x running task(s)」接在最新一条回复的计时器后面，不再单独占一行。
+- 高危确认的倒计时改为 3 秒。
 - 点击优先按窗口控件树中的真实名称或 ID 定位。
 - 内部结构调整（行为不变）：确认弹窗改为按编号回复，后台心跳移出界面定时器，统一判断哪些窗口属于 Nano 自己，Auto 放行改由核心判定而非界面，后台任务改由核心持有，消息与唤醒改由核心调度，核心发给界面的事件统一走一条通道，主动开口、启动提示、故障卡与 Skill 重载改由核心发出，删除旧主动开口机制的无用代码。
 
@@ -2253,5 +2262,10 @@
 - 修复回复被终止后 Nano 仍继续：当时还在跑的命令转入后台继续执行，跑完后 Nano 还会接着汇报的问题。
 - 修复终止后马上发出的消息被接在已终止的那条回复里的问题。
 - 修复任务抽屉里的终止按钮并没有真正结束命令进程的问题。
+- 修复在终止前后发出的消息一直收不到回复、状态行停在 queued 的问题。
+- 修复回复被终止后，该回复中转交出去的任务完成时仍会唤醒 Nano 汇报结果的问题。
+- 修复调用过 Subagent 的回复，下方 token 计数显示为 0 的问题。
+- 修复禁用或启用 Skill、管理 MCP 服务成功后，工具行却显示 ✕ 的问题。
+- 修复以 %USERPROFILE% 等环境变量形式给出的文件路径读取时找不到文件的问题。
 
 ---
