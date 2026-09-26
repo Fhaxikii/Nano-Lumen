@@ -813,6 +813,17 @@ class ToolDispatchMixin:
                             "error": f"Tool \"{name}\" failed: {result_text}",
                             "consumed": False,
                         }
+                elif self._stop_asked():
+                    # 用户按了终止，而 MCP 调用停不掉 → 不交还、不唤醒，后台自行结束（裁决 73）
+                    try:
+                        from core.runtime import progress as _pb_stop
+                        _pb_stop.forget(_bg_ref)
+                    except Exception:
+                        pass
+                    result_text = await self._finish_after_stop(
+                        action_id=aid, display=_bg_display, awaitable=_mcp_task,
+                        outcome=lambda r: (not r[1], str(r[0])[:300]),
+                        event_queue=event_queue)
                 else:
                     # ⭐ 慢路径：超阈值 → **交回控制权**（不是「转后台」）。
                     #    公共合同见 `_hand_back_long_task` —— MCP 在这里
@@ -1070,6 +1081,16 @@ class ToolDispatchMixin:
                     # ⭐ 同 MCP 那条：用户一开口就立刻交还，不等满阈值。
                     _sk_finished = await self._wait_or_user_speaks(
                         _sk_task, self._LONG_TASK_HANDBACK_SEC)
+                    if not _sk_finished and self._stop_asked():
+                        # 用户按了终止，而 Skill 停不掉（进程内执行）→ 不交还、不唤醒，
+                        # 后台自行结束（裁决 73）
+                        self._tool_parallel_sem.release()
+                        _sem_held = False
+                        result_text = await self._finish_after_stop(
+                            action_id=aid, display=_sk_disp, awaitable=_sk_task,
+                            outcome=lambda r: (True, str(r)[:300]),
+                            event_queue=event_queue)
+                        return ToolExecution(call=call, result_text=result_text, ok=True)
                     if not _sk_finished:
                         # 超阈值 → 交还控制权，Skill 继续跑
                         self._tool_parallel_sem.release()

@@ -519,6 +519,33 @@ def wait_briefly(lc: LiveCommand, seconds: float, poll: float = 0.05,
     return not lc.running
 
 
+_turn_stop_probe = None
+
+
+def set_turn_stop_probe(fn) -> None:
+    """登记「用户按了终止吗」的判据（orchestrator 的 `_stop_asked`）。前台等待据此提前结束。"""
+    global _turn_stop_probe
+    _turn_stop_probe = fn
+
+
+def turn_stop_requested() -> bool:
+    """这一轮是不是被用户终止了（读不出来按「没有」）。"""
+    try:
+        return bool(_turn_stop_probe()) if _turn_stop_probe is not None else False
+    except Exception:
+        return False
+
+
+def foreground_interrupt():
+    """前台等待的提前结束判据：用户又说话了，或者用户按了终止（裁决 73）。
+
+    调用方在等待结束后用 `turn_stop_requested()` 区分两者：插话 → 交还，命令继续跑；
+    终止 → 这一轮前台正在执行的一起停。
+    """
+    _input = new_user_input_arrived()
+    return lambda: bool(turn_stop_requested() or (_input is not None and _input()))
+
+
 def new_user_input_arrived():
     """做一个「用户又说话了吗」的判据（给前台等待用）。
 

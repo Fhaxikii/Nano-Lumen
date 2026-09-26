@@ -174,6 +174,20 @@ def cancel(rt_task_id: str) -> bool:
         _meta["cancelled_by_user"] = True
         _aio.cancel()
         logger.info(f"[B1] 用户终止载体 {_cid}（task={rt_task_id}）")
+        # 取消的只是 Nano 这边的等待；命令进程要另外停掉（D51）。
+        # MCP（服务在对端）/ Skill（进程内执行）停不掉，如实记日志。
+        _ref = str(_meta.get("suspension_ref") or "")
+        if _ref.startswith("cmd_"):
+            try:
+                from core.os_layer import longcmd as _lc
+                if _lc.stop(_ref, "stopped by user from the task drawer"):
+                    logger.info(f"[B1] 载体 {_ref} 的命令进程已停止")
+                else:
+                    logger.info(f"[B1] 载体 {_ref} 的命令已经不在了（多半刚跑完）")
+            except Exception as e:
+                logger.warning(f"[B1] 停止载体 {_ref} 的命令失败（等待已取消）: {e}")
+        elif _ref:
+            logger.info(f"[B1] 载体 {_ref} 属于停不掉的一类（MCP / Skill）—— 只取消了等待，它可能仍在运行")
         return True
     return False
 

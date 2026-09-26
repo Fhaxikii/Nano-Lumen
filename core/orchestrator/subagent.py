@@ -367,6 +367,13 @@ class SubagentMixin:
             # 快路径：它已经回来了 —— 形状与改造前完全一致，调用方不用改。
             return _task.result()
 
+        if self._stop_asked():
+            # 用户按了终止：还在前台的 Subagent 一起停（它可以取消；已转后台的有自己的 ■）
+            _task.cancel()
+            logger.info(f"[A4] 用户终止 → 前台的 Subagent「{_label}」一起停")
+            return (f"Stopped by the user: the sub-agent \"{_label}\" was cancelled "
+                    f"before it finished.")
+
         # ── 慢路径：交还控制权，Subagent继续跑 ──────────────────────────────────
         # ⚠️ `recheck=False` —— Subagent是唯一走这一档的：**它永远不回看**。
         # ⚠️ `detachable=False` —— 它**已经**不在手头了，再给模型一个

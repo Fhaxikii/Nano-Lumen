@@ -106,10 +106,17 @@ class OsExecuteMixin:
         _te.cleanup()          # 顺手清过期的临时文件（家务，失败不影响）
 
         if await _lc.await_briefly(lc, self._LONG_TASK_HANDBACK_SEC,
-                                   stop_when=_lc.new_user_input_arrived()):
+                                   stop_when=_lc.foreground_interrupt()):
             res = lc.final_result()
             _lc.forget(lc.ref)
             return self._format_scratch_result(res, cats)
+        if _lc.turn_stop_requested():
+            # 用户按了终止：前台正在跑的代码一起停（裁决 73），不交还、不唤醒。
+            _lc.stop(lc.ref, "stopped by user (turn stopped)")
+            await _lc.await_briefly(lc, 2.0)          # 等进程真正退出再从注册表移除
+            _lc.forget(lc.ref)
+            return ("The code was stopped: the user stopped this turn, so it was terminated "
+                    "before it finished. Its effects may be partial.")
 
         # ⭐ 超过前台耐心 → 走**同一条**长任务交还合同（与 MCP / run_command 同）。
         #    📌 「我们要识别的只有长任务，跟任务类型从来没有关系过。」
@@ -522,7 +529,17 @@ class OsExecuteMixin:
             async def _await_longcmd(_r=_lc_ref, _attempt_id=_att_id):
                 import asyncio as _aio
                 from core.os_layer import longcmd as _lc2
-                _res = await _aio.to_thread(_lc2.join, _r)
+                try:
+                    _res = await _aio.to_thread(_lc2.join, _r)
+                except _aio.CancelledError:
+                    # 用户在抽屉里按了 ■（进程由载体表停掉）：这次尝试也要收尾，
+                    # 否则下一条命令开始时它还挂着（「没收尾就被下一条顶掉」）。
+                    try:
+                        from core.runtime import attempt as _att_c
+                        _att_c.finish(_attempt_id, False, reason="stopped by user")
+                    except Exception:
+                        pass
+                    raise
                 _lc2.forget(_r)
                 _out = (_res.get("data") or {}).get("output", "")
                 # ⭐ `join` 已经给出这条**同一个**命令的真实终态；

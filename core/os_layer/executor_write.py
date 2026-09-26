@@ -393,11 +393,21 @@ class WriteExecutor:
                 pass
             lc = _lcmod.start(cmd, shell=shell, **_kw)
             if await _lcmod.await_briefly(lc, _fg,
-                                         stop_when=self._new_user_input_arrived()):
+                                         stop_when=_lcmod.foreground_interrupt()):
                 # 快路径：前台等到了 → **形状与旧实现完全一致**，调用方不用改。
                 res = lc.final_result()
                 _lcmod.forget(lc.ref)
                 return res
+            if _lcmod.turn_stop_requested():
+                # 用户按了终止：这一轮前台正在执行的命令一起停（裁决 73），不交还、不唤醒。
+                _lcmod.stop(lc.ref, "stopped by user (turn stopped)")
+                await _lcmod.await_briefly(lc, 2.0)      # 等进程真正退出再从注册表移除
+                _lcmod.forget(lc.ref)
+                logger.info(f"[OS-Write] 用户终止 → 前台命令一起停：{lc.display[:50]}")
+                return {"ok": False, "data": {"stopped_by_user": True, "output": lc.tail(20)},
+                        "summary": "",
+                        "error": ("stopped_by_user: the user stopped this turn, so this command "
+                                  "was terminated before it finished. Its effects may be partial.")}
             # ⭐ 慢路径：**命令继续跑**，把「它还在跑」如实报上去。
             #    上层（orchestrator）看到 `long_running` 就走那条公共交还合同
             #    （`_hand_back_long_task`）—— 与 MCP 走的是同一条，不分类型。

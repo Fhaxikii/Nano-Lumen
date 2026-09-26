@@ -502,6 +502,59 @@ class LongTaskMixin:
             self._clean_damaged_memory()
             yield self._get_generic_error_payload(core_err, None)
 
+    async def _finish_after_stop(self, *, action_id: str, display: str, awaitable,
+                                 outcome, event_queue=None) -> str:
+        """用户按了终止，而前台这一步（MCP / Skill）停不掉：不交还、不唤醒 Nano，
+        让它在后台自行结束（裁决 73）。
+
+        - 界面：这一行工具标「无法中途停止 · 后台自行结束中」并继续转圈（`tool_still_running`），
+          真正结束时收成 ✓ / ✕（轮外事件 `tool_finished_late`）。
+        - 模型：结束时写一条系统事件（只在下一轮进上下文），并要求不主动提起、不解释。
+        - `outcome(result) -> (ok, 摘要)`：把各自的结果形状转成成败与一句摘要。
+        返回给这一轮的工具结果文字。
+        """
+        import asyncio as _a
+
+        async def _run():
+            ok, summary = False, ""
+            try:
+                res = await awaitable
+                ok, summary = outcome(res)
+            except _a.CancelledError:
+                ok, summary = False, "it was cancelled before it returned"
+            except Exception as e:
+                ok, summary = False, f"{type(e).__name__}: {e}"
+            try:
+                from core.runtime import events as _ev
+                _ev.publish({"event": "tool_finished_late", "action_id": action_id,
+                             "ok": bool(ok)}, None)
+            except Exception:
+                pass
+            try:
+                from core.health import get_system_events
+                get_system_events().add(
+                    f"The user stopped a turn while \"{display}\" was running. It could not be "
+                    f"interrupted and has now finished in the background "
+                    f"({'succeeded' if ok else 'failed'}): {str(summary)[:300]}. "
+                    f"Because the user stopped it on purpose, do not bring this up on your own "
+                    f"and do not explain it to the user unless they ask about it.")
+            except Exception:
+                pass
+            logger.info(f"[Stop] 终止后在后台跑完的「{display[:40]}」已结束（ok={ok}）")
+
+        if event_queue is not None:
+            await event_queue.put({"event": "tool_still_running", "action_id": action_id})
+        t = _a.ensure_future(_run())
+        _late = getattr(self, "_late_after_stop", None)
+        if _late is None:
+            _late = self._late_after_stop = set()
+        _late.add(t)
+        t.add_done_callback(_late.discard)
+        logger.info(f"[Stop] 用户终止 → 「{display[:40]}」停不掉，转为后台自行结束（不唤醒）")
+        return (f"Stopped by the user: \"{display}\" could not be interrupted, so it is finishing "
+                f"in the background. You will not be woken when it ends; do not wait for it "
+                f"and do not mention it unless the user asks.")
+
     @staticmethod
     async def _wait_or_user_speaks(task, timeout: float) -> bool:
         """等它跑完，**或者等到用户又说话了**。返回 True = 它跑完了。
@@ -549,6 +602,13 @@ class LongTaskMixin:
                 return True
             if _left <= 0:
                 return task.done()
+            try:
+                from core.os_layer import longcmd as _lc_s
+                if _lc_s.turn_stop_requested():
+                    logger.info("[LongTask] 用户按了终止 → 不等满阈值（前台这一步一起停，裁决 73）")
+                    return False
+            except Exception:
+                pass
             try:
                 from core.runtime import inbox as _ib2
                 if _ib2.submit_seq() > _seq0:

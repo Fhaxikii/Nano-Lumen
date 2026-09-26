@@ -837,6 +837,7 @@ _CHAT_EVENTS_NOT_IN_CHAT = frozenset({
     "task_list_update", "task_step_update",  # → 右侧计划面板
     "window_mode", "suspend_waiting", "long_task_handback",
     "carrier_detached",                      # → 抽屉 / pill，不写聊天流
+    "tool_still_running",                    # 终止后停不掉的那一步：只改工具行（裁决 73）
     "user_note_pending",                     # 状态行
 })
 
@@ -936,6 +937,7 @@ class WebUI:
         from core.runtime import events as _events
         self._events_q = _events.subscribe()
         self._turn_queues: dict = {}      # turn_id → 这一轮还没被渲染取走的事件
+        self._late_action_refs: dict = {}  # 终止后仍在后台自行结束的工具行（action_id → 行引用）
         # 初始化遮罩的数据（来自后端事件 init_facts / init_stage / init_ready）
         self._init_facts: dict | None = None
         self._init_stages: list = []
@@ -2346,6 +2348,8 @@ class WebUI:
                         render_unsent_user_card(_j_us.dumps(
                             {"text": _ev.get("text", ""), "had_image": bool(_ev.get("had_image"))},
                             ensure_ascii=False))
+            elif _kind == "tool_finished_late":
+                self._settle_late_tool(_ev.get("action_id", ""), bool(_ev.get("ok")))
             elif _kind == "faults_recovered":
                 self._retire_fault_cards(set(_ev.get("capabilities") or []))
             elif _kind == "skills_reloaded":
@@ -4262,10 +4266,16 @@ class WebUI:
                     except Exception:
                         pass
 
+            if step.get("event") == "tool_still_running" and step.get("action_id"):
+                self._mark_tool_still_running(_rs, step["action_id"])
+                continue
+
             if step.get("event") == "tool_end" and step.get("action_id"):
                 if step.get("ok") is False:
                     _rs["batch_fail_count"] = _rs.get("batch_fail_count", 0) + 1
                 _ref = _rs["action_refs"].get(step["action_id"])
+                if _ref and _ref.get("still_running"):
+                    _ref = None          # 停不掉、还在后台跑：等 tool_finished_late 再收
                 if _ref:
                     with self._ui_scope():
                         try:
@@ -5479,7 +5489,13 @@ class WebUI:
         例外：`tool_end` 仍然收掉那一行工具的转圈并画上结果（工具真的结束了才停转；
         失败时 pill 重新定型为失败），否则那一行会永远转下去。
         """
-        if rs is not None and step.get("event") == "tool_end" and step.get("action_id"):
+        _still = bool(rs is not None and step.get("action_id") and (
+            (rs.get("action_refs") or {}).get(step["action_id"]) or {}).get("still_running"))
+        if rs is not None and step.get("event") == "tool_still_running" and step.get("action_id"):
+            self._mark_tool_still_running(rs, step["action_id"])
+        elif _still:
+            pass                 # 停不掉、还在后台跑：等 tool_finished_late 再收
+        elif rs is not None and step.get("event") == "tool_end" and step.get("action_id"):
             try:
                 _ref = (rs.get("action_refs") or {}).get(step["action_id"])
                 if _ref:
@@ -5508,6 +5524,51 @@ class WebUI:
                         break
         except Exception as e:
             logger.debug(f"[Stop] 终止后回绝待确认事件失败: {e}")
+
+    _STILL_RUNNING_NOTE = "「无法中途停止 · 后台自行结束中」"
+
+    def _mark_tool_still_running(self, rs, action_id: str) -> None:
+        """终止时这一步停不掉（MCP / Skill）：工具行在名字后面标「无法中途停止 · 后台自行结束中」，
+        继续转圈，等它真正结束（轮外事件 `tool_finished_late`）再收成 ✓ / ✕（裁决 73）。"""
+        _ref = (rs.get("action_refs") or {}).get(action_id) if rs is not None else None
+        if not _ref:
+            return
+        _ref["still_running"] = True
+        self._late_action_refs[action_id] = _ref
+        try:
+            with self._ui_scope():
+                _row = _ref.get("row")
+                if _row is not None:
+                    with _row:
+                        _note = ui.label(self._STILL_RUNNING_NOTE).style(
+                            'font-size:var(--nano-fs-sm); color:var(--nano-dim); font-family:var(--nano-mono);')
+                    _note.move(_row, target_index=2)      # 名字之后、转圈之前
+                    _ref["still_note"] = _note
+                if _ref.get("spin") is not None:
+                    _ref["spin"].set_visibility(True)
+        except Exception as e:
+            logger.debug(f"[Stop] 标「后台自行结束中」失败: {e}")
+
+    def _settle_late_tool(self, action_id: str, ok: bool) -> None:
+        """终止后在后台跑完的那一步：去掉「后台自行结束中」，收成 ✓ / ✕。"""
+        _ref = self._late_action_refs.pop(action_id, None)
+        if not _ref:
+            return
+        _ref["still_running"] = False
+        try:
+            with self._ui_scope():
+                if _ref.get("still_note") is not None:
+                    _ref["still_note"].delete()
+                    _ref["still_note"] = None
+                _ref["spin"].set_visibility(False)
+                if ok:
+                    _ref["done"].set_text("✓")
+                else:
+                    _ref["done"].set_text("✕")
+                    _ref["done"].style('font-size:var(--nano-fs-sm); color:var(--nano-danger); '
+                                       'font-weight:500; font-family:var(--nano-mono);')
+        except Exception as e:
+            logger.debug(f"[Stop] 收「后台自行结束中」失败: {e}")
 
     def _refresh_send_btn(self) -> None:
         """按当前真实状态重画那颗按钮。
@@ -5959,8 +6020,10 @@ class WebUI:
         #    中间两百行会覆盖 `_resp_state`）。接不上时退化成排队，不退化成不处理。
         from core.session import get_scheduler
         _rs_live = _seam_live or {}
+        # 被终止过的回应期不再续接：终止后发的新消息开新气泡（排队到后端这一轮真正停下）。
         _can_cont = bool(_rt_inbox_busy and _rs_live.get("container") is not None
-                         and _rs_live.get("running"))
+                         and _rs_live.get("running")
+                         and not _rs_live.get("stop_clicked") and not _rs_live.get("ui_stopped"))
         _key, _mode = get_scheduler().submit_user_message(
             effective_query, image_bytes=_img_bytes, image_mime=_img_mime,
             temp_hint=_temp_hint, can_continue=_can_cont)

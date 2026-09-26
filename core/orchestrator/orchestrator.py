@@ -86,6 +86,12 @@ class Orchestrator(
         # 📌 **一个裸 bool 表达不了「谁持有、持有多久、过期算谁的」，所以它防不住任何一种泄漏。**
         self._canary = None  # lazy init，见 maybe_run_canary
         self._push_callback = None  # async (content: str) -> None，由后端 start_backend_services 注入（core.backend.speak）
+        # 前台等待（命令 / 临时代码）在用户按终止时据此提前结束，前台正在跑的一起停（裁决 73）
+        try:
+            from core.os_layer import longcmd as _lc_probe
+            _lc_probe.set_turn_stop_probe(self._stop_asked)
+        except Exception:
+            pass
         # () -> Nano 主窗口对象（有 minimize / restore），由 app.py 注入；core 不直接依赖 UI 框架。
         # 看屏幕前用它把自己最小化让开；没有注入时（测试、无界面运行）不让开。
         self._native_window = None

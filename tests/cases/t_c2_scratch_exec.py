@@ -397,8 +397,8 @@ def t_reuses_longcmd_not_a_second_pipeline() -> None:
     seg = orch[i:i + 4000]
     check("_hand_back_long_task" in seg,
           "⭐ 超时走**同一条**长任务交还合同（与 MCP / run_command 同一条）")
-    check("new_user_input_arrived" in seg,
-          "⭐ 用户插话也能打断前台等待（判据与 run_command 共用一份）")
+    check("foreground_interrupt" in seg and "foreground_interrupt" in module_text("core.os_layer.executor_write"),
+          "⭐ 用户插话 / 终止都能打断前台等待（判据与 run_command 共用一份：`longcmd.foreground_interrupt`）")
 
 
 # ══════════════════════════════════════════════════════════════════════════
