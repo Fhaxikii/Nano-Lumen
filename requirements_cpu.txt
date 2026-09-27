@@ -248,7 +248,7 @@ tokenizers==0.22.2
 tomli==2.4.1
 torch==2.5.1+cpu
 tqdm==4.68.3
-transformers==5.9.0
+transformers==5.10.1
 typer==0.25.1
 typing-inspect==0.9.0
 typing-inspection==0.4.2
