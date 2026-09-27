@@ -2227,6 +2227,7 @@
 - Fixed the per-reply token count showing 0 after a reply that used a sub-agent.
 - Fixed disabling or enabling a Skill, and managing an MCP server, showing ✕ in the tool row although it succeeded.
 - Fixed files given with an environment-variable path such as %USERPROFILE% not being found when read.
+- Fixed Nano not being told when the user added, removed, reconnected, enabled or disabled an MCP server in Settings.
 
 
 ### 新增
@@ -2267,5 +2268,6 @@
 - 修复调用过 Subagent 的回复，下方 token 计数显示为 0 的问题。
 - 修复禁用或启用 Skill、管理 MCP 服务成功后，工具行却显示 ✕ 的问题。
 - 修复以 %USERPROFILE% 等环境变量形式给出的文件路径读取时找不到文件的问题。
+- 修复用户在设置里添加、删除、重连、启用或停用 MCP 服务后，Nano 并不知道的问题。
 
 ---
