@@ -519,6 +519,118 @@ def t_usage() -> None:
     check("usage_tracker." not in src and "_fmt_tokens(" not in src, "app.py 不再直接用 usage_tracker")
 
 
+def t_mcp() -> None:
+    print("\n▶ mcp")
+    import asyncio
+    log, notes = [], []
+
+    class _Srv:
+        def __init__(self, enabled):
+            self.enabled = enabled
+
+    class _Mgr:
+        servers = {"fetch": _Srv(True), "pw": _Srv(False)}
+
+        def status_snapshot(self):
+            return [{"name": "fetch", "status": "connected"},
+                    {"name": "part", "status": "idle", "owned_by": "SomeSkill"}]
+
+        async def retry_server(self, n):
+            log.append(("retry", n))
+
+        async def remove_server(self, n):
+            log.append(("remove", n))
+            return True
+
+        def add_server_from_json(self, text):
+            return (True, "newsrv") if text.startswith("{") else (False, "bad json")
+
+        async def set_enabled(self, n, on):
+            log.append(("set", n, on))
+
+        async def connect_enabled(self):
+            log.append(("connect",))
+
+        async def shutdown(self):
+            log.append(("shutdown",))
+
+    class _Ag:
+        def _note_mcp_change(self, op, server, *, by):
+            notes.append((op, server, by))
+
+    _state.bind(agent_obj=_Ag())
+    try:
+        with _FakeModule("core.mcp_client", get_mcp_manager=lambda: _Mgr()):
+            from core.ui_api import mcp as M
+            check(M.servers() == [{"name": "fetch", "status": "connected"}], "Skill 自带的零件不列")
+            check(M.add_from_json("{...}") == {"ok": True, "msg": "newsrv"}
+                  and M.add_from_json("nope")["ok"] is False, "粘 JSON 添加")
+
+            async def run():
+                await M.retry("fetch")
+                await M.remove("pw")
+                return await M.apply_switches({"fetch": False, "pw": False, "ghost": True})
+            n = asyncio.run(run())
+            check(n == 1 and ("set", "fetch", False) in log and log[-1] == ("connect",),
+                  "开关：只改真的变了的，然后连接已启用的", str(log))
+            check(notes == [("add", "newsrv", "user"), ("retry", "fetch", "user"),
+                            ("delete", "pw", "user"), ("disable", "fetch", "user")],
+                  "⭐ 每次用户改动都记进 session log（by=user，模型下一轮才知道环境变了）", str(notes))
+    finally:
+        _state.bind()
+    code = "\n".join(ln for ln in S.module_text("app").splitlines() if not ln.strip().startswith("#"))
+    check("get_mcp_manager" not in code and "mgr." not in code, "app.py 不再直接用 MCP 管理器")
+
+
+def t_proactive() -> None:
+    print("\n▶ proactive")
+    got = []
+
+    class _Aff:
+        mode = "balanced"
+
+        def snapshot(self):
+            return {"user_mode": self.mode}
+
+        def set_user_mode(self, m):
+            self.mode = m
+
+    aff = _Aff()
+
+    class _Led:
+        def explain_readable(self, cap=2):
+            return {"items": ["写代码时的下一步"], "total": 3}
+
+        def reset(self):
+            got.append("reset")
+
+    class _Eng:
+        def feedback(self, sig, iid):
+            got.append((sig, iid))
+
+    import core.backend as B
+    orig = B.get_intel_engine
+    B.get_intel_engine = lambda: _Eng()
+    try:
+        with _FakeModule("core.proactive.intel.affect", get_affect=lambda: aff), \
+                _FakeModule("core.proactive.intel.ledger", get_ledger=lambda: _Led()):
+            from core.ui_api import proactive as P
+            P.set_effort_mode("proactive")
+            check(P.effort_mode() == "proactive", "主动程度存取")
+            check(P.learned_preferences() == {"items": ["写代码时的下一步"], "total": 3},
+                  "学到的偏好（可解释）")
+            P.reset_preferences()
+            P.feedback("MUTE_THIS", "iv_1")
+            from core.proactive.intel.feedback import Signal
+            check(got == ["reset", (Signal.MUTE_THIS, "iv_1")], "恢复默认；反馈按信号名转成信号", str(got))
+    finally:
+        B.get_intel_engine = orig
+    src = "\n".join(ln for ln in S.module_text("app").splitlines() if not ln.strip().startswith("#"))
+    check(all(x not in src for x in ("get_affect", "get_ledger", "get_intel_engine", "_ISignal",
+                                     "_proactive_push", "_get_activity_buffer")),
+          "app.py 不再直接用主动智能的内部模块；没人调用的旧入口已删")
+
+
 def t_backend_bound() -> None:
     print("\n▶ 接口背后的后端对象在界面启动时登记")
     init = S.def_text("app", "__init__", owner="WebUI")
@@ -533,6 +645,8 @@ def main() -> int:
     t_notes()
     t_settings()
     t_usage()
+    t_mcp()
+    t_proactive()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)
     print(f"结果：{ok}/{len(_results)} 通过")

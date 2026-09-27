@@ -8,7 +8,8 @@
   skills     Skill 列表 / 详情 / 源码 / 启用 / 禁用 / 删除，待审草稿的部署与丢弃
   knowledge  知识库文件与临时附件
   notes      用户笔记
-  settings   模型、厂商、角色、中转、用量与限额、权限
+  settings   主模型与收藏、角色模型、环境配置、OS 权限与 Auto、个人资料、语言、界面偏好
+  usage      每日限额、今日用量、会话 / 本轮 token、货币符号
   mcp        MCP 服务管理
   proactive  主动智能的档位、账本与开口
   history    对话重放、导出、记忆来源、上下文用量

@@ -13,7 +13,9 @@ import inspect
 import pathlib
 from core.paths import data_dir, data_path
 from core.ui_api import knowledge as api_kb
+from core.ui_api import mcp as api_mcp
 from core.ui_api import notes as api_notes
+from core.ui_api import proactive as api_proactive
 from core.ui_api import settings as api_settings
 from core.ui_api import usage as api_usage
 from core.ui_api import skills as api_skills
@@ -88,9 +90,6 @@ load_dotenv()
 # PermissionError: [WinError 5] DuplicateHandle。
 # 所以 core.* 与 nano_koala 全部放到 _bootstrap_core_modules()，只在主进程启动时导入。
 Orchestrator = None
-_get_activity_buffer = None
-_ISignal = None
-_start_proactive_hooks = None
 get_provider = None
 registry = None
 MemoryManager = None
@@ -102,24 +101,17 @@ def _bootstrap_core_modules() -> None:
     注意：native 窗口子进程 import 本文件时不会执行 __main__，因此不会走到这里；
     它只需要读取 app.native.start_args/window_args 这类轻量窗口参数。
     """
-    global Orchestrator, _get_activity_buffer, _ISignal
-    global _start_proactive_hooks, get_provider
+    global Orchestrator, get_provider
     global registry, MemoryManager, render_nano_koala_avatar
 
     from nano_koala import render_nano_koala_avatar as _render_nano_koala_avatar
     from core.orchestrator import Orchestrator as _Orchestrator
-    from core.proactive.activity import get_buffer as __get_activity_buffer
-    from core.proactive.intel.feedback import Signal as __ISignal
-    from core.proactive.hooks import start_hooks as __start_proactive_hooks
     from core.provider import get_provider as _get_provider
     from core.registry import registry as _registry
     from memory.manager import MemoryManager as _MemoryManager
 
     render_nano_koala_avatar = _render_nano_koala_avatar
     Orchestrator = _Orchestrator
-    _get_activity_buffer = __get_activity_buffer
-    _ISignal = __ISignal
-    _start_proactive_hooks = __start_proactive_hooks
     get_provider = _get_provider
     registry = _registry
     MemoryManager = _MemoryManager
@@ -849,7 +841,6 @@ class WebUI:
         # 看屏幕前 Nano 要把自己最小化让开；core 不直接依赖 UI 框架，由这里交给它取主窗口的方法。
         from nicegui import app as _napp_for_agent
         self.agent._native_window = lambda: _napp_for_agent.native.main_window
-        self._activity = _get_activity_buffer()
 
         self.scroll_area    = None
         self.chat_container = None
@@ -5285,8 +5276,7 @@ class WebUI:
 
     def _set_effort(self, level: str):
         try:
-            from core.proactive.intel.affect import get_affect
-            get_affect().set_user_mode(self._EFFORT_TO_MODE.get(level, "balanced"))
+            api_proactive.set_effort_mode(self._EFFORT_TO_MODE.get(level, "balanced"))
         except Exception:
             pass
         self._refresh_effort_chip()
@@ -5296,8 +5286,7 @@ class WebUI:
         if not lbl:
             return
         try:
-            from core.proactive.intel.affect import get_affect
-            mode = get_affect().snapshot().get("user_mode", "balanced")
+            mode = api_proactive.effort_mode()
             lbl.set_text(self._MODE_TO_EFFORT.get(mode, "Medium"))
         except Exception:
             lbl.set_text("Medium")
@@ -5310,11 +5299,9 @@ class WebUI:
             return
         box.clear()
         try:
-            from core.proactive.intel.affect import get_affect
-            from core.proactive.intel.ledger import get_ledger
-            mode = get_affect().snapshot().get("user_mode", "balanced")
+            mode = api_proactive.effort_mode()
             cur = self._MODE_TO_EFFORT.get(mode, "Medium")
-            info = get_ledger().explain_readable(cap=2)
+            info = api_proactive.learned_preferences(cap=2)
         except Exception:
             cur, info = "Medium", {"items": [], "total": 0}
         with box:
@@ -5338,8 +5325,7 @@ class WebUI:
 
     def _reset_proactive_prefs(self):
         try:
-            from core.proactive.intel.ledger import get_ledger
-            get_ledger().reset()
+            api_proactive.reset_preferences()
             ui.notify("已恢复主动偏好默认", type='positive')
         except Exception:
             pass
@@ -7066,10 +7052,7 @@ class WebUI:
 
             def _send(sig, dismiss=False):
                 try:
-                    from core.backend import get_intel_engine
-                    _eng = get_intel_engine()
-                    if _eng is not None:
-                        _eng.feedback(sig, intervention_id)
+                    api_proactive.feedback(sig, intervention_id)
                 except Exception:
                     pass
                 try:
@@ -7082,10 +7065,10 @@ class WebUI:
             with _fb:
                 # ✕=打扰(timing 轴)，不准=内容(correctness 轴)，两轴天然分开
                 for _txt, _sig, _dis in (
-                    ('有用', _ISignal.ACCEPTED, False),
-                    ('不准', _ISignal.WRONG, False),
-                    ('别再提醒这类', _ISignal.MUTE_THIS, True),
-                    ('✕', _ISignal.ANNOYED_INTRUSIVE, True),
+                    ('有用', 'ACCEPTED', False),
+                    ('不准', 'WRONG', False),
+                    ('别再提醒这类', 'MUTE_THIS', True),
+                    ('✕', 'ANNOYED_INTRUSIVE', True),
                 ):
                     ui.label(_txt).classes('text-[11px] cursor-pointer') \
                       .style('color:var(--nano-fg-mute);') \
@@ -7113,11 +7096,6 @@ class WebUI:
             logger.info(f"[Emit] UI 未就绪，事件入队（当前 {len(self._pending_chat_events)} 条）")
             return
         self._render_chat_event(ev)
-
-    async def _proactive_push(self, content: str, intervention_id: str = None):
-        """Nano 主动开口：交给后端出口（`core.backend.speak`），作为轮外事件回到界面渲染。"""
-        from core.backend import speak
-        await speak(content, intervention_id)
 
     # ── 健康登记表的唯一 UI 消费者 ────────────────────────────────────────
     def _refresh_monitor_health_safe(self) -> None:
@@ -8036,8 +8014,6 @@ class WebUI:
         #    结果**语法全绿、回归全绿，点开 MCP 页当场 NameError**。
         #    📌 搬一段代码时，它依赖的**局部 import** 跟它一样是那段的一部分；
         #       而漏掉 import 不会报语法错，只会在真的走到那一行时才炸。
-        from core.mcp_client import get_mcp_manager
-        mgr = get_mcp_manager()
 
         # ⚠️ 状态色/文案表：**定义必须跟着使用走**。
         #    它原来留在 `_show_mcp_dialog` 里，而用它的那段被搬到了这里 ——
@@ -8083,7 +8059,7 @@ class WebUI:
             #    Skill 仍显示 READY，一用就失败，而用户不知道为什么。
             # ⚠️ 过滤放在**取快照之后、`if not snap` 之前** ——
             #    否则一个只剩零件的机器会显示成"有能力"却列不出任何一行。
-            snap = [x for x in mgr.status_snapshot() if not x.get("owned_by")]
+            snap = api_mcp.servers()
             with _list_col:
                 if not snap:
                     ui.label('还没有外接能力。粘贴一段 server 配置，点「应用」即可添加。').style(
@@ -8181,11 +8157,11 @@ class WebUI:
 
         def _do_retry(name):
             ui.notify(f'正在重连 {name}…', type='info')
-            asyncio.create_task(mgr.retry_server(name))
+            asyncio.create_task(api_mcp.retry(name))
             ui.timer(1.6, _render_list, once=True)
 
         def _do_remove(name):
-            asyncio.create_task(mgr.remove_server(name))
+            asyncio.create_task(api_mcp.remove(name))
             ui.notify(f'已移除 {name}', type='warning')
             ui.timer(0.3, _render_list, once=True)
 
@@ -8227,19 +8203,15 @@ class WebUI:
                     _paste_txt = (_paste.value or "").strip()
                     _added = ""
                     if _paste_txt:
-                        ok, msg = mgr.add_server_from_json(_paste_txt)
+                        _r = api_mcp.add_from_json(_paste_txt)
+                        ok, msg = _r["ok"], _r["msg"]
                         if not ok:
                             ui.notify(f'添加失败：{msg}', type='negative')
                             return
                         _paste.set_value('')
                         _added = msg
-                    _changed = 0
-                    for _n, _sw in list(_switches.items()):
-                        _s = mgr.servers.get(_n)
-                        if _s is not None and bool(_s.enabled) != bool(_sw.value):
-                            await mgr.set_enabled(_n, bool(_sw.value))
-                            _changed += 1
-                    await mgr.connect_enabled()
+                    _changed = await api_mcp.apply_switches(
+                        {_n: bool(_sw.value) for _n, _sw in list(_switches.items())})
                     if _added or _changed:
                         _parts = []
                         if _added:
@@ -8260,10 +8232,6 @@ class WebUI:
     def _show_mcp_dialog(self):
         """MCP 连接管理（设置下拉里的隐藏页，平时不开）。三块：状态列表 / 每行控制 / 粘贴添加。
         config 文件是 source-of-truth，本面板是它的人性化前门——用户永远不碰原始 json。"""
-        from core.mcp_client import get_mcp_manager
-        mgr = get_mcp_manager()
-
-
         with self._ui_scope():
             with ui.dialog().props('no-backdrop-dismiss') as dialog, \
                  ui.card().style('width:480px; background:var(--nano-panel); '
@@ -13628,7 +13596,7 @@ class WebUI:
         ui.timer(1.0, self._refresh_monitor_health_safe)
 
         # 感知钩子（键鼠 / 窗口 / 保存）。
-        _start_proactive_hooks()
+        api_proactive.start_hooks()
 
         # GUI 任务结束后窗口仍是 mini 时恢复（照 `session` 快照）。缩窗后的头 3 秒不判断，
         # 所以按秒重看缓存，而不是只在快照变化时看。
@@ -14889,8 +14857,7 @@ if __name__ == "__main__":
         # MCP：进程退出时优雅关闭所有 server worker（终止 stdio 子进程，避免残留）。
         async def _mcp_shutdown():
             try:
-                from core.mcp_client import get_mcp_manager
-                await get_mcp_manager().shutdown()
+                await api_mcp.shutdown()
             except Exception:
                 pass
         _nicegui_app.on_shutdown(_mcp_shutdown)
