@@ -122,41 +122,52 @@ def t_dead_target_not_injected() -> None:
 
 
 def t_ui_resets_when_target_closed() -> None:
-    """UI 侧：待办列表重画时，目标不在了就自动复位。
+    """目标关闭后自动复位（否则用户点不到撤销入口）。
 
-    用 AST 验，不跑 NiceGUI —— 这条是结构约束（复位调用必须在那个函数里）。
+    复位在后端算待审卡快照时做（`core.snapshots.pinned_state`，1.5 秒一次），不靠界面记得调。
+    判据用全部未决交互：一条仍然 OPEN、只是不上卡的澄清不能被当成已关闭。
     """
-    print("\n[3] UI 侧：目标关闭后自动复位（否则用户点不到撤销入口）")
-    src = module_text("app")
-    tree = ast.parse(src)
+    print("\n[3] 目标关闭后自动复位（后端算待审卡快照时）")
+    from tests._patch import patch_global
+    import core.runtime.kernel  # noqa: F401
+    from core import snapshots as SN
 
-    fn = None
-    for n in ast.walk(tree):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            body = ast.get_source_segment(src, n) or ""
-            if "_pinned_snapshot" in body and "list_live" in body:
-                fn = n
-                break
-    check(fn is not None, "前置条件：找得到重画待办卡片的那个函数")
-    if fn is None:
-        return
+    class _Agent:
+        def __init__(self, iid):
+            self._reply_target = {"iid": iid, "q": "?", "kind": "interaction"}
 
-    seg = ast.get_source_segment(src, fn) or ""
-    sub = ast.parse(seg.strip())
-    calls = [c for c in ast.walk(sub)
-             if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-             and c.func.attr == "_set_reply_target"]
-    check(bool(calls), "⭐ 函数里调了 _set_reply_target 做复位")
-    check(any(len(c.args) == 1 and isinstance(c.args[0], ast.Constant)
-              and c.args[0].value is None for c in calls),
-          "复位传的是 None（清除，而不是改指向别的）")
+        def _get_pending_skill(self, _f):
+            return None
 
-    # 复位必须发生在【指纹提前 return 之前】，否则指纹没变时永远走不到
-    i_reset = seg.index("_set_reply_target")
-    i_snap = seg.index("_pinned_snapshot")
-    check(i_reset < i_snap,
-          "⭐ 复位在指纹比较【之前】—— 指纹里不含 _reply_target，"
-          "放后面会被 early-return 跳过", f"reset@{i_reset} snapshot@{i_snap}")
+    def _run(live, iid):
+        ag = _Agent(iid)
+        r1 = patch_global("core.runtime.interaction", "list_live", lambda _k, kind=None: live)
+        r2 = patch_global("core.runtime.kernel", "get_kernel", lambda: None)
+        try:
+            snap = SN.pinned_state(ag)
+        finally:
+            r1()
+            r2()
+        return ag, snap
+
+    def _rec(iid, kind):
+        r = Rec(iid, kind, "x", 1.0)
+        r.revision, r.artifact_id, r.needs_retry = 1, "", False
+        return r
+
+    live = [_rec(AUD1, _it.Kind.SKILL_AUDIT), _rec(AUD2, _it.Kind.SKILL_AUDIT)]
+    ag, snap = _run(live, CLAR)
+    check(ag._reply_target is None and snap["reply_target"] is None,
+          "⭐ 目标已不在未决交互里 → 复位（后端清掉，快照里也没有）")
+    check([d["interaction_id"] for d in snap["items"]] == [AUD1, AUD2],
+          "复位不影响还活着的审计上卡")
+
+    live2 = live + [_rec(CLAR, _it.Kind.SKILL_CLARIFICATION)]
+    ag2, snap2 = _run(live2, CLAR)
+    check(ag2._reply_target is not None and (snap2["reply_target"] or {}).get("iid") == CLAR,
+          "⭐⭐ 目标仍然 OPEN、只是不上卡（澄清）→ **不复位**（判据用未过滤的全部交互）")
+    check(CLAR not in [d["interaction_id"] for d in snap2["items"]],
+          "澄清本身仍不上卡（显示范围只有审计）")
 
 
 def t_handoff_survives_send() -> None:

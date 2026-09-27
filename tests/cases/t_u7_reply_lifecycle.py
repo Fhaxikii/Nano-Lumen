@@ -154,9 +154,10 @@ def t_fingerprint_includes_target() -> None:
     i_snap = seg.index("snap =")
     i_cmp = seg.index("== getattr(self, \"_pinned_snapshot\"")
     tail = seg[i_snap:i_cmp]
-    check("_reply_target" in tail,
-          "⭐ 指纹在【比较之前】就把 _reply_target 算进去了",
-          "指纹片段里没有它" if "_reply_target" not in tail else "")
+    # 引用目标来自待审卡快照（`reply_target`，后端算的），渲染用的是它
+    check("_pin_rt" in tail and '_pin.get("reply_target")' in seg,
+          "⭐ 指纹在【比较之前】就把引用目标（快照里的 reply_target）算进去了",
+          "指纹片段里没有它" if "_pin_rt" not in tail else "")
 
 
 def t_immediate_redraw() -> None:
@@ -176,15 +177,12 @@ def t_immediate_redraw() -> None:
           "⚠️ 没有【直接调用】重画（只把函数对象交给 timer）",
           f"直接调用于 L{direct}" if direct else "")
 
-    for caller in ("_set_reply_target", "_flip"):
-        src = seg
-        if caller == "_flip":
-            # _flip 是嵌套函数，从整份源码里找
-            i = APP.index("def _flip(step: int):")
-            src = APP[i:i + 400]
-        else:
-            _, src = _func(APP_T, APP, caller)
-        check("_redraw_pinned_now" in src, f"{caller} 会触发立即重画")
+    # 翻页：页码只在界面这边 → 按缓存立即重画
+    i = APP.index("def _flip(step: int):")
+    check("_redraw_pinned_now" in APP[i:i + 400], "_flip 会触发立即重画")
+    # 设 / 清引用：状态在后端 → 请后端立即重算待审卡快照（推回来就重画，不等下一个周期）
+    _, src = _func(APP_T, APP, "_set_reply_target")
+    check('self._request_snapshot("pinned")' in src, "_set_reply_target 请后端立即重算、推回来重画")
 
 
 def t_draft_survives_restart() -> None:

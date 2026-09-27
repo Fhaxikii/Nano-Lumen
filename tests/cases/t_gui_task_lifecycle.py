@@ -354,13 +354,17 @@ def t_locate_wording() -> None:
 def t_chip_wiring() -> None:
     print(chr(10) + "▶ Temp Auto 芯片")
     chip = S.def_text("app", "_refresh_auto_chip", owner="WebUI")
-    check("_rt_auto_authorized()" in chip and "'Temp Auto'" in chip and "--nano-info" in chip,
-          "临时授权存在时显示 Temp Auto（读授权租约，换颜色）")
+    check('get("temp_auto")' in chip and "'Temp Auto'" in chip and "--nano-info" in chip,
+          "临时授权存在时显示 Temp Auto（照 session 快照里的授权租约，换颜色）")
     check("no-parent-event" in chip and "_auto_chip_state" in chip,
           "Temp Auto 期间点击不展开；状态没变时不重画")
     menu = S.def_text("app", "_open_auto_menu", owner="WebUI")
-    check("if _rt_auto_authorized():" in menu, "菜单入口在 Temp Auto 期间直接返回")
-    check("gui._refresh_auto_chip()" in S.module_text("app"), "1 秒 tick 刷新芯片")
+    check('if self._session_snap().get("temp_auto"):' in menu, "菜单入口在 Temp Auto 期间直接返回")
+    from core import snapshots as _snaps
+    snap_src = S.def_text("core.snapshots", "session_state")
+    check("temp_auto_authorized()" in snap_src and _snaps.PERIODS.get("session") == 1.0
+          and "self._refresh_auto_chip()" in S.def_text("app", "_on_session_snapshot", owner="WebUI"),
+          "后端 1 秒一次的 session 快照带临时授权，界面收到就刷新芯片")
 
 
 def t_screen_action_gate(tmp: pathlib.Path) -> None:

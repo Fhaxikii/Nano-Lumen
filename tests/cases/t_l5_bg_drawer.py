@@ -75,6 +75,11 @@ class _UiHost:
     def _refresh_tasks_panel(self):
         self.refreshed += 1
 
+    def _request_snapshot(self, name):
+        # 界面请后端重算任务快照（推回来才重画）；替身里记成一次重刷
+        if name == "tasks":
+            self.refreshed += 1
+
 
 def _click_stop(h, task_id: str) -> None:
     """真的调 WebUI 上那个方法（绑到替身上），`ui.notify` 换成记录。"""

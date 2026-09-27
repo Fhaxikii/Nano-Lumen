@@ -135,19 +135,13 @@ def t_bar_text_six_cases() -> None:
     import app as A
     from core.proactive.takeover import USER_HOLD_SEC as HOLD
 
-    class _H:
-        def __init__(self, remain):
-            self.holder, self.reason = "user", "user click"
-            self.held_until = _time.time() + remain
+    from core.snapshots import takeover_phase
 
     gui = object.__new__(A.WebUI)
 
     def _txt(remain, parked):
-        L._parked = parked
-        try:
-            return gui._takeover_text(_H(remain))
-        finally:
-            L._parked = False
+        # 阶段由后端算（`core.snapshots.takeover_phase`，进 session 快照），措辞由界面选
+        return gui._takeover_text(takeover_phase(_time.time() + remain, parked, HOLD))
 
     # 格 1 / 2：用户刚动过（剩余 > HOLD-2），靠 parked 区分
     t1 = _txt(HOLD - 0.5, False)

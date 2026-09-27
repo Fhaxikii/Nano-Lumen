@@ -103,6 +103,9 @@ class _FakeUI:
     def _redraw_pinned_now(self):
         pass
 
+    def _request_snapshot(self, name):
+        pass
+
     def _refresh_reply_prompt(self):
         pass
 

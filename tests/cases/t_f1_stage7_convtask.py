@@ -40,6 +40,7 @@ sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
 import tests._console  # noqa: F401
+from tests._src import def_text as S_def_text  # noqa: E402
 from tests._src import module_text  # noqa: E402
 
 from loguru import logger
@@ -493,16 +494,13 @@ def t_pill_settle_from_authority() -> None:
     alive = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
     tree = ast.parse(app)
 
-    # ① 收尾必须挂在 tick 上（level-triggered）
-    tick = None
-    for n in ast.walk(tree):
-        if isinstance(n, ast.AsyncFunctionDef) and n.name == "_suspension_tick":
-            tick = n
-    check(tick is not None, "前置：找到 `_suspension_tick`（5 秒一轮）")
-    tsrc = ast.unparse(tick) if tick else ""
-    check("_settle_all_waiting_pills" in tsrc,
-          "⭐⭐⭐ AST：pill 收尾**挂在 5 秒 tick 里** —— "
-          "它逐条回查权威、只收真的不在 active 里的，"
+    # ① 收尾挂在周期性的权威快照上（level-triggered）：后端每 5 秒重算「还活着的等待」，
+    #    变了就推，界面收到就逐条对照收 pill
+    from core import snapshots as _snaps
+    _apply = S_def_text("app", "_apply_snapshot", owner="WebUI")
+    check(_snaps.PERIODS.get("waits") == 5.0 and '"waits": self._settle_all_waiting_pills' in _apply,
+          "⭐⭐⭐ pill 收尾**挂在 5 秒一次的「还活着的等待」快照上** —— "
+          "它逐条对照权威、只收真的不在 active 里的，"
           "所以**任何**杀掉等待的路径（含以后新增的）都会被收到")
 
     # ② 措辞必须从权威读，不由调用方给

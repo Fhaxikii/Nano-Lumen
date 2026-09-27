@@ -14,6 +14,7 @@ import pathlib
 from core.paths import data_dir, data_path
 import re
 import time
+import types
 from contextlib import nullcontext
 
 # 「…」按钮该不该出现，**由浏览器判**（scrollWidth > clientWidth），
@@ -61,15 +62,6 @@ def _register_native_window_process() -> None:
             logger.debug("[SelfIdentity] 没有原生窗口子进程（浏览器模式），不登记")
     except Exception as e:
         logger.warning(f"[SelfIdentity] 登记界面窗口进程失败: {e}")
-
-
-def _rt_auto_authorized() -> bool:
-    """⭐ 切读之后的**权威读点**。⚠️ fail-safe 方向是「没授权」→ 照常弹确认。"""
-    try:
-        from core.runtime import oslease as _ol
-        return _ol.temp_auto_authorized()
-    except Exception:
-        return False
 
 
 
@@ -794,7 +786,7 @@ _CHAT_EVENTS_REPLAYED = frozenset({
     "final_text_start", "final_text_delta", "final_text",
     "text_replace", "final_result",          # → conversation_messages 的 assistant 正文
     "tool_start", "tool_end",                # → tool_calls / tool_results（工具 pill）
-    "skill_preview",                         # → SKILL_AUDIT Interaction（`_CARD_KINDS`）
+    "skill_preview",                         # → SKILL_AUDIT Interaction（`core.snapshots.pinned_state` 的 `_CARD_KINDS`）
     "visual_render",                         # → 工具 args 里的 html/title（本次修的那一张）
 })
 
@@ -932,6 +924,8 @@ class WebUI:
         self._user_views: dict = {}
         # 正在渲染的那段回应期（终止按钮作用的对象）；`_resp_state` 可能已经指向排着的下一段
         self._rendering_view = None
+        # 后端推来的状态快照（`core.snapshots`，名字 → 数据）：界面常驻显示的几块照它画
+        self._snap: dict = {}
         # 接管状态条。⚠️ 必须在 __init__ 里初始化：`render` 之前就有
         # 1 秒 timer 可能跑到（`_refresh_takeover_bar` 有 None 保护，但别依赖属性不存在）。
         self._takeover_bar      = None
@@ -1545,6 +1539,49 @@ class WebUI:
 
     # ── Skill 审计弹窗 ────────────────────────────────────────────────────
 
+    # ── 后端状态快照（`core.snapshots`）─────────────────────────────────────
+    def _apply_snapshot(self, name: str, data: dict) -> None:
+        """后端推来一份状态快照：记下，按它重画对应的那一块。"""
+        self._snap[name] = data
+        fn = {"pinned": self.refresh_pinned_interactions,
+              "tasks": self._refresh_tasks_panel,
+              "session": self._on_session_snapshot,
+              "net": self._update_net_status,
+              "health": self._refresh_monitor_health_safe,
+              "waits": self._settle_all_waiting_pills,
+              "budget": self._update_cost_warning}.get(name)
+        if fn is None:
+            return
+        try:
+            with self._ui_scope():
+                fn()
+        except Exception as e:
+            logger.debug(f"[Snapshot] 按快照重画 {name} 失败（下一份再画）: {e}")
+
+    def _load_snapshots(self) -> None:
+        """界面刚起来（或重新连上）：取一份当前全量快照先画上；之后只收变化。"""
+        try:
+            from core import snapshots
+            for _n, _d in snapshots.current().items():
+                self._apply_snapshot(_n, _d)
+        except Exception as e:
+            logger.warning(f"[Snapshot] 取初始快照失败（等后端推送）: {e}")
+
+    def _request_snapshot(self, name: str) -> None:
+        """界面的操作刚改了状态：请后端立即重算这一份（变了就推回来重画）。"""
+        try:
+            from core import snapshots
+            snapshots.refresh(name)
+        except Exception as e:
+            logger.debug(f"[Snapshot] 请求重算 {name} 失败（等下一个周期）: {e}")
+
+    def _session_snap(self) -> dict:
+        return (getattr(self, "_snap", None) or {}).get("session") or {}
+
+    def _on_session_snapshot(self) -> None:
+        self._refresh_takeover_bar()
+        self._refresh_auto_chip()
+
     def refresh_pinned_interactions(self) -> None:
         """把未决交互刷到输入框上方那张常驻卡片上。
 
@@ -1557,7 +1594,8 @@ class WebUI:
         · **最多 6 条**（1 前台 + 5 队列，），第 7 条在内核层就被拒了，
           所以这里不用自己做上限。
 
-        ⚠️ **只读投影**：这个函数一个字都不写状态。它读 `interaction` 表、渲染，
+        ⚠️ **只读投影**：这个函数一个字都不写状态。它照后端推来的快照
+        （`core.snapshots.pinned_state`：只含 Skill 代码审计这一种，以及引用回复的目标）渲染，
         完了。所有写入仍然只走 Kernel（唯一写路径）。
         点按钮触发的是既有的 `apply_pending_skill` / `cancel_pending_skill`，
         它们内部会关交互 —— 卡片自己不碰。
@@ -1565,69 +1603,23 @@ class WebUI:
         card = getattr(self, "_pinned_card", None)
         if card is None:
             return
-        try:
-            from core.runtime.kernel import get_kernel
-            from core.runtime import interaction as _it
-            _recs_all = _it.list_live(get_kernel())
-        except Exception as e:
-            logger.debug(f"[UI] 读取未决交互失败，pinned card 本次不更新: {e}")
+        from core.runtime import interaction as _it      # 只用 kind 常量
+        _pin = (getattr(self, "_snap", None) or {}).get("pinned")
+        if _pin is None:
             return
+        _pin_rt = _pin.get("reply_target") or {}
 
-        # ⭐⭐⭐ [2026-08-13] **待办卡只为 Skill 代码审计服务。**
-        #
-        # 原来这里画的是**所有** live 交互，`_KIND_LABEL` 五种 kind 全在。
-        # 实测（删 Skill）暴露出它的真面目：卡片文字与 nano 气泡**逐字相同**、
-        # 卡上**一个按钮都没有**（确认仍然要回输入框打字）——
-        # 也就是说它既没多说什么，也没多做什么。
-        #
-        # 📌 **一张卡片如果只是把气泡里的话复述一遍，它就不是 UI，是噪音。**
-        # 📌 **待办卡该存在的唯一理由，是它承载了自然语言承载不了的东西。**
-        #
-        # `skill_audit` 过得了这条判据：它承载**代码块 + 折叠 + `<>` 看源码 +
-        # 部署/丢弃动作**，这些没法用一句话替代。其余四种过不了：
-        #   · `skill_clarification` / `skill_manage` —— 复读气泡，去掉
-        #   · `skill_side_effect` / `os_risk` —— INLINE/EPHEMERAL，
-        #     本来就该是当轮弹窗，不该在跨重启的待办卡里出现
-        #
-        # ⭐ 这条同时回答了「以后还要不要加新待办卡」：**不是禁止，是它过不了判据**。
-        #    能用一句话说清的东西不配一张卡 —— 卡片加重程序感，而 Nano 要的是活人感。
-        #
-        # ⚠️⚠️ **这是纯显示收缩，一个字都不动 Interaction 记录。**
-        #    澄清的 checkpoint（`original_requirement` / `last_explorer_message` /
-        #    `include_os` / `explorer_prompt_version`）仍在 payload 上，
-        #    续接照走 —— 否掉的是"把上下文压成字符串重塞"，不是这个。
-        #    模型侧 `[Open Interactions]` 也照旧列出全部，它需要知道有什么挂着。
-        #    **用户看不见卡，但 nano 已经在对话里把话说了** —— 这就是"纯净的自然语言"。
-        _CARD_KINDS = (_it.Kind.SKILL_AUDIT,)
-        recs = [r for r in _recs_all if r.kind in _CARD_KINDS]
-
-        # ⭐⭐ [2026-08-06 实测] 目标已经不在清单里 → 立刻复位「回复这条」。
-        #
-        # ⚠️ 这不是打扫卫生，是**唯一的出口**：「取消引用」那个 ✕ 只长在目标
-        # 自己那张卡片上，目标一关闭卡片就消失了 —— 用户再也点不到它，
-        # 于是这个指向会一直挂着。里就是这样：
-        # 澄清 int_192a0393ab 在 17:46 被 SUPERSEDED，之后每一轮都还在给模型
-        # 注入「必须回答 int_192a0393ab、不许改挑别的」，直接把「部署这个吧」
-        # 逼成了新建 Skill。
-        #
-        # 📌 判据：**只有一个入口能撤销的状态，那个入口不许比状态本身先消失。**
-        #
-        # ⚠️⚠️ 这里必须用 `_recs_all` 而**不是**过滤后的 `recs`：判据是
-        #    「那条交互还活着吗」，不是「它现在画不画得出来」。用 `recs` 的话，
-        #    一条仍然 OPEN 的澄清会因为**不再上卡**而被判成"已关闭"→ 取消引用，
-        #    等于把显示策略偷偷变成了状态变更。
-        # 📌 **过滤了显示之后，所有"还在不在"的判断都要回到未过滤的那份。**
-        _rt = getattr(self, "_reply_target", None) or {}
-        if _rt.get("iid") and _rt["iid"] not in {r.interaction_id for r in _recs_all}:
-            logger.info(f"[UI] 「回复这条」目标 {_rt['iid']} 已关闭，自动取消引用")
-            self._set_reply_target(None)
+        # 待办卡只为 Skill 代码审计服务：它承载代码块、折叠、看源码与部署 / 丢弃动作，
+        # 这些没法用一句话替代；其余几种交互只会复述气泡。筛选与「引用目标已关闭 → 取消引用」
+        # 都在后端（`core.snapshots.pinned_state`），这里只画。
+        recs = [types.SimpleNamespace(**d) for d in (_pin.get("items") or [])]
 
         # ⭐ composer 那个提示符靠这里自愈：轮次结束时的复位发生在
         # orchestrator 的 `finally` 里，那一刻 UI 完全没有参与，没人通知它。
         # 幂等，没变就是个空操作。
         self._refresh_reply_prompt()
 
-        # 内容指纹：没变就不重画（避免 2 秒定时器把 DOM 翻来覆去重建，
+        # 内容指纹：没变就不重画（避免把 DOM 翻来覆去重建，
         # 那会让用户正在展开的详情被折回去）。
         #
         # ⚠️⚠️ **`_reply_target` 必须进指纹。** 它决定按钮显示「回复这条」还是
@@ -1640,7 +1632,7 @@ class WebUI:
         #    指纹漏掉一个输入，表现就是"状态变了但界面不变"——
         #    比不做缓存更难查，因为看起来像是状态没改成功。
         snap = "|".join(f"{r.interaction_id}:{r.status}:{r.revision}" for r in recs)
-        snap += f"|reply={(self._reply_target or {}).get('iid') or ''}"
+        snap += f"|reply={_pin_rt.get('iid') or ''}"
         if snap == getattr(self, "_pinned_snapshot", None):
             return
         self._pinned_snapshot = snap
@@ -1656,7 +1648,7 @@ class WebUI:
                 #    留着就成了第二张"写好但没人读"的死表（的根因，
                 #    项目刚在里为它付过一次代价）。
                 # ⭐ 仍然保留 dict + fallback 而不是直接写死两个常量：
-                #    万一将来有人往 `_CARD_KINDS` 里加了东西却忘了加标签，
+                #    万一将来有人往后端的 `_CARD_KINDS`（`core.snapshots`）里加了东西却忘了加标签，
                 #    fallback 会显示"待处理"（看得出不对），写死则会给它贴上
                 #    "待审代码"（看起来对，实际是错的）。
                 #    📌 **兜底要让错误可见，而不是让错误看起来正常。**
@@ -1679,7 +1671,7 @@ class WebUI:
                     self._pinned_page = (self._pinned_page + step) % max(1, len(recs))
                     # 指纹里不含页码，所以要手动作废，否则下一跳会短路掉不重画
                     self._pinned_snapshot = ""
-                    self._redraw_pinned_now()   # 别让用户等 1.5 秒
+                    self._redraw_pinned_now()   # 页码只在界面这边，不等下一份快照
 
                 with ui.row().classes('w-full items-center gap-2').style('min-width:0;'):
                     ui.icon('push_pin').style('font-size:var(--nano-fs-md); color:var(--nano-amber);')
@@ -1735,7 +1727,7 @@ class WebUI:
                         #
                         # 按这张卡片自己的 artifact_id 判，不是判"有没有最近那条"。
                         _is_audit = (r.kind == _it.Kind.SKILL_AUDIT
-                                     and bool(self.agent._get_pending_skill(r.artifact_id or "")))
+                                     and bool(r.has_pending_skill))
                         if _is_audit:
                             ui.button(icon='code').props('flat dense round size=sm').style(
                                 'color:var(--nano-fg-soft); flex-shrink:0;'
@@ -1790,7 +1782,7 @@ class WebUI:
                         # 那条让模型**猜得更准**，这条让用户能**直接指定**，从而不必猜。
                         # ⚠️ ③ 文案就叫 `replay`（已定，与右键菜单那个入口同名，
                         #    两个入口不同、动作同一个，名字必须一致）。
-                        _replayed = (getattr(self, "_reply_target", None) or {}).get("iid")
+                        _replayed = _pin_rt.get("iid")
                         if _replayed == r.interaction_id:
                             ui.button('取消引用', icon='close').props(
                                 'flat dense size=sm no-caps').style(
@@ -1935,9 +1927,8 @@ class WebUI:
         except Exception as e:
             logger.warning(f"[UI] 传递引用回复目标失败: {e}")
             return
-        # 指纹里不含 _reply_target，所以手动作废，否则重画会被短路掉。
-        self._pinned_snapshot = ""
-        self._redraw_pinned_now()
+        # 待审卡上「回复 / 取消引用」跟着快照走：请后端立即重算（推回来就重画）
+        self._request_snapshot("pinned")
         self._refresh_reply_prompt()      # 输入框左边那个符号跟着变
 
     # 引用态用的符号。`❯` 是常态，`↳` 是"这条在回答上面某个待办"。
@@ -1969,8 +1960,8 @@ class WebUI:
         el = getattr(self, "_composer_prompt", None)
         if el is None:
             return
-        # 幂等：这个函数被 1.5 秒的定时器反复调（复位发生在轮次结束的 `finally` 里，
-        # UI 那时没有参与，只能靠轮询自愈），没变就别改 DOM。
+        # 幂等：每次待审卡快照到来都会调（复位发生在轮次结束的 `finally` 里，
+        # UI 那时没有参与，靠后端快照里的引用目标变化推过来），没变就别改 DOM。
         _want = self._REPLY_PROMPT if _on else self._NORMAL_PROMPT
         if getattr(el, "text", None) == _want:
             return
@@ -2035,8 +2026,8 @@ class WebUI:
 
         ⚠️ 只对 `selection` 生效。待审卡那条已经有出口（卡片上的「取消引用」），
            再给它一个就是**两处表达同一件事** —— 两处一定会不同步。
-        ⚠️ 幂等：它被 1.5 秒的定时器反复调（轮次结束的复位发生在
-           orchestrator 的 `finally` 里，UI 那时没有参与，只能靠轮询自愈）。
+        ⚠️ 幂等：每次待审卡快照到来都会调（轮次结束的复位发生在
+           orchestrator 的 `finally` 里，UI 那时没有参与，靠后端快照推过来）。
         """
         bar = getattr(self, "_quote_bar", None)
         lbl = getattr(self, "_quote_bar_text", None)
@@ -2057,10 +2048,7 @@ class WebUI:
             logger.debug(f"[UI] 刷新引用条失败（仅视觉）: {e}")
 
     def _redraw_pinned_now(self) -> None:
-        """立刻重画待办卡片，不等那个 1.5 秒的定时器。
-
-        实测：点 replay / 翻页都有 **1–2 秒可见延迟**。
-        原因是这两个动作只把指纹置空，真正的重画要等下一次 `ui.timer(1.5, …)`。
+        """按缓存的快照立刻重画待办卡片（翻页只改界面这边的页码，快照不会因此再推一次）。
 
         ⚠️ **不能在这里直接调 `refresh_pinned_interactions()`** ——
         我们此刻正在那张卡片里某个按钮的点击回调里，而重画的第一件事是
@@ -2070,8 +2058,8 @@ class WebUI:
         try:
             ui.timer(0.01, self.refresh_pinned_interactions, once=True)
         except Exception as e:
-            # 立即重画只是体验优化，失败就退回定时器那条路，不能影响功能。
-            logger.debug(f"[UI] 立即重画待办卡片失败，交给定时器: {e}")
+            # 立即重画只是体验优化，失败就等下一份快照，不能影响功能。
+            logger.debug(f"[UI] 立即重画待办卡片失败，等下一份快照: {e}")
 
     def _reopen_pending_audit(self, filename: str | None = None) -> None:
         """从 pinned card 点「看代码」→ 重开审计弹窗。
@@ -2367,6 +2355,8 @@ class WebUI:
                     self.refresh_skill_list()
             elif _kind in ("init_facts", "init_stage", "init_ready"):
                 self._on_init_event(_ev)
+            elif _kind == "state_snapshot":
+                self._apply_snapshot(_ev.get("name", ""), _ev.get("data") or {})
             elif _kind == "chat_message":
                 # 聊天区的异步产出（主动开口 / 故障卡 …，`core.backend.emit_chat_event`）
                 self.emit_chat(**{k: _ev.get(k) for k in (
@@ -3395,11 +3385,7 @@ class WebUI:
         📌 缺「找」和缺「读」后果完全不同（前者 = 只能读用户给的 URL），
            一个绿/灰二值把这个区别抹平了。
         """
-        try:
-            from core.mcp_client import get_mcp_manager
-            state = get_mcp_manager().web_status()
-        except Exception:
-            state = "OFFLINE"
+        state = ((getattr(self, "_snap", None) or {}).get("net") or {}).get("state") or "OFFLINE"
         # 只在状态变化时才更新 UI——避免每 3 秒无脑 patch 客户端（会搅扰正在编辑的输入框等）
         if getattr(self, "_net_online_state", None) == state:
             return
@@ -4656,7 +4642,7 @@ class WebUI:
                 self.status_lbl.style('color:var(--nano-ok); font-size:var(--nano-fs-sm);')
                 self.log_lbl.set_text(step.get("log", "处理完毕。"))
                 self._koala_current_skill = None
-                self._update_cost_warning()
+                self._request_snapshot("budget")
                 # 🔴 这里原本直接 set_text(今日总量)，**绕过了「Token 计数器」那条设置** ——
                 #    于是选了「不显示」也只在重启后有效，一发消息就被这三行改回去
                 #。
@@ -5236,12 +5222,7 @@ class WebUI:
         # 缩窗先于后端开始 GUI 任务（授权回复送到后端要一小段时间）：刚缩窗的几秒内不判断。
         if time.time() - (getattr(self, "_mini_start_time", 0) or 0) < 3.0:
             return
-        try:
-            from core.runtime import oslease as _ol
-            from core.runtime.kernel import get_kernel as _gk
-            if _ol.gui_session_active(_gk()):
-                return
-        except Exception:
+        if self._session_snap().get("gui_session", True):
             return
         logger.info("[Window] GUI 任务已结束，恢复窗口")
         await self._exit_mini()
@@ -5305,12 +5286,12 @@ class WebUI:
         """刷新输入框下方 Auto chip：Ask permission 灰、Auto 琥珀；GUI 任务的临时授权存在时
         强制显示 Temp Auto（蓝，不可展开），授权消失后变回用户选的那个。
 
-        临时授权读授权租约（真实信号），由 1 秒 tick 调用；状态没变时不重画。
+        临时授权照后端推来的 `session` 快照（授权租约）；状态没变时不重画。
         """
         chip = self._auto_chip
         if not chip:
             return
-        _temp = _rt_auto_authorized()
+        _temp = bool(self._session_snap().get("temp_auto"))
         _state = "temp" if _temp else ("auto" if self._global_auto else "ask")
         if getattr(self, "_auto_chip_state", None) == _state:
             return
@@ -5361,7 +5342,7 @@ class WebUI:
 
         Temp Auto 期间不展开（临时授权随 GUI 任务结束，不能在这里改）。
         """
-        if _rt_auto_authorized():
+        if self._session_snap().get("temp_auto"):
             return
         box = getattr(self, '_auto_menu_box', None)
         menu = getattr(self, '_auto_menu', None)
@@ -5825,7 +5806,7 @@ class WebUI:
         self._clear_empty_state_greeting()
         # 用户发话 = 用户唤醒源触发，orchestrator 会恢复所有 active 挂起，
         # 这里同步把还在跳的等待 pill 收尾（去掉计时器/按钮）。
-        self._settle_all_waiting_pills(final_text="▶ 你回来了，继续")
+        self._settle_all_waiting_pills(final_text="▶ 你回来了，继续", fresh=True)
 
         with self.chat_container:
             with ui.column().classes('w-full items-start mb-4'):
@@ -7192,7 +7173,7 @@ class WebUI:
         try:
             with self._ui_scope():
                 if ev.get("rt_task_id") or ev.get("event") == "carrier_promoted":
-                    self._refresh_tasks_panel()
+                    self._request_snapshot("tasks")
                 if _sk:
                     self._set_skill_ui_status(
                         _sk, "RUNNING" if _carriers.skill_running(_sk) else "OK")
@@ -7433,11 +7414,8 @@ class WebUI:
     def _card_is_faulted(self, card_key: str) -> bool:
         """这张卡当前有没有可用性问题。活动态写入前必须先问一句，
         否则会把刚画上的 FAULT 抹回 IDLE。"""
-        try:
-            from core.health import get_health
-            return get_health().card_status(card_key) is not None
-        except Exception:
-            return False
+        _h = (getattr(self, "_snap", None) or {}).get("health") or {}
+        return bool((_h.get("cards") or {}).get(card_key))
 
     def _paint_card(self, dot, lbl, level: str, text: str = ""):
         _color, _default = self._CARD_STYLE.get(level, self._CARD_STYLE["IDLE"])
@@ -7595,41 +7573,26 @@ class WebUI:
         cmd、只看 UI 也一定能感知到不对劲；但降级如果不做，不靠 cmd 可能一辈子发现不了。
         所以降级要做，落点就是这几张卡。
         """
-        try:
-            from core.health import get_health, get_capability_spec, Status
-        except Exception:
+        _hs = (getattr(self, "_snap", None) or {}).get("health")
+        if _hs is None:
             return
-        _h = get_health()
+        _levels = _hs.get("cards") or {}
 
-        def _level_of(card_key: str) -> tuple[str, str]:
-            _st = _h.card_status(card_key)
-            if _st is None:
-                return "", ""
-            if _st.status == Status.UNAVAILABLE:
-                return "FAULT", ""
-            if _st.status == Status.RECOVERING:
-                return "RECOVERING", ""
-            return "DEGRADED", ""
-
-        # 知识库 / 全文加载：有故障就压过 HIT/IDLE；没故障则保留原有活动态不动
+        # 知识库 / 全文加载 / 联网：有故障就压过 HIT/IDLE；没故障则保留原有活动态不动
         for _card, _dot, _lbl in (
             ("rag", getattr(self, "rag_dot", None), self.rag_lbl),
             ("full_file", getattr(self, "full_file_dot", None), self.full_file_lbl),
             ("net", getattr(self, "net_dot", None), self.net_lbl),
         ):
-            _lv, _txt = _level_of(_card)
+            _lv = _levels.get(_card) or ""
             if _lv:
-                self._paint_card(_dot, _lbl, _lv, _txt)
+                self._paint_card(_dot, _lbl, _lv, "")
 
         # 环境卡：收容所有没有专属卡片的问题项（Tesseract 缺失这类）
-        def _is_orphan(cap: str) -> bool:
-            _spec = get_capability_spec(cap)
-            return _spec is None or _spec.monitor_card == "environment"
-
-        _orphan = [s for s in _h.problems() if _is_orphan(s.capability)]
+        _env = _hs.get("env") or {}
         _env_dot = getattr(self, "env_dot", None)
         _env_lbl = getattr(self, "env_lbl", None)
-        if not _orphan:
+        if not _env.get("count"):
             try:
                 if _env_dot:
                     _env_dot.style('width:6px; height:6px; border-radius:50%; background:var(--nano-ok); flex-shrink:0;')
@@ -7639,8 +7602,8 @@ class WebUI:
             except Exception:
                 pass
         else:
-            _worst = "FAULT" if any(s.status == Status.UNAVAILABLE for s in _orphan) else "DEGRADED"
-            self._paint_card(_env_dot, _env_lbl, _worst, f"{len(_orphan)} 项降级")
+            self._paint_card(_env_dot, _env_lbl, _env.get("worst") or "DEGRADED",
+                             f"{int(_env.get('count') or 0)} 项降级")
 
     def _refresh_takeover_bar(self):
         """重画接管状态条。**整体重画，不做增量。**
@@ -7656,15 +7619,8 @@ class WebUI:
         bar = getattr(self, "_takeover_bar", None)
         if bar is None:
             return
-        holder = None
-        try:
-            from core.runtime.kernel import get_kernel
-            from core.runtime import oslease as _ol
-            cur = _ol.current_activity(get_kernel())
-            if cur is not None and cur.holder == _ol.Holder.USER:
-                holder = cur
-        except Exception:
-            holder = None
+        # 用户接管时后端给出阶段（`core.snapshots.takeover_phase`），没有接管则为空
+        holder = self._session_snap().get("takeover")
         # ⚠️⚠️ **只在状态翻转时打日志**，1 秒一跳会把 cmd 淹掉。
         #    记的是「接管状态条什么时候真的变了」—— 和 `[Takeover]` 那条的时间差
         #    就是**事件循环被堵住的时长**，也就是"为什么不瞬发"的答案。
@@ -7674,8 +7630,7 @@ class WebUI:
         if getattr(self, "_takeover_bar_shown", None) != _shown_now:
             self._takeover_bar_shown = _shown_now
             if _shown_now:
-                logger.debug(f"[TakeoverBar] 接管状态条出现 —— 持有者={holder.holder} "
-                            f"reason={holder.reason!r} 剩余={holder.held_until - __import__('time').time():.1f}s")
+                logger.debug(f"[TakeoverBar] 接管状态条出现 —— {holder}")
             else:
                 logger.debug("[TakeoverBar] 接管状态条消失")
 
@@ -7690,73 +7645,31 @@ class WebUI:
         if getattr(self, "_takeover_lbl", None) is not None:
             self._takeover_lbl.set_text(self._takeover_text(holder))
 
-    #: 用户"停手"到底停够多久才算真停下。⚠️ **这 2 秒刻意不显示** ——
-    #: 人打字的自然间隙经常超过 0.2 秒，显示的话接管状态条会在两个文案之间疯狂闪。
-    #: 📌 它的作用是**让"停下了"这件事有意义**，不是给用户看的一个计时。
-    _TAKEOVER_SETTLE_SEC = 2.0
+    def _takeover_text(self, holder: dict) -> str:
+        """按后端给的阶段选接管状态条的文案（阶段怎么来的见 `core.snapshots.takeover_phase`）。
 
-    def _takeover_text(self, holder) -> str:
-        """按「Nano 停没停」×「用户停手多久」选文案。
-
-        ⭐ **固定中文在这里是正当的，不需要改成自然语言。**
-        「不许写死用户可见文案」那条原则要防的是**人格分裂**，而人格分裂只发生在
-        **用户以为那是 Nano 在说话**的地方 —— 也就是**对话气泡**。
-        这条接管状态条在**卡片区**，用户天然把它读成系统在陈述状态；给它套人格模板反而怪。
-        📌 **判断一句文案该不该走人格，先问「用户会不会以为这是 Nano 在对我说话」。**
-        （这已作为固定文案豁免的**第五条**写进早先的设计。）
-        ⚠️ 原先这里留过「临时固定文案、正式要换异步自然语言」的注记 ——
-        **那是多余的**，接管状态条本来就该是系统通知。
-
-        ═══ 六格穷举 → 三句话═══
-
-        | # | Nano | 用户 | 文案 |
-        |---|---|---|---|
-        | 1 | 还在收手 | 刚动过 | 已让出控制 —— 我手上这一步做完就停 |
-        | 2 | 已停下   | 刚动过 | 已暂停控制 —— 你停手后我自动继续 |
-        | 3 | 已停下   | 停手 ≥2s | N 秒内你不再操作，我会继续行动 |
-        | 4 | 还在收手 | 停手 ≥2s | 同 3（**共用**）|
-        | 5 | 已停下   | 租约到期 | 接管状态条消失 |
-        | 6 | 还在收手 | 租约到期 | 接管状态条消失（= "挂起被取消"，它从没真停过）|
-
-        ⭐⭐ **3 和 4 共用一句**：倒计时文案说的是**条件 + 后果**，
-        不声称"Nano 停了"（第 4 格里它确实没停），所以两格都为真；
-        而"Nano 到底停没停"在那一刻**对用户既不可见、也不影响他做什么**。
-
-        📌📌 **穷举状态是为了保证每句话都为真，不是为了每个状态都配一句独有的话。
-        能共用就该共用 —— 状态数和文案数不必一一对应。**
-        ⚠️ Claude 第一版正因为想给每格配一句，把第 4 格硬塞成了"接管状态条消失"，
-        被 用户当场指出那一格没覆盖到。
-
-        ⚠️ **倒计时从 `held_until` 推导，绝不自己数。** 用户再动一下，
-        `held_until` 会跳到 now+20，于是**自动**弹回"刚动过"那一档 ——
-        不需要额外记"上次停手时间"，也不可能与真实状态漂移。
-        📌 同 `projection.py` 的契约：**每跳都从权威重算，永远不自己维护计数器。**
+        固定中文在这里是正当的：这条状态条在卡片区，用户把它读成系统在陈述状态，
+        不是 Nano 在说话（固定文案豁免第五条）。「还在收手」与「已停下」在用户停手 2 秒后
+        共用一句倒计时：那句话说的是条件与后果，对两种情况都为真。
         """
-        try:
-            from core.proactive.takeover import USER_HOLD_SEC as _HOLD
-            from core.runtime import oslease as _ol_t
-            _parked = _ol_t.is_parked()
-        except Exception:
-            # ⚠️ 这个兜底值**必须跟 `USER_HOLD_SEC` 一起改**（2026-08-26 差点漏）。
-            #    📌 一个「读不出来就用默认值」的兜底，如果不跟着它兜的那个值走，
-            #       它就是一份**会静默说谎的备份**：真值 12，接管状态条按 20 倒数。
-            _HOLD, _parked = 12.0, True
-        _remain = max(0.0, float(holder.held_until or 0) - time.time())
-        # 剩余 > (HOLD - 2) ⟺ 距上次操作不足 2 秒 ⟺ 用户还在动
-        if _remain > _HOLD - self._TAKEOVER_SETTLE_SEC:
-            return ('已暂停控制 —— 你停手后我自动继续' if _parked
-                    else '已让出控制 —— 我手上这一步做完就停')
-        # 停手 ≥2s：倒计时。⚠️ 向上取整，免得显示 0 秒却还没醒。
-        import math as _math
-        return f'{max(1, int(_math.ceil(_remain)))} 秒内你不再操作，我会继续行动'
+        _ph = (holder or {}).get("phase")
+        if _ph == "paused":
+            return '已暂停控制 —— 你停手后我自动继续'
+        if _ph == "yielding":
+            return '已让出控制 —— 我手上这一步做完就停'
+        return f'{max(1, int((holder or {}).get("seconds") or 1))} 秒内你不再操作，我会继续行动'
 
     def _update_cost_warning(self):
-        """根据当日用量刷新顶部警告条。"""
+        """根据当日用量刷新顶部警告条（照后端推来的 `budget` 快照）。"""
         if not self._cost_warning_bar:
             return
-        status = usage_tracker.cap_status()
-        cfg = usage_tracker.load_config()
-        cost = usage_tracker.today_cost()
+        _b = (getattr(self, "_snap", None) or {}).get("budget")
+        if _b is None:
+            return
+        status = _b.get("status") or "ok"
+        cfg = {"soft_cap_usd": float(_b.get("soft_cap") or 0),
+               "hard_cap_usd": float(_b.get("hard_cap") or 0)}
+        cost = float(_b.get("cost") or 0)
         if status == "ok":
             self._cost_warning_bar.style('display:none;')
         elif status == "soft":
@@ -8433,6 +8346,7 @@ class WebUI:
                 c["soft_cap_usd"] = float(soft_in.value or self._CAP_SOFT_MIN)
                 c["hard_cap_usd"] = float(hard_in.value or self._CAP_SOFT_MIN + self._CAP_STEP)
                 usage_tracker.save_config(c)
+                self._request_snapshot("budget")      # 用量警示按新限额重算
             except Exception as e:
                 ui.notify(f"保存限额失败：{e}", type="negative", icon="error")
 
@@ -10810,33 +10724,19 @@ class WebUI:
     }
 
     def _bg_snapshot(self):
-        """`(running, finished)`。**永不抛** —— 抽屉挂了不许把界面带走。"""
-        try:
-            from core.runtime.kernel import get_kernel
-            from core.runtime.task import (live_background_jobs,
-                                           finished_background_jobs,
-                                           queued_background_jobs)
-            k = get_kernel()
-            _fin = list(finished_background_jobs(k))
-            # ⚠️ 「哪些还在排队」**问 `task` 那一层**，不在渲染里另写一次
-            #    `execution == IDLE`。📌 一条规则写在两处，它们只在
-            #    「我两次想法相同」的前提下一致 —— 而本项目已经因为这个形状
-            #    踩过的计量 vs 投影、的 live vs 重放。
-            self._bg_queued_ids = {getattr(r, "task_id", "")
-                                   for r in queued_background_jobs(k)}
-            # ⚠️ Clear 只是**把这一刻之前的藏起来**，不删 Task 记录 ——
-            #    📌 「我不想再看见它」和「它没发生过」是两件事。
-            _cut = getattr(self, "_bg_finished_hidden_before", 0.0) or 0.0
-            if _cut:
-                _fin = [r for r in _fin if float(getattr(r, "updated_at", 0)) > _cut]
-            return list(live_background_jobs(k)), _fin
-        except Exception as e:
-            # ⚠️ 读失败时**把排队名单清空**，不许留上一次的 ——
-            #    📌 一份读不出来时保留下来的旧名单，会让界面继续断言一件
-            #       它已经不知道真假的事；而"不知道"该表现成"不标"，不是"沿用"。
-            self._bg_queued_ids = set()
-            logger.warning(f"[L5] 读后台任务失败: {e}")
-            return [], []
+        """`(running, finished)`，照后端推来的快照（`core.snapshots.tasks_state`）。**永不抛。**
+
+        排队中的另列（`queued_ids`，由 `task` 那一层判定，不在渲染里另写一次）。
+        Clear 只是把这一刻之前结束的藏起来，不删 Task 记录（「我不想再看见它」和
+        「它没发生过」是两件事）。
+        """
+        snap = (getattr(self, "_snap", None) or {}).get("tasks") or {}
+        self._bg_queued_ids = set(snap.get("queued_ids") or [])
+        _fin = [types.SimpleNamespace(**d) for d in (snap.get("finished") or [])]
+        _cut = getattr(self, "_bg_finished_hidden_before", 0.0) or 0.0
+        if _cut:
+            _fin = [r for r in _fin if float(getattr(r, "updated_at", 0)) > _cut]
+        return [types.SimpleNamespace(**d) for d in (snap.get("running") or [])], _fin
 
     # ⚠️⚠️ `_parked_snapshot()` 与抽屉里那段「搁置 N」**已删除**
     #    （2026-08-20，Task 收窄）。
@@ -10900,11 +10800,7 @@ class WebUI:
             #    抽屉不会重画（`updated_at` 不变），用户看到的永远是第 1 步。
             #    📌 指纹漏一项，那一项的变化就永远不会重画，**而且不报错**。
             def _tsteps(_r):
-                try:
-                    return len(self.agent.agent_transcript(
-                        getattr(_r, "task_id", "") or ""))
-                except Exception:
-                    return 0
+                return int(getattr(_r, "steps", 0) or 0)
 
             _fp = (
                 # ⚠️ 带上 `execution`：**「排队 → 开跑」不一定 touch `updated_at`
@@ -11298,7 +11194,7 @@ class WebUI:
         except Exception as e:
             logger.warning(f"[L5] UI 终止后台任务失败 {_tid}: {e}")
             ui.notify('终止失败，看日志', type='negative')
-        self._refresh_tasks_panel()
+        self._request_snapshot("tasks")
 
     def _clear_finished_bg(self) -> None:
         """只清显示，不删记录（见 `_render_bg_section` 里的说明）。"""
@@ -11311,6 +11207,18 @@ class WebUI:
             pass
         self._bg_finished_hidden_before = time.time()
         self._refresh_tasks_panel()
+
+    def _resync_task_pill(self) -> None:
+        """按缓存的任务快照重挂 pill（2 秒一次，只读界面这边的缓存）。
+
+        pill 所在的元信息行随新回复被删掉；任务快照没变时后端不会再推，
+        所以挂回去这件事不能只在快照到来时做。
+        """
+        try:
+            _n = len(((getattr(self, "_snap", None) or {}).get("tasks") or {}).get("running") or [])
+            self._sync_task_pill(_n)
+        except Exception as e:
+            logger.debug(f"[L5] 重挂 pill 失败（下一跳再试）: {e}")
 
     def _sync_task_pill(self, n: int) -> None:
         """聊天区那个 `x running task(s)`。
@@ -11365,7 +11273,8 @@ class WebUI:
                 # 📌 **一个「只创建一次」的句柄，必须有办法知道它指的东西还在不在** ——
                 #    否则一次静默失败就是永久失效。
                 # ⭐ 判据用**它还在不在它所在容器的孩子里**（level-triggered，
-                #    每 2 秒重新问一次现状），不维护任何"它是否有效"的标志位。
+                #    每 2 秒按缓存的任务快照重新问一次现状，见 `_resync_task_pill`），
+                #    不维护任何"它是否有效"的标志位。
                 #    所在的元信息行随新回复被删掉时，pill 跟着没了，这里重建到新的那一行。
                 if _pill is not None:
                     try:
@@ -11584,6 +11493,7 @@ class WebUI:
         self._waiting_pills = getattr(self, "_waiting_pills", {})
         self._waiting_pills[suspension_id] = {
             "hidden": True, "done": False, "waiting_intent": waiting_intent,
+            "created": time.time(),
             "action_ref": action_ref, "action_done": False,
             "bg_ref": bg_ref,
             "resp_state": getattr(self, "_resp_state", None),
@@ -11645,6 +11555,7 @@ class WebUI:
             "txt": _lbl, "timer_lbl": _timer_lbl,
             "btn_now": _btn_now, "btn_cancel": _btn_cancel,
             "ui_timer": _utimer, "done": False, "reason": reason,
+            "created": time.time(),
             "waiting_intent": waiting_intent,
             # 工具明细行仍画在原回应里；后台真正返回时要把它的 spinner 收成终态。
             "action_ref": action_ref, "action_done": False,
@@ -11790,7 +11701,8 @@ class WebUI:
         except Exception:
             pass
 
-    def _settle_all_waiting_pills(self, final_text: str = "▶ 继续", color: str = "var(--nano-ok)"):
+    def _settle_all_waiting_pills(self, final_text: str = "▶ 继续", color: str = "var(--nano-ok)",
+                                  fresh: bool = False):
         """用户发新消息时调用：把**已经真的结束**的等待 pill 收尾。
 
         ⚠️⚠️ 这个函数原来的注释是：
@@ -11812,24 +11724,32 @@ class WebUI:
         📌 更一般的那条：**注释里对别的模块行为的假设，
            会在那个模块改动时悄悄变成谎言。** 这里就是活标本。
 
-        现在：逐条回查权威，只收**真的不在 active 里**的。
+        现在：逐条对照后端推来的「还活着的等待」快照（`core.snapshots.waits_state`），
+        只收**真的不在里面**的；比那份快照晚登记的 pill 不按它判。
+        `fresh=True`（用户发消息时）先请后端当场重算一份再判。
         """
         self._waiting_pills = getattr(self, "_waiting_pills", {})
         if not self._waiting_pills:
             return
-        try:
-            from core.runtime.kernel import get_kernel
-            from core.runtime import waitcond as _wc
-            _alive = {r.wait_id for r in _wc.list_live(get_kernel(), oldest_first=True)}
-        except Exception as e:
-            # ⚠️ 读不到权威时**什么都不收**（而不是全收）。
-            #    多留一个转圈的 pill，好过谎报一个 ✓ —— 前者用户看得出不对劲，
-            #    后者会让用户以为事情办完了。
-            logger.warning(f"[Suspension] 读取活跃挂起失败，本次不收 pill（避免谎报完成）: {e}")
+        if fresh:
+            self._request_snapshot("waits")
+            try:
+                from core import snapshots
+                self._snap["waits"] = snapshots.current("waits")
+            except Exception:
+                pass
+        _ws = (getattr(self, "_snap", None) or {}).get("waits")
+        if not _ws or "_at" not in _ws:
+            # 没有权威的快照时**什么都不收**（而不是全收）：多留一个转圈的 pill，
+            # 好过谎报一个 ✓ —— 前者用户看得出不对劲，后者会让用户以为事情办完了。
             return
+        _alive = set(_ws.get("live") or [])
+        _at = float(_ws["_at"])
         for sid in list(self._waiting_pills.keys()):
             if sid in _alive:
                 continue      # 还活着 —— 它没完，别打勾
+            if float(self._waiting_pills[sid].get("created") or 0) >= _at:
+                continue      # 比这份快照晚登记：它的等待可能还没被快照看见
             # ⭐⭐⭐ [2026-08-09 实测] **措辞也必须从权威读，不能由调用方给。**
             #    实测现象：Nano 自己调 `cancel_wait` 取消了那条定时（**取消是真的，
             #    不会再触发**），但 pill 照旧数完、然后翻成「等待中 · 即将继续」——
@@ -14187,94 +14107,34 @@ class WebUI:
 
 
 
-        # ── 未决交互卡片的唯一驱动 ────────────────────────
-        # **level-triggered**：每次重新读 `interaction` 表算一遍，
-        # 不依赖任何"状态变了要记得通知 UI"的回调 —— 那正是要避免的
-        # （SQLite 是权威，事件队列只是 refresh hint，丢光也不影响正确性）。
-        # 函数内部有内容指纹短路，没变化时不碰 DOM。
-        # 1.5 秒：比健康卡慢一点就够，待办不是毫秒级的东西。
-        ui.timer(1.5, self.refresh_pinned_interactions)
-        # 后台任务：pill / 角标 / 抽屉内容。
-        # ⚠️ 2s 而不是 1.5s 是刻意错开的：📌 两个同周期的定时器会永远在同一帧
-        #    里一起跑，把偶发的卡顿叠成必然的卡顿。
-        ui.timer(2.0, self._refresh_tasks_panel)
+        # ── 界面常驻显示的后端状态 ────────────────────────
+        # 待审卡、后台任务抽屉、接管状态条 / Temp Auto 芯片、联网卡、监控卡可用性、等待 pill 收尾、
+        # 用量警示：后端按周期算快照，内容变了才推（`core.snapshots`，轮外事件 `state_snapshot`），
+        # 这里收到就照着画。仍是 level-triggered：后端每一跳都从权威重算，不靠「改状态的地方
+        # 记得通知」，丢一个事件只是晚一个周期。
         # 后端事件总线的常驻消费者（按轮 id 分发；轮外事件如 Subagent 的授权请求直接处理）。
         #    订阅在 __init__ 里就建好了：界面起来之前发出的事件在队列里等着，不丢。
         ui.timer(0.01, lambda: asyncio.ensure_future(self._event_router()), once=True)
+        # 后端只在内容变化时推，新连上的界面先自己取一份当前全量
+        ui.timer(0.05, self._load_snapshots, once=True)
 
         # 健康登记表的消费（故障卡出 / 撤）、启动呈现（崩溃留痕 → 未发消息 → 重启前还在等 →
         # 续做询问）都在后端（`core.startup`），作为轮外事件回到这里渲染。
-        # 这里只按 1 秒重画监控面板（C 类：界面读后端状态）。
+        # 监控卡每秒按缓存的 `health` 快照重画一次：活动态（HIT / IDLE）写入时可能漏了可用性
+        # 判断，这里 1 秒内纠正回来（只读界面这边的缓存）。
         ui.timer(1.0, self._refresh_monitor_health_safe)
-        # 顶部用量警示随预算变化刷新（预算状态本身由后端心跳同步，见 core.backend）。
-        ui.timer(20.0, self._update_cost_warning)
 
         # 感知钩子（键鼠 / 窗口 / 保存）。
         _start_proactive_hooks()
 
-        # 挂起/等待：定时唤醒轮询。轮询本身只是本地 SQLite 查询（廉价），
-        # 真正的 LLM 成本只在某条定时挂起到点、驱动唤醒 turn 时才发生——
-        # 到点与否由模型当初设的 timer_seconds 决定（已在 wait_for 描述里按
-        # "缓存窗口/隔多久值得回看一次"引导）。5 秒一轮给足响应度。
-        # 到点的定时唤醒由后端心跳轮询（`core.session.TurnScheduler.poll_due`）；这里只收 pill。
-        async def _suspension_tick():
-            # ⭐⭐⭐ [2026-08-09 实测] **等待 pill 的收尾挂进 tick。**
-            #
-            # 🔴 实测问题：Nano 自己调 `cancel_wait` 之后 pill 不收 ——
-            #    因为收 pill 这件事原来**只挂在两条路径上**（UI 的取消按钮 /
-            #    用户发新消息），而模型那条 `cancel_wait` 在 orchestrator 里，
-            #    它**改了权威却没有 UI 通道**。
-            #
-            # ⚠️⚠️ 而 `app.py:7443` 那段注释写的正是这个判据 ——
-            #    「这一处**差点漏掉**……📌 **镜像点要按「权威被改动的地方」去找，
-            #      不是按模块去找**」。当时把**镜像**点数全了，
-            #    却没对**pill** 问同一个问题。
-            #    📌 **一条判据只被用在它诞生的那个问题上，等于没立。**
-            #
-            # ⭐ 所以修法**不是**给 `cancel_wait` 补发一个事件（那只修这一条路径），
-            #    而是把这个**本来就是 level-triggered** 的收尾接到时钟上：
-            #    它逐条回查权威、只收真的不在 active 里的。
-            #    📌 **level-triggered 的收尾对「以后又多一条取消路径」免疫，
-            #       edge-triggered 的补发只修当前这一条。**
-            #    ⭐ 与 `reconcile_tick` 同一个形状（那条也曾经「写好了没人调」）。
-            try:
-                gui._settle_all_waiting_pills()
-            except Exception as e:
-                logger.debug(f"[Suspension] pill 收尾 tick 异常（忽略）: {e}")
-        ui.timer(5, _suspension_tick)
-
-        # ⭐⭐ 接管状态条的驱动源。**1 秒，不复用上面那个 5 秒的 tick。**
-        #
-        # ⚠️ 5 秒对"瞬发"来说太慢了：用户动手到界面出现提示最坏要等 5 秒，
-        #    那正是 用户说的"过一会不知道啥时候突然触发"。
-        # 📌 判据：**收敛的节奏和展示的节奏是两件事，不该共用一个 timer。**
-        #    收敛（修脏状态）慢一点没关系；展示（让人知道现在什么情况）不行。
-        #
-        # ⚠️ 这里刻意用**轮询重画**而不是"接管时推一次事件"：
-        #    推事件要求"每个改状态的地方都记得推" —— 那正是本轮反复栽的形状
-        #    （`_os_task_busy` 靠所有调用点记得配对、`reconcile_tick` 压根没人调）。
-        #    轮询重画丢一跳只是晚 1 秒，丢一个事件是永久错位。
-        # ⚠️ 代价核过：每跳一次 SQLite 只读查询（`current_activity`），
-        #    与 UI 的其他 1 秒级 timer 同量级。
-        def _takeover_bar_tick():
-            try:
-                gui._refresh_takeover_bar()
-            except Exception as e:
-                logger.debug(f"[A3] 接管状态条重画失败（忽略本跳）: {e}")
-            # GUI 任务结束后窗口仍是 mini 时恢复（按 GUI 会话租约判断，丢一跳只是晚一秒）。
+        # GUI 任务结束后窗口仍是 mini 时恢复（照 `session` 快照）。缩窗后的头 3 秒不判断，
+        # 所以按秒重看缓存，而不是只在快照变化时看。
+        def _window_sync_tick():
             if gui._mini_active:
                 asyncio.create_task(gui._sync_window_with_gui_task())
-            # Temp Auto 芯片跟随临时授权租约（状态没变时不重画）。
-            try:
-                gui._refresh_auto_chip()
-            except Exception as e:
-                logger.debug(f"[Auto] 芯片刷新失败（忽略本跳）: {e}")
-        ui.timer(1, _takeover_bar_tick)
-
-
-
-        # 互联网检索卡片：周期反映当前联网类 MCP 能力（fetch 等连上→ONLINE，关掉→OFFLINE）
-        ui.timer(3, self._update_net_status)
+        ui.timer(1, _window_sync_tick)
+        # running task 提示跟随最新回复（它所在的元信息行随新回复被删掉，按缓存重挂）
+        ui.timer(2.0, self._resync_task_pill)
 
         # ── 初始化中遮罩 ──────────────────────────────────────────────
         # 后台 RAG 索引(嵌入模型加载、BM25构建)在 core.rag.start_background_index 里跑，

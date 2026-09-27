@@ -8,6 +8,8 @@
   runtime_reconcile 5 · suspension_poll 5 · capability_probe 15 · budget_health 20 · intel_tick 20 · carrier_heartbeat 30 ·
   cpu_sample 60 · ambient_trail 240 · canary 300
   skill_reload 0.5 · health_consumer 1（`core.skill_watch` / `core.startup`）
+  snapshot_pinned 1.5 · snapshot_tasks 2 · snapshot_session 1 · snapshot_net 3 · snapshot_health 1 ·
+  snapshot_waits 5 · snapshot_budget 20（`core.snapshots`）
 一次性：asyncio 崩溃处理器（立即）· init_progress（立即）· mcp_startup（1.5 秒后）·
   startup_presentation（2.5 秒后，`core.startup.present_startup`）
 
@@ -164,4 +166,9 @@ def start_backend_services(agent: Any, intel_engine: Optional[Any] = None) -> No
     heartbeat.register_once("init_progress", 0, lambda: startup.watch_init_progress(agent))
     # 启动呈现：崩溃留痕 → 未发消息 → 重启前还在等 → 续做询问（按顺序，界面起来前的事件在订阅队列里等）
     heartbeat.register_once("startup_presentation", 2.5, lambda: startup.present_startup(agent))
+    # 界面常驻显示的状态：按周期算快照，内容变了才推（待审卡 / 后台任务 / 接管与 GUI 任务 / 联网）
+    from core import snapshots
+    snapshots.install(agent)
+    for _name, _sec in snapshots.PERIODS.items():
+        heartbeat.register(f"snapshot_{_name}", _sec, lambda _n=_name: snapshots.tick(_n))
     heartbeat.start()

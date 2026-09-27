@@ -221,25 +221,28 @@ def t_card_only_for_audit() -> None:
     code = _code_of("refresh_pinned_interactions")
     check(bool(seg), "前置条件：找得到 refresh_pinned_interactions")
 
-    check("_CARD_KINDS" in code, "⭐ 有一张显式的「哪些 kind 上卡」白名单")
-    check("Kind.SKILL_AUDIT" in code, "⭐ 白名单里有 SKILL_AUDIT")
+    # 筛选在后端算待审卡快照时做（`core.snapshots.pinned_state`），界面只画快照里的
+    from tests._src import def_text as _def_text
+    back = _def_text("core.snapshots", "pinned_state")
+    check("_CARD_KINDS" in back, "⭐ 有一张显式的「哪些 kind 上卡」白名单（后端）")
+    check("Kind.SKILL_AUDIT" in back, "⭐ 白名单里有 SKILL_AUDIT")
     for k in ("SKILL_CLARIFICATION", "SKILL_MANAGE", "SKILL_SIDE_EFFECT", "OS_RISK"):
-        check(f"Kind.{k}" not in code,
-              f"⚠️ 渲染代码里不再出现 {k}（连 _KIND_LABEL 的死条目也清了）")
+        check(f"Kind.{k}" not in code and f"Kind.{k}" not in back,
+              f"⚠️ 渲染与筛选代码里都不出现 {k}（连 _KIND_LABEL 的死条目也清了）")
 
     # ⚠️⚠️ 收缩的是**显示**，不是状态：读出来的原始清单必须仍是全量，
     #    而「目标还在不在」这类判断必须回到未过滤的那一份。
-    check("_recs_all" in code and "list_live" in code,
-          "⭐ 保留了未过滤的原始清单变量（过滤只发生在渲染用的那份上）")
-    i_all = code.find("_recs_all = ")
-    i_flt = code.find("_CARD_KINDS")
+    check("live = _it.list_live(" in back,
+          "⭐ 保留了未过滤的原始清单变量（过滤只发生在上卡的那份上）")
+    i_all = back.find("live = _it.list_live(")
+    i_flt = back.find("_CARD_KINDS = ")
     check(0 <= i_all < i_flt, "⚠️ 先取全量、再过滤（顺序不能反）")
 
-    i_rt = code.find('_rt["iid"] not in')
-    check(i_rt > 0 and "_recs_all" in code[i_rt:i_rt + 120],
+    i_rt = back.find('rt["iid"] not in')
+    check(i_rt > 0 and "in live}" in back[i_rt:i_rt + 80],
           "⭐⭐ 「回复这条」的存活判定读的是**未过滤**那份 —— "
           "否则一条仍然 OPEN 的澄清会因为不再上卡而被误判成已关闭",
-          code[i_rt:i_rt + 90] if i_rt > 0 else "找不到存活判定")
+          back[i_rt:i_rt + 90] if i_rt > 0 else "找不到存活判定")
 
     # 反向：证明这不是"把整块渲染删了"—— 卡片本身还在画
     check("_KIND_LABEL" in code and "push_pin" in code,
