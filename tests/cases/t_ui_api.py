@@ -182,6 +182,140 @@ def t_skills() -> None:
         check(not hit, f"app.{fn} 不再直接碰后端", ", ".join(hit))
 
 
+class _FakeModule:
+    """把 `sys.modules[name]` 换成替身模块，退出时还原。"""
+
+    def __init__(self, name, **attrs):
+        self.name = name
+        self.mod = types.ModuleType(name)
+        for k, v in attrs.items():
+            setattr(self.mod, k, v)
+
+    def __enter__(self):
+        self.saved = sys.modules.get(self.name)
+        sys.modules[self.name] = self.mod
+        return self.mod
+
+    def __exit__(self, *a):
+        if self.saved is not None:
+            sys.modules[self.name] = self.saved
+        else:
+            sys.modules.pop(self.name, None)
+
+
+def t_knowledge() -> None:
+    print("\n▶ knowledge")
+    import tempfile
+    from core.ui_api import knowledge as KB
+    calls = []
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+        kb = pathlib.Path(td) / "kb"
+        tmp_up = pathlib.Path(td) / "up"
+
+        class _Coll:
+            def get(self, where=None, include=None):
+                return {"metadatas": [{"chunk_index": 1}, {"chunk_type": "schema"}, {"chunk_index": 0}],
+                        "documents": ["second", "SCHEMA", "first"]}
+
+        rag_attrs = dict(
+            get_health_report=lambda: {"summary": {"total": 1},
+                                       "files": [{"filename": "a.txt", "path": str(kb / "a.txt")},
+                                                 {"filename": "gone.txt", "path": str(kb / "gone.txt")}]},
+            index_single_file=lambda path, cfg: calls.append(("index", pathlib.Path(path).name, cfg))
+            or {"indexed": 0, "skipped": 0, "errors": [{"error": "bad pdf"}]},
+            delete_file=lambda fn: calls.append(("delete", fn)),
+            _get_collection=lambda: _Coll(),
+            _temp_uploads_dir=lambda: tmp_up,
+            register_temp_file=lambda fn, p: calls.append(("register", fn, pathlib.Path(p).read_bytes())),
+            remove_temp_file=lambda fn: True,
+            clear_temp_knowledge=lambda: calls.append(("clear",)),
+        )
+        orig_dir = KB._kb_dir
+        KB._kb_dir = lambda: kb
+        agent = _Agent()
+        _state.bind(agent_obj=agent)
+        import core  # noqa: F401
+        saved_rag_attr = getattr(core, "rag", None)
+        try:
+            with _FakeModule("core.rag", **rag_attrs) as fake:
+                core.rag = fake
+                r1 = KB.store_file("a.txt", b"hello")
+                r2 = KB.store_file("a.txt", b"again")
+                r3 = KB.store_file("x.exe", b"MZ")
+                r4 = KB.store_file("e.md", b"")
+                check(r1 == {"ok": True} and (kb / "a.txt").read_bytes() == b"hello",
+                      "写进知识库目录", str(r1))
+                check(r2["reason"] == "exists" and (kb / "a.txt").read_bytes() == b"hello",
+                      "同名不覆盖（原文件不动）")
+                check(r3 == {"ok": False, "reason": "unsupported", "suffix": ".exe"}
+                      and r4["reason"] == "empty", "不支持的格式 / 空文件不写，给原因码")
+                lst = KB.list_files()
+                check(lst["files"][0]["mtime"] > 0 and lst["files"][1]["mtime"] == 0.0
+                      and _serializable(lst), "列表带文件修改时间（读不到为 0）", str(lst["files"])[:120])
+                st = KB.index_file("a.txt", True, 50)
+                check(st == {"indexed": 0, "skipped": 0, "error": "bad pdf"}
+                      and calls[-1] == ("index", "a.txt", {"enhanced_mode": True, "max_ocr_pages": 50}),
+                      "建索引：结果只给计数与第一条错误", str(st))
+                check(KB.file_text("a.txt") == "first\n\nsecond", "看内容：按块顺序、去掉结构摘要块")
+                KB.delete_file("a.txt")
+                check(("delete", "a.txt") in calls and not (kb / "a.txt").exists()
+                      and "deleted knowledge-base file \"a.txt\" from the UI sidebar"
+                      in agent.memory.notes[-1][1], "删除：索引、磁盘、对话里的系统记录三件一起")
+                KB.add_temp_file("t.png", b"PNG")
+                check(calls[-1] == ("register", "t.png", b"PNG"), "临时附件：存盘并登记当前会话")
+                KB.clear_temp_files()
+                check(calls[-1] == ("clear",), "清空临时附件")
+        finally:
+            KB._kb_dir = orig_dir
+            if saved_rag_attr is not None:
+                core.rag = saved_rag_attr
+            _state.bind()
+    for fn in ("_refresh_kb_file_list", "_render_kb_file_card", "_handle_kb_upload",
+               "_show_kb_file_content_dialog", "_delete_kb_file", "_remove_temp_file"):
+        code = _code_only(fn)
+        hit = [b for b in ("rag_engine", "KNOWLEDGE_DIR", "getmtime", "with open(", "add_system_note")
+               if b in code]
+        check(not hit, f"app.{fn} 不再直接碰后端 / 知识库目录", ", ".join(hit))
+
+
+def t_notes() -> None:
+    print("\n▶ notes")
+    log = []
+
+    class _Store:
+        def get_pending_notes(self):
+            return [{"id": 1, "detail": "d", "ts": "t"}]
+
+        def get_all_confirmed_notes(self):
+            return [{"id": 2, "summary_user": "s"}]
+
+        def confirm(self, i):
+            log.append(("confirm", i))
+            return True
+
+        def confirm_all_pending(self):
+            log.append(("all",))
+
+        def delete_by_id(self, i):
+            log.append(("delete", i))
+
+        def soft_delete_by_id(self, i):
+            log.append(("soft", i))
+
+    with _FakeModule("core.memory_store", get_memory_store=lambda: _Store()):
+        from core.ui_api import notes as N
+        check(N.pending() == [{"id": 1, "detail": "d", "ts": "t"}] and N.confirmed()[0]["id"] == 2,
+              "待确认 / 已记住的列表")
+        N.confirm(1)
+        N.confirm_all()
+        N.delete_pending(3)
+        N.forget(4)
+        check(log == [("confirm", 1), ("all",), ("delete", 3), ("soft", 4)],
+              "确认 / 全部确认 / 删待确认 / 删已记住（软删除）", str(log))
+    code = S.module_text("app")
+    check("get_memory_store" not in code, "app.py 不再直接用 memory_store")
+
+
 def t_backend_bound() -> None:
     print("\n▶ 接口背后的后端对象在界面启动时登记")
     init = S.def_text("app", "__init__", owner="WebUI")
@@ -192,6 +326,8 @@ def t_backend_bound() -> None:
 def main() -> int:
     t_backend_bound()
     t_skills()
+    t_knowledge()
+    t_notes()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)
     print(f"结果：{ok}/{len(_results)} 通过")

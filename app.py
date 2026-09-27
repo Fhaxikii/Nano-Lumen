@@ -12,6 +12,8 @@ import asyncio
 import inspect
 import pathlib
 from core.paths import data_dir, data_path
+from core.ui_api import knowledge as api_kb
+from core.ui_api import notes as api_notes
 from core.ui_api import skills as api_skills
 import re
 import time
@@ -98,7 +100,6 @@ GEMINI_MODEL_MAP = {}
 usage_tracker = None
 _fmt_tokens = None
 registry = None
-rag_engine = None
 MemoryManager = None
 render_nano_koala_avatar = None
 
@@ -111,7 +112,7 @@ def _bootstrap_core_modules() -> None:
     global Orchestrator, _get_activity_buffer, _ISignal
     global _start_proactive_hooks, os_dsl
     global ClaudeProvider, get_provider, GeminiProvider, CLAUDE_MODELS, CLAUDE_MODEL_MAP, GEMINI_MODELS, GEMINI_MODEL_MAP
-    global usage_tracker, _fmt_tokens, registry, rag_engine, MemoryManager, render_nano_koala_avatar
+    global usage_tracker, _fmt_tokens, registry, MemoryManager, render_nano_koala_avatar
 
     from nano_koala import render_nano_koala_avatar as _render_nano_koala_avatar
     from core.orchestrator import Orchestrator as _Orchestrator
@@ -130,7 +131,6 @@ def _bootstrap_core_modules() -> None:
     )
     from core.usage import usage_tracker as _usage_tracker, _fmt_tokens as __fmt_tokens
     from core.registry import registry as _registry
-    from core import rag as _rag_engine
     from memory.manager import MemoryManager as _MemoryManager
 
     render_nano_koala_avatar = _render_nano_koala_avatar
@@ -149,7 +149,6 @@ def _bootstrap_core_modules() -> None:
     usage_tracker = _usage_tracker
     _fmt_tokens = __fmt_tokens
     registry = _registry
-    rag_engine = _rag_engine
     MemoryManager = _MemoryManager
 
 # ── WebView2 Runtime 探测（native 窗口的内核依赖）────────────────────
@@ -264,7 +263,6 @@ def _start_system_tray():
 # 子进程会 import 本模块，所以这里不能放有副作用的全局初始化（例如
 # registry.scan_skills()、ClaudeProvider()、mkdir 等），否则会出现 provider/技能库
 # 重复初始化，甚至触发 WinError 5。真正初始化放到 __main__ 启动入口里。
-KNOWLEDGE_DIR = data_path("knowledge")
 # ── native 窗口标题栏图标（透明 = 无图标，极简风）─────────────────────
 # 必须在模块【顶层】设置，不能放进 __main__ 块：NiceGUI native 的窗口跑在
 # spawn 出来的独立子进程里，子进程会 import 本模块（执行顶层代码）但【不会】
@@ -3412,7 +3410,7 @@ class WebUI:
             return
         self._temp_files = [f for f in self._temp_files if f["filename"] != filename]
         try:
-            rag_engine.remove_temp_file(filename)
+            api_kb.remove_temp_file(filename)
         except Exception:
             pass
         self._refresh_temp_file_badge()
@@ -6091,8 +6089,7 @@ class WebUI:
         """「知道了」= 保留这条记忆：把 pending 转 confirmed（这样才会出现在「编辑记忆」里
         供查看/编辑）。write_user_note 在 ReAct 里写为 pending，等用户在卡片上选保留或删除。"""
         try:
-            from core.memory_store import get_memory_store
-            get_memory_store().confirm(note["note_id"])
+            api_notes.confirm(note["note_id"])
         except Exception:
             pass
         self._pending_notes = [n for n in self._pending_notes if n["note_id"] != note["note_id"]]
@@ -6110,8 +6107,7 @@ class WebUI:
     def _delete_note(self, note: dict, card_el):
         """删除单条 user_note。"""
         try:
-            from core.memory_store import get_memory_store
-            get_memory_store().delete_by_id(note["note_id"])
+            api_notes.delete_pending(note["note_id"])
         except Exception:
             pass
         self._pending_notes = [n for n in self._pending_notes if n["note_id"] != note["note_id"]]
@@ -6129,8 +6125,7 @@ class WebUI:
     def _confirm_all_notes(self):
         """「全部知道了」= 保留所有待确认记忆：pending 全转 confirmed，再清空卡片列表。"""
         try:
-            from core.memory_store import get_memory_store
-            get_memory_store().confirm_all_pending()
+            api_notes.confirm_all()
         except Exception:
             pass
         self._pending_notes.clear()
@@ -6140,7 +6135,6 @@ class WebUI:
     def _show_all_notes_dialog(self):
         """弹出全部已确认记忆的可滚动表格。删除单条时原地刷新列表，不关弹窗
         （否则想连删多条要反复开关，很烦）。"""
-        from core.memory_store import get_memory_store
         dlg = ui.dialog().props('maximized=false')
         with dlg:
             with ui.card().style(
@@ -6161,7 +6155,7 @@ class WebUI:
 
         def _render_list():
             try:
-                rows = get_memory_store().get_all_confirmed_notes()
+                rows = api_notes.confirmed()
             except Exception:
                 rows = []
             _title_lbl.set_text(f'全部记忆（共 {len(rows)} 条）')
@@ -6217,19 +6211,17 @@ class WebUI:
     def _delete_confirmed_note(self, note_id: int):
         """从编辑记忆弹窗删除一条已确认记忆。"""
         try:
-            from core.memory_store import get_memory_store
             # ⭐ 抽屉里的删除也走**软删除** ——
             #    📌 用户点的删除和 Nano 调工具的删除是同一件事，
             #       一个动作有两个实现，它们只在「我两次想法相同」时一致。
-            get_memory_store().soft_delete_by_id(note_id)
+            api_notes.forget(note_id)
         except Exception:
             pass
 
     def _load_pending_notes_on_start(self):
         """启动时从 DB 加载待确认记忆，恢复红点状态。"""
         try:
-            from core.memory_store import get_memory_store
-            pending = get_memory_store().get_pending_notes()
+            pending = api_notes.pending()
             self._pending_notes = [
                 {"note_id": r["id"], "display_text": r.get("detail", ""), "ts": r.get("ts", "")}
                 for r in pending
@@ -6269,7 +6261,7 @@ class WebUI:
         self.kb_file_list_container.clear()
 
         # 用 get_health_report 替代 get_stats，获取完整健康度信息
-        health = rag_engine.get_health_report()
+        health = api_kb.list_files()
         summary = health.get("summary", {})
         files = health.get("files", [])
 
@@ -6306,13 +6298,7 @@ class WebUI:
                         deduped_files.append(r)
 
                 # 按入库时间（mtime 近似）倒序，最新的排前面
-                def _mtime_key(r):
-                    p = r.get("path", "")
-                    try:
-                        return os.path.getmtime(p) if p else 0
-                    except Exception:
-                        return 0
-                deduped_files.sort(key=_mtime_key, reverse=True)
+                deduped_files.sort(key=lambda r: float(r.get("mtime") or 0), reverse=True)
 
                 INLINE_LIMIT = 5
                 for r in deduped_files[:INLINE_LIMIT]:
@@ -6365,10 +6351,7 @@ class WebUI:
         risk_level = r.get("risk_level", "ok")
         raw_tips = r.get("risk_tips", [])
         icon_url = self._file_type_icon_url(fname)
-        try:
-            time_str = self._relative_time_str(os.path.getmtime(fpath)) if fpath else ""
-        except Exception:
-            time_str = ""
+        time_str = self._relative_time_str(float(r["mtime"])) if r.get("mtime") else ""
 
         # 去重 + 按重要性排序
         # 黄色优先级关键词顺序
@@ -6561,7 +6544,6 @@ class WebUI:
             dialog.open()
 
     async def _handle_kb_upload(self, e: events.UploadEventArguments):
-        KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
         try:
             # 这个会话装的 NiceGUI 2.24.2 里，UploadEventArguments 这个
             # dataclass 实际只有 content(BinaryIO) / name / type 三个字段，
@@ -6576,37 +6558,22 @@ class WebUI:
             ui.notify(f"❌ 读取上传内容失败: {read_err}", type='negative')
             return
 
-        if not raw_bytes:
-            ui.notify(f"❌ {filename} 内容为空，已忽略", type='negative')
+        # 写进知识库目录（空文件 / 不支持的格式 / 同名已存在都不写，由后端判）
+        _st = await asyncio.to_thread(api_kb.store_file, filename, raw_bytes)
+        if not _st["ok"]:
+            if _st["reason"] == "empty":
+                ui.notify(f"❌ {filename} 内容为空，已忽略", type='negative')
+            elif _st["reason"] == "unsupported":
+                ui.notify(
+                    f"❌ 不支持的文件格式：{_st['suffix'] or '(无后缀)'}。支持：txt / md / pdf / docx / xlsx / xls / csv / jpg / png / webp",
+                    type='negative'
+                )
+            else:
+                ui.notify(
+                    f"⚠️ 知识库中已存在「{filename}」。请先在列表中删除旧文件，或将新文件改名后重新上传。",
+                    type='warning'
+                )
             return
-
-        # 不支持的文件格式提前拦截，给出明确提示
-        import pathlib as _pl
-        SUPPORTED = {".txt", ".md", ".pdf", ".docx", ".pptx", ".xlsx", ".xls", ".csv",
-                     ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
-        suffix = _pl.Path(filename).suffix.lower()
-        if suffix not in SUPPORTED:
-            ui.notify(
-                f"❌ 不支持的文件格式：{suffix or '(无后缀)'}。支持：txt / md / pdf / docx / xlsx / xls / csv / jpg / png / webp",
-                type='negative'
-            )
-            return
-
-        dest = KNOWLEDGE_DIR / filename
-
-        # 同名文件拦截：已存在则拒绝，提示用户先删除或改名
-        if dest.exists():
-            ui.notify(
-                f"⚠️ 知识库中已存在「{filename}」。请先在列表中删除旧文件，或将新文件改名后重新上传。",
-                type='warning'
-            )
-            return
-
-        def _write():
-            with open(dest, "wb") as f:
-                f.write(raw_bytes)
-
-        await asyncio.to_thread(_write)
 
         # 立即加入"入库中"集合并刷新列表：KB 面板里出现持久 spinner 行，
         # 用户无需盯着会消失的 toast，可以做其他事，看到 spinner 消失即完成。
@@ -6614,8 +6581,8 @@ class WebUI:
         self._refresh_kb_file_list()
         ui.notify(f"已接收「{filename}」（{len(raw_bytes) // 1024} KB），入库中，可在知识库列表查看进度", type='info', timeout=4000)
 
-        _cfg = {"enhanced_mode": self._enhanced_mode, "max_ocr_pages": self._ocr_max_pages}
-        stats = await asyncio.to_thread(rag_engine.index_single_file, str(dest), _cfg)
+        stats = await asyncio.to_thread(api_kb.index_file, filename, self._enhanced_mode,
+                                        self._ocr_max_pages)
 
         # 入库完成，从"入库中"集合移除
         self._kb_indexing_files.discard(filename)
@@ -6625,7 +6592,7 @@ class WebUI:
         elif stats["skipped"] > 0:
             ui.notify(f"「{filename}」内容未变化，跳过重复索引", type='warning', timeout=6000)
         else:
-            err = stats["errors"][0]["error"] if stats["errors"] else "未知错误"
+            err = stats["error"] or "未知错误"
             ui.notify(f"❌ 「{filename}」入库失败: {err}", type='negative', timeout=0)
             logger.error(f"[KB Upload] 索引失败 {filename}: {err}")
 
@@ -6710,17 +6677,7 @@ class WebUI:
                             ui.label('文件不存在或已被移动').style('color:var(--nano-fg-mute); font-size:var(--nano-fs-base);')
                     else:
                         try:
-                            collection = rag_engine._get_collection()
-                            result = collection.get(
-                                where={"filename": filename},
-                                include=["documents", "metadatas"],
-                            )
-                            rows = list(zip(result.get("metadatas", []), result.get("documents", [])))
-                            # schema chunk 是给检索用的结构摘要，不是正文，
-                            # 看内容时不需要，过滤掉。
-                            rows = [(m, d) for m, d in rows if (m or {}).get("chunk_type") != "schema"]
-                            rows.sort(key=lambda x: (x[0] or {}).get("chunk_index", 0))
-                            full_text = "\n\n".join(d for _, d in rows if d)
+                            full_text = api_kb.file_text(filename)
                         except Exception as e:
                             full_text = ""
                             ui.notify(f"读取内容失败：{e}", type='negative')
@@ -6736,19 +6693,10 @@ class WebUI:
             dialog.open()
 
     def _delete_kb_file(self, filename: str):
-        rag_engine.delete_file(filename)
-        disk_path = KNOWLEDGE_DIR / filename
-        if disk_path.exists():
-            disk_path.unlink()
+        # 从索引与磁盘删除；给对话留的那条系统记录（写明是界面上用户删的）由后端一起写
+        api_kb.delete_file(filename)
         ui.notify(f"已删除: {filename}", type='positive')
         self._refresh_kb_file_list()
-        # 和 _delete_skill 同理：侧边栏直接删除知识库文件，绕过了聊天流程，
-        # 之前不写 memory，Nano 答不出"是你删的"这层解释。措辞同样要显式标注
-        # 来源是用户的UI操作，不能让模型读成自己说/做的（见 _delete_skill 注释）。
-        self.agent.memory.add_system_note(
-            "assistant",
-            f"[System record: the user deleted knowledge-base file \"{filename}\" from the UI sidebar; this was not executed in the current chat.]"
-        )
 
     def _get_default_model_from_json(self) -> str:
         """读取 throttle_config.json 里的 _default_model 字段。"""
@@ -9736,7 +9684,7 @@ class WebUI:
         self._redraw_live_faults()
         # 清空临时知识库和文件列表
         try:
-            rag_engine.clear_temp_knowledge()
+            api_kb.clear_temp_files()
         except Exception:
             pass
         self._temp_files = []
@@ -15070,16 +15018,9 @@ class WebUI:
                                 self._image_preview_container.style('display:flex;')
                                 ui.notify(f'已选择图片: {filename}', type='positive', icon='image')
                             else:
-                                # Phase 3：文件路径只存盘，不建 RAG 索引
-                                # query_local_knowledge 真正需要搜索时才 lazy build（见 rag.py _ensure_all_temp_files_indexed）
-                                import tempfile
-                                tmp_dir = pathlib.Path(tempfile.gettempdir()) / "nano_temp_uploads"
-                                tmp_dir.mkdir(exist_ok=True)
-                                dest = tmp_dir / filename
-                                with open(dest, "wb") as f:
-                                    f.write(raw_bytes)
+                                # 只存盘并登记到当前会话，不建索引（模型真要检索时再建）；
                                 # 直接标记 ready，不再有 indexing 中间态
-                                rag_engine.register_temp_file(filename, str(dest))  # Phase 3：注册到当前会话
+                                api_kb.add_temp_file(filename, raw_bytes)
                                 self._temp_files.append({"filename": filename, "chunks": 0, "status": "ready"})
                                 self._refresh_temp_file_badge()
                                 ui.notify(f'已添加附件: {filename}', type='positive', icon='attach_file')
@@ -15330,7 +15271,7 @@ if __name__ == "__main__":
             # 启动恢复失败绝不能阻断启动 —— 它是修脏状态的，不是必需路径。
             logger.error(f"[Runtime] 启动恢复失败（不影响启动）: {_rt_err}")
 
-        KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
+        api_kb.ensure_dir()
         api_skills.reload_all()
 
         gui = WebUI()
