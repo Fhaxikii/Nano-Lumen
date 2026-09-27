@@ -625,10 +625,10 @@ def t_seam_wiring() -> None:
 
     # ⚠️ 用量不许在续接时被清零（token 计数器统计整段）
     check("if not _seam_cont:" in live and
-          live.count("usage_tracker.reset_session()") == 1,
+          live.count("api_usage.reset_session()") == 1,
           "⭐⭐ 续接时**不重置用量** —— token 计数器只有一个、在末尾，"
           "那意味着它统计的是**整段回应期**",
-          str(live.count("usage_tracker.reset_session()")))
+          str(live.count("api_usage.reset_session()")))
 
     # ⚠️⚠️ 最要紧的一条：收尾条件
     #
@@ -663,12 +663,12 @@ def t_seam_wiring() -> None:
     if _sm_if is not None:
         _body = "\n".join(ast.unparse(s) for s in _sm_if.body)
         _orelse = "\n".join(ast.unparse(s) for s in _sm_if.orelse)
-        check("turn_tokens_fmt" in _orelse
+        check("current_turn_tokens" in _orelse
               and "set_visibility(False)" in _orelse
               and "display:inline-block" in _orelse,
               "⚠️ 藏转圈 / 显 ✦ / 写 token 三件事**都**在「队列空」那一支里 —— "
               "漏一件就会出现「转圈停了但没有统计」这种半截状态")
-        check("turn_tokens_fmt" not in _body
+        check("current_turn_tokens" not in _body
               and "set_visibility(False)" not in _body,
               "⭐⭐ 而「队列里还有」那一支**一件都不做** —— "
               "📌 这条比上面那条更要紧：上面验的是「该做的做了」，"

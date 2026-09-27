@@ -14,6 +14,8 @@ import pathlib
 from core.paths import data_dir, data_path
 from core.ui_api import knowledge as api_kb
 from core.ui_api import notes as api_notes
+from core.ui_api import settings as api_settings
+from core.ui_api import usage as api_usage
 from core.ui_api import skills as api_skills
 import re
 import time
@@ -89,16 +91,7 @@ Orchestrator = None
 _get_activity_buffer = None
 _ISignal = None
 _start_proactive_hooks = None
-os_dsl = None
-ClaudeProvider = None
 get_provider = None
-GeminiProvider = None
-CLAUDE_MODELS = []
-CLAUDE_MODEL_MAP = {}
-GEMINI_MODELS = []
-GEMINI_MODEL_MAP = {}
-usage_tracker = None
-_fmt_tokens = None
 registry = None
 MemoryManager = None
 render_nano_koala_avatar = None
@@ -110,26 +103,15 @@ def _bootstrap_core_modules() -> None:
     它只需要读取 app.native.start_args/window_args 这类轻量窗口参数。
     """
     global Orchestrator, _get_activity_buffer, _ISignal
-    global _start_proactive_hooks, os_dsl
-    global ClaudeProvider, get_provider, GeminiProvider, CLAUDE_MODELS, CLAUDE_MODEL_MAP, GEMINI_MODELS, GEMINI_MODEL_MAP
-    global usage_tracker, _fmt_tokens, registry, MemoryManager, render_nano_koala_avatar
+    global _start_proactive_hooks, get_provider
+    global registry, MemoryManager, render_nano_koala_avatar
 
     from nano_koala import render_nano_koala_avatar as _render_nano_koala_avatar
     from core.orchestrator import Orchestrator as _Orchestrator
     from core.proactive.activity import get_buffer as __get_activity_buffer
     from core.proactive.intel.feedback import Signal as __ISignal
     from core.proactive.hooks import start_hooks as __start_proactive_hooks
-    from core.os_layer import dsl as _os_dsl
-    from core.provider import (
-        ClaudeProvider as _ClaudeProvider,
-        get_provider as _get_provider,
-        CLAUDE_MODELS as _CLAUDE_MODELS,
-        CLAUDE_MODEL_MAP as _CLAUDE_MODEL_MAP,
-        GeminiProvider as _GeminiProvider,
-        GEMINI_MODELS as _GEMINI_MODELS,
-        GEMINI_MODEL_MAP as _GEMINI_MODEL_MAP,
-    )
-    from core.usage import usage_tracker as _usage_tracker, _fmt_tokens as __fmt_tokens
+    from core.provider import get_provider as _get_provider
     from core.registry import registry as _registry
     from memory.manager import MemoryManager as _MemoryManager
 
@@ -138,16 +120,7 @@ def _bootstrap_core_modules() -> None:
     _get_activity_buffer = __get_activity_buffer
     _ISignal = __ISignal
     _start_proactive_hooks = __start_proactive_hooks
-    os_dsl = _os_dsl
-    ClaudeProvider = _ClaudeProvider
     get_provider = _get_provider
-    GeminiProvider = _GeminiProvider
-    CLAUDE_MODELS = _CLAUDE_MODELS
-    CLAUDE_MODEL_MAP = _CLAUDE_MODEL_MAP
-    GEMINI_MODELS = _GEMINI_MODELS
-    GEMINI_MODEL_MAP = _GEMINI_MODEL_MAP
-    usage_tracker = _usage_tracker
-    _fmt_tokens = __fmt_tokens
     registry = _registry
     MemoryManager = _MemoryManager
 
@@ -688,11 +661,7 @@ def render_unsent_user_card(payload: str) -> None:
 def _cur() -> str:
     """当前厂商的货币符号。⚠️ 不写死 `$` —— 深度求索官方标价是人民币，
     折算需要汇率，而汇率不在官方文档里、每天都在动。"""
-    try:
-        from core.models import currency_symbol
-        return currency_symbol()
-    except Exception:
-        return "$"
+    return api_usage.currency()
 
 def nano_md(content: str = "", classes: str = "text-[14px] leading-7",
             style: str = "color:var(--nano-fg); min-height:1em;"):
@@ -3433,7 +3402,7 @@ class WebUI:
         _seam_cont = bool(getattr(self, "_resp_continuation", False))
         self._resp_continuation = False
         if not _seam_cont:
-            usage_tracker.reset_session()
+            api_usage.reset_session()
         current_session_skill = None
         # 重置所有技能状态圆点
         for elements in self.skill_ui_elements.values():
@@ -4556,8 +4525,8 @@ class WebUI:
                             # 本轮用量由后端随 final_result 带来（`turn_usage`，按轮归属算好的）；
                             # 界面所在的协程读不到那一轮的归属，自己取会取错轮。
                             _tu = step.get("turn_usage") or {}
-                            _tok_str = (_fmt_tokens(int(_tu["tokens"])) if "tokens" in _tu
-                                        else usage_tracker.turn_tokens_fmt())
+                            _tok_str = (api_usage.format_tokens(int(_tu["tokens"])) if "tokens" in _tu
+                                        else api_usage.current_turn_tokens())
                             # 定型：藏 braille 转圈、显光芒头像 ✦、状态变 "8.2s · 2.2K tok"
                             if _rs.get("spin_lbl"):
                                 _rs["spin_lbl"].set_visibility(False)
@@ -4793,7 +4762,7 @@ class WebUI:
         return ViewSession(container=loading_container, meta_row=_meta_row,
             pending_epoch=False,
             status_lbl=_s_lbl, spin_lbl=_spin_lbl, svg_el=_svg_el,
-            start_time=time.time(), tok_base=sum(usage_tracker.session_tokens()), running=True,
+            start_time=time.time(), tok_base=api_usage.session_tokens_total(), running=True,
             content_md=_c_md, current_text="", loading_col=_inner_col,
             tool_count=0, had_text_since_tool=True, batch_tool_count=0,
             tool_pill_lbl=None, tool_pill_arrow=None, tool_details_col=None,
@@ -5224,10 +5193,10 @@ class WebUI:
     # ── auto 模式 ──────────────────────────────────────────────────────────
     def _load_global_auto(self) -> bool:
         """用户选的 Ask / Auto（后端 `dsl` 读 `os_state.json`；不含 GUI 任务的临时授权）。"""
-        return os_dsl.user_auto_mode_on()
+        return api_settings.auto_mode()
 
     def _save_global_auto(self, on: bool):
-        os_dsl.set_user_auto_mode(on)
+        api_settings.set_auto_mode(on)
 
     def _toggle_global_auto(self):
         self._global_auto = not self._global_auto
@@ -5706,11 +5675,10 @@ class WebUI:
         if not query and not has_attach:
             return
         self._current_query = query  # episodic: 记录本轮用户输入
-        if usage_tracker.cap_status() == "hard":
-            cfg = usage_tracker.load_config()
-            cost = usage_tracker.today_cost()
+        _bud = api_usage.budget()
+        if _bud["status"] == "hard":
             ui.notify(
-                f'今日用量 {_cur()}{cost:.2f} 已达上限 {_cur()}{cfg["hard_cap_usd"]:.2f}，请在设置中调整限额',
+                f'今日用量 {_cur()}{_bud["cost"]:.2f} 已达上限 {_cur()}{_bud["hard_cap"]:.2f}，请在设置中调整限额',
                 type='negative', icon='block', timeout=5000
             )
             return
@@ -5926,7 +5894,7 @@ class WebUI:
                 spin_lbl=_spin_lbl,
                 svg_el=_svg_el,
                 start_time=time.time(),
-                tok_base=sum(usage_tracker.session_tokens()),  # 本轮 token 基线：结束时取差值=单条用量
+                tok_base=api_usage.session_tokens_total(),  # 本轮 token 基线：结束时取差值=单条用量
                 running=True,
                 content_md=_c_md,    # 当前活跃的 markdown 元素
                 current_text="",     # 当前段落的累积文字
@@ -6699,27 +6667,12 @@ class WebUI:
         self._refresh_kb_file_list()
 
     def _get_default_model_from_json(self) -> str:
-        """读取 throttle_config.json 里的 _default_model 字段。"""
-        import json as _json
-        import pathlib as _pl
-        cfg_path = data_path("throttle_config.json")
-        try:
-            if cfg_path.exists():
-                with open(cfg_path, "r", encoding="utf-8") as f:
-                    data = _json.load(f)
-                _m = data.get("_default_model", "")
-                try:
-                    from core.provider import migrate_model_id as _mig
-                    return _mig(_m) if _m else _m
-                except Exception:
-                    return _m
-        except Exception:
-            pass
-        return ""
+        """收藏的启动默认模型（后端已过下线映射）。"""
+        return api_settings.default_model()
 
     def _get_star_icon(self) -> str:
         """当前模型是否是默认模型，返回对应图标。"""
-        current = self.provider.target_model
+        current = api_settings.current_model()["id"]
         default = self._get_default_model_from_json()
         return "star" if current == default else "star_border"
 
@@ -6776,15 +6729,14 @@ class WebUI:
 
     def _toggle_default_model(self):
         """点星星：是默认就取消，不是就设为默认。"""
-        current = self.provider.target_model
+        _cm = api_settings.current_model()
+        current, mname = _cm["id"], _cm["name"]
         default = self._get_default_model_from_json()
-        mname = GEMINI_MODEL_MAP.get(current, {}).get("name", current)
         if current == default:
-            # 取消默认，删掉 json 里的 _default_model
-            self._save_app_config(default_model="__clear__")
+            api_settings.set_default_model(None)
             ui.notify(f"已取消「{mname}」的默认设置", type='warning', icon='star_border')
         else:
-            self._save_app_config(default_model=current)
+            api_settings.set_default_model(current)
             ui.notify(f"已将「{mname}」设为启动默认", type='positive', icon='star')
         # 更新星星图标 + 颜色/发光
         if self._star_btn:
@@ -6797,105 +6749,24 @@ class WebUI:
                 ' transition:color 0.2s, filter 0.2s;'
             )
 
-    def _save_app_config(self, default_model: str = None):
-        """把应用配置写到 data/throttle_config.json。"""
-        import json as _json
-        import pathlib as _pl
-        cfg_path = data_path("throttle_config.json")
-        cfg_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            data: dict = {}
-            if cfg_path.exists():
-                with open(cfg_path, "r", encoding="utf-8") as f:
-                    data = _json.load(f)
-            # 清理已废弃的节流和策略引擎字段
-            for obsolete in ("_model_policy", "_policy_engine_enabled"):
-                data.pop(obsolete, None)
-            # 移除非元数据（旧节流条目）
-            for k in [k for k in data if not k.startswith("_")]:
-                del data[k]
-            if default_model == "__clear__":
-                data.pop("_default_model", None)
-            elif default_model is not None:
-                data["_default_model"] = default_model
-            data["_last_relay_mode"] = getattr(self.provider, "is_relay", False)
-            data["_enhanced_mode"] = self._enhanced_mode
-            data["_ocr_max_pages"] = self._ocr_max_pages
-            data["_theme_mode"] = getattr(self, "theme_mode", "terminal")
-            # ⚠️ 收藏模型必须带上"属于哪家" —— 否则换厂商后它会指向别家的型号。
-            data["_default_model_vendor"] = (
-                getattr(self.provider, "vendor", "")
-                or os.environ.get("NANO_API_VENDOR") or "anthropic").lower()
-            with open(cfg_path, "w", encoding="utf-8") as f:
-                _json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.warning(f"[Config] 保存配置失败: {e}")
+    def _save_app_config(self):
+        """把界面偏好（主题 / 入库增强 / OCR 页数）写回后端配置。"""
+        api_settings.save_ui_prefs(theme_mode=getattr(self, "theme_mode", "terminal"),
+                                   enhanced_mode=self._enhanced_mode,
+                                   ocr_max_pages=self._ocr_max_pages)
 
     def _load_app_config(self):
-        """从 data/throttle_config.json 加载默认模型、入库设置。"""
-        import json as _json
-        import pathlib as _pl
-        cfg_path = data_path("throttle_config.json")
-
-        if cfg_path.exists():
-            try:
-                with open(cfg_path, "r", encoding="utf-8") as f:
-                    saved = _json.load(f)
-
-                # 加载收藏模型
-                default_model = saved.get("_default_model")
-                # ⚠️ 先过一遍下线映射再判断在不在表里 —— 否则旧 id 会静默落进
-                #    else 分支「无收藏模型」，用户只看到"我收藏的 Opus 变回 Haiku 了"，
-                #    日志里却看不出是型号下线。
-                if default_model:
-                    try:
-                        from core.provider import migrate_model_id as _mig
-                        _new = _mig(default_model)
-                        if _new != default_model:
-                            default_model = _new
-                            self._save_app_config(default_model=_new)
-                    except Exception:
-                        pass
-                # 🔴 收藏模型**按厂商作废**（2026-08-31，同计费清账那条）：
-                #    `_default_model` 曾是一个跨厂商的全局值 —— 换厂商之后它指向
-                #    别家的模型，把 provider 刚设好的主模型覆盖掉，于是监控卡、
-                #    进阶配置、上下文窗口全线显示上一个厂商的型号。
-                #    ⚠️ 不做"切回去还在"——那要多存一张表，而收藏本来就是随手行为。
-                _saved_vendor = str(saved.get("_default_model_vendor") or "")
-                _now_vendor = (getattr(self.provider, "vendor", "")
-                               or os.environ.get("NANO_API_VENDOR") or "anthropic").lower()
-                if default_model and _saved_vendor and _saved_vendor != _now_vendor:
-                    logger.info(f"[Model] 收藏模型属于 {_saved_vendor}，当前是 "
-                                f"{_now_vendor} —— 作废，沿用 {self.provider.target_model}")
-                    default_model = ""
-                # ⚠️ 校验用【当前厂商的清单】，不是 GEMINI_MODEL_MAP（那是 Claude 专属表，
-                #    深度求索的 id 一个都不在里面 ⇒ 永远校验不过）。
-                _valid = self._vendor_model_options()
-                if default_model and default_model in _valid:
-                    self.provider.target_model = default_model
-                else:
-                    logger.debug(f"[Model] 无收藏模型，沿用默认: {self.provider.target_model}")
-
-                # 入库设置
-                if "_enhanced_mode" in saved:
-                    self._enhanced_mode = bool(saved["_enhanced_mode"])
-                if "_ocr_max_pages" in saved:
-                    self._ocr_max_pages = int(saved["_ocr_max_pages"])
-
-                # 主题：跟用户上次的选择。首启（配置文件不存在）才用默认终端风。
-                # ⚠️ 白名单校验 —— 配置是用户可编辑的文本，写进一个不认识的主题名
-                #    会让 body 挂上没有对应变量块的 class ⇒ 满屏裸样式。
-                _tm = saved.get("_theme_mode")
-                if _tm in ("terminal", "aurora"):
-                    self.theme_mode = _tm
-                elif _tm:
-                    logger.warning(f"[Theme] 配置里的主题名不认识，回退默认: {_tm!r}")
-            except Exception as e:
-                logger.warning(f"[Config] 读取配置失败，使用默认值: {e}")
-        else:
-            # 首次启动：设置默认模型
-            self.provider.target_model = (os.getenv("NANO_MODEL") or CLAUDE_MODELS[0]["id"]).strip()
-            logger.debug(f"[Model] 首次启动，初始模型: {self.provider.target_model}")
+        """启动：后端应用收藏的默认模型（下线迁移、按厂商作废、按当前清单校验都在后端），
+        界面读回自己的偏好。"""
+        api_settings.apply_saved_default_model()
+        _p = api_settings.ui_prefs()
+        if "enhanced_mode" in _p:
+            self._enhanced_mode = bool(_p["enhanced_mode"])
+        if "ocr_max_pages" in _p:
+            self._ocr_max_pages = int(_p["ocr_max_pages"])
+        # 主题：跟用户上次的选择（白名单校验在后端）
+        if "theme_mode" in _p:
+            self.theme_mode = _p["theme_mode"]
 
     def _persist_relay_mode(self):
         """启动后持久化配置（保留方法名兼容调用点）。"""
@@ -6904,9 +6775,7 @@ class WebUI:
     def _on_model_change(self, e):
         """模型切换：实时生效。"""
         new_id = e.value
-        self.provider.target_model = new_id
-        model_cfg = GEMINI_MODEL_MAP.get(new_id, {})
-        name = model_cfg.get("name", new_id)
+        name = api_settings.set_model(new_id)["name"]
         ui.notify(f"已切换至 {name}", type='positive', icon='swap_horiz')
         if self.model_lbl:
             self.model_lbl.set_text(name.upper())
@@ -6919,7 +6788,6 @@ class WebUI:
                  if _is_active else 'color:var(--nano-fg) !important; filter:none;') +
                 ' transition:color 0.2s, filter 0.2s;'
             )
-        logger.info(f"[Model] 切换至: {new_id}")
 
     # OS 权限开关元数据：(key, 图标, 标签, 说明, 风险档位)
     # 风险档位仅用于 UI 视觉区分，沿用 OS 层执行确认弹窗已有的语言
@@ -6940,8 +6808,7 @@ class WebUI:
            `on_done`（应用成功后关掉外面那层）随「应用」按钮一起消失。
            📌 一个不需要按钮的内容区，天然也不需要知道自己被装在什么壳里。
         """
-        cfg_path = os_dsl.os_state_path()
-        current = os_dsl.load_permissions()
+        current = api_settings.permissions()
         # ⚠️ 不再自带 padding：设置面板那一层已经给了横向留白。
         #    留一点上边距就够 —— 这一格原来的 `padding:18px 24px` 是它
         #    还是独立弹窗时的设定，进面板后跟外层叠成了两倍。
@@ -6954,19 +6821,10 @@ class WebUI:
 
             def _persist() -> bool:
                 """把当前所有开关的值写回配置。失败返回 False。"""
-                try:
-                    raw = json.loads(cfg_path.read_text(encoding='utf-8')) if cfg_path.exists() else {}
-                except Exception as e:
-                    ui.notify(f"读取 os_state.json 失败：{e}", type='negative', icon='error')
-                    return False
-                perms = raw.setdefault('permissions', {})
-                for _k, _sw in switch_map.items():
-                    perms[_k] = bool(_sw.value)
-                try:
-                    cfg_path.write_text(
-                        json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
-                except Exception as e:
-                    ui.notify(f"写入 os_state.json 失败：{e}", type='negative', icon='error')
+                _r = api_settings.set_permissions({_k: bool(_sw.value) for _k, _sw in switch_map.items()})
+                if not _r["ok"]:
+                    _what = "读取" if _r.get("stage") == "read" else "写入"
+                    ui.notify(f"{_what} os_state.json 失败：{_r.get('error', '')}", type='negative', icon='error')
                     return False
                 return True
 
@@ -7011,41 +6869,6 @@ class WebUI:
         # 🪦 顺带删掉的还有「含高危」徽标的刷新逻辑（已定：徽标不要了）。
 
     # ── OS 权限面板 ─────────────────────────────────────────────────────────────
-
-    def _show_permissions_dialog(self):
-        """OS 权限面板：6 个布尔开关，整体读改写，保留 `data/os_state.json` 里
-        不归这个面板管的字段（目前是 `auto_mode`）。改完立即生效，
-        不需要重启——OSDispatcher 每次构造都会重新 dsl.load_permissions()。
-        """
-        cfg_path = os_dsl.os_state_path()
-        current = os_dsl.load_permissions()
-
-        with self._ui_scope():
-            with ui.dialog().props('no-backdrop-dismiss') as dialog, \
-                 ui.card().style(
-                     'width:460px; background:var(--nano-panel); border:1px solid rgba(var(--nano-amber-rgb), 0.2); '
-                     'border-radius:16px; padding:0; overflow:hidden;'
-                 ):
-                # 标题栏
-                with ui.row().style(
-                    'width:100%; align-items:center; justify-content:space-between; '
-                    'padding:14px 20px; border-bottom: 1px solid var(--nano-border); '
-                    'background:var(--nano-panel); border-radius:16px 16px 0 0; flex-wrap:nowrap;'
-                ):
-                    with ui.row().classes('items-center gap-3 flex-1 min-w-0'):
-                        ui.icon('admin_panel_settings').style('font-size:var(--nano-fs-4xl); color:var(--nano-fg-soft); flex-shrink:0;')
-                        with ui.column().style('gap:2px; min-width:0;'):
-                            ui.label('OS 权限').style('font-size:var(--nano-fs-md); font-weight:600; color:var(--nano-fg);')
-                            ui.label('控制 Nano 能在系统层面做什么，改完立即生效').style(
-                                'font-size:var(--nano-fs-sm); color:var(--nano-fg-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'
-                            )
-                    ui.button(icon='close', on_click=dialog.close).props('flat round dense').style('color:var(--nano-fg) !important;').classes('flex-shrink-0')
-
-                self._build_settings_permissions()
-
-            dialog.open()
-
-    # ── 后台载体 ──────────────────────────────────────────────────────────────
 
     def _set_skill_ui_status(self, name: str, status: str) -> None:
         """更新抽屉中一项本地 Skill 的活动态。"""
@@ -7446,9 +7269,9 @@ class WebUI:
         if s.get("degraded"):
             _right = "失准"
         elif _known:
-            # ⚠️ 复用既有的 `_fmt_tokens`，不另造一个格式化函数
+            # ⚠️ 复用既有的 token 格式化（`api_usage.format_tokens`），不另造一个
             #    —— 📌 两个格式化函数迟早会在某个量级上不一致。
-            _right = (f"{_pfx}{_fmt_tokens(int(s['used']))} / {_fmt_tokens(int(s['window']))}"
+            _right = (f"{_pfx}{api_usage.format_tokens(int(s['used']))} / {api_usage.format_tokens(int(s['window']))}"
                       f" ({int(_ratio * 100)}%)")
         else:
             _right = "--"
@@ -7611,24 +7434,12 @@ class WebUI:
            所以它只在传了 on_done 时出现；「保存」两边都留 ——
            📌 姓名生日这类**填错了不当场露馅**，验证需要一个「我填完了」的动作。
         """
-        import json as _json
-        from pathlib import Path as _Path
-
-        _REGION_PATH = data_path("china_regions_city.json")
-        _PROFILE_PATH = data_path("user_profile.json")
-
-        try:
-            _regions = _json.loads(_REGION_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            _regions = []
+        _regions = api_settings.regions()
 
         _province_map = {p["name"]: p for p in _regions}
         _province_names = list(_province_map.keys())
 
-        try:
-            _profile = _json.loads(_PROFILE_PATH.read_text(encoding="utf-8")) if _PROFILE_PATH.exists() else {}
-        except Exception:
-            _profile = {}
+        _profile = api_settings.profile()
 
         _IDENTITY_OPTIONS = [
             "学生", "上班族", "自由职业", "创业者 / 管理者",
@@ -7851,10 +7662,7 @@ class WebUI:
                 else:
                     _new.pop("identity", None)
 
-                _PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-                _PROFILE_PATH.write_text(
-                    _json.dumps(_new, ensure_ascii=False, indent=2), encoding="utf-8"
-                )
+                api_settings.save_profile(_new)
                 self._refresh_identity()   # 昵称变了 → 头栏 nano@昵称 同步
 
             # 🪦 原来这里有个「保存」按钮 —— 2026-08-29 定：去掉，改即时生效。
@@ -7871,75 +7679,6 @@ class WebUI:
                        _prov_sel, _city_sel, _id_sel, _id_custom):
                 _w.on_value_change(lambda e: _save())
 
-    def _show_profile_dialog(self):
-        """个人信息填写面板。"""
-        import json as _json
-        from pathlib import Path as _Path
-
-        _REGION_PATH = data_path("china_regions_city.json")
-        _PROFILE_PATH = data_path("user_profile.json")
-
-        try:
-            _regions = _json.loads(_REGION_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            _regions = []
-
-        _province_map = {p["name"]: p for p in _regions}
-        _province_names = list(_province_map.keys())
-
-        try:
-            _profile = _json.loads(_PROFILE_PATH.read_text(encoding="utf-8")) if _PROFILE_PATH.exists() else {}
-        except Exception:
-            _profile = {}
-
-        _IDENTITY_OPTIONS = [
-            "学生", "上班族", "自由职业", "创业者 / 管理者",
-            "程序员 / 技术人员", "设计 / 内容创作者",
-            "销售 / 市场", "研究 / 学术", "其他",
-        ]
-        _MONTHS = [f"{i:02d} 月" for i in range(1, 13)]
-        _DAYS   = [f"{i:02d} 日" for i in range(1, 32)]
-
-        _saved_region = _profile.get("region", {})
-        _state = {
-            "province_code": _saved_region.get("province_code"),
-            "province_name": _saved_region.get("province_name"),
-            "city_code":     _saved_region.get("city_code"),
-            "city_name":     _saved_region.get("city_name"),
-        }
-
-        _bday = _profile.get("birthday", "")
-        _init_month = f"{int(_bday.split('-')[0]):02d} 月" if _bday and "-" in _bday else None
-        _init_day   = f"{int(_bday.split('-')[1]):02d} 日" if _bday and "-" in _bday else None
-
-        # 终端风：下拉 popup 用深色底 + 浅色字（全局 .q-item__label 已是 var(--nano-fg)），
-        # 之前是近白色残留导致浅字浅底看不清。
-        _popup_bg = (
-            "background:var(--nano-panel-2) !important;"
-            "border:1px solid rgba(var(--nano-amber-rgb), 0.18);"
-            "border-radius:10px;"
-            "box-shadow:0 6px 20px rgba(var(--nano-ink-rgb), 0.45);"
-            "color:var(--nano-fg) !important;"
-        )
-        _sel_props = "outlined dense popup-content-style='" + _popup_bg + "'"
-
-        with self._ui_scope():
-            with ui.dialog().props('persistent').classes('q-pa-none') as dlg, \
-                 ui.card().style(
-                    'width:440px; max-width:95vw; border-radius:16px; '
-                    'background:var(--nano-panel); padding:28px 28px 20px;'
-                 ):
-                ui.label('认识你一下').style(
-                    'font-size:var(--nano-fs-3xl); font-weight:700; color:var(--nano-fg); letter-spacing:-0.02em;'
-                )
-                ui.label('这些信息只在本地保存，让 Nano 说话更贴近你。').style(
-                    'font-size:var(--nano-fs-base); color:var(--nano-fg-soft); margin-top:2px; margin-bottom:18px;'
-                )
-
-                self._build_settings_profile(on_done=dlg.close)
-
-            dlg.open()
-
     def _refresh_model_select(self):
         """环境配置保存后刷新顶栏主模型下拉。
 
@@ -7953,12 +7692,8 @@ class WebUI:
         if sel is None:
             return
         try:
-            opts = self._vendor_model_options()
-            cur = self.provider.target_model
-            if cur not in opts:
-                cur = next(iter(opts), "")
-                self.provider.target_model = cur
-            sel.set_options(opts, value=cur)
+            _r = api_settings.ensure_model_in_options()
+            sel.set_options(_r["options"], value=_r["current"])
         except Exception as e:
             logger.warning(f"[Model] 刷新主模型下拉失败: {e}")
 
@@ -7966,50 +7701,19 @@ class WebUI:
         """环境配置保存后刷新顶栏「中转」徽章显隐。"""
         lbl = getattr(self, '_relay_badge_label', None)
         if lbl:
-            lbl.set_visibility(getattr(self.provider, 'is_relay', False))
+            lbl.set_visibility(api_settings.current_model()["relay"])
 
     def _show_env_config_dialog(self):
         """环境配置：API Key / 中转地址 / 代理。保存后原地重建 provider，无需重启。"""
         import re as _re
         from pathlib import Path as _Path
 
-        _ENV_PATH = _Path('.env')
-
-        def _upsert_dotenv(path, updates):
-            try:
-                text = path.read_text(encoding='utf-8') if path.exists() else ''
-            except Exception:
-                text = ''
-            raw_lines = text.splitlines(keepends=True)
-            written = set()
-            new_lines = []
-            for raw in raw_lines:
-                m = _re.match(r'^([A-Za-z_][A-Za-z0-9_]*)\s*=', raw)
-                if m and m.group(1) in updates:
-                    key = m.group(1)
-                    val = updates[key]
-                    if val is None:
-                        # 🔴 这里原来是把整行注释掉（`# KEY=值  # cleared`）——
-                        #    于是"清除密钥"的真实结果是**密钥原样留在盘上**：
-                        #    界面上那一栏空了，文件里还在。
-                        #    ⚠️ 打包、抽纯净版、贴日志时它会被一起带出去。
-                        #    📌 「清除」的语义是让它**不存在**，不是让它不生效。
-                        pass          # 整行丢弃
-                    else:
-                        new_lines.append(f'{key}={val}\n')
-                    written.add(key)
-                else:
-                    new_lines.append(raw if raw.endswith('\n') else raw + '\n')
-            for key, val in updates.items():
-                if key not in written and val is not None:
-                    new_lines.append(f'{key}={val}\n')
-            path.write_text(''.join(new_lines), encoding='utf-8')
-
-        _cur_relay_url  = (os.environ.get('NANO_API_RELAY_BASE_URL') or '').strip()
-        _cur_relay_key  = (os.environ.get('NANO_API_RELAY_API_KEY') or '').strip()
-        _cur_direct_key = (os.environ.get('ANTHROPIC_API_KEY') or '').strip()
-        _cur_proxy      = (os.environ.get('HTTP_PROXY') or '').strip()
-        _cur_api_key    = _cur_relay_key or _cur_direct_key
+        # 初始值与厂商清单来自后端（`.env` 的读写与 provider 的重建都在后端）
+        _env = api_settings.env_config()
+        _vinfo = {v["id"]: v for v in _env["vendors"]}
+        _cur_relay_url = _env["relay_url"]
+        _cur_proxy = _env["proxy"]
+        _cur_api_key = _env["api_key"]
 
         with self._ui_scope():
             with ui.dialog().props('no-backdrop-dismiss') as _dlg, \
@@ -8036,12 +7740,9 @@ class WebUI:
                     #    填写顺序也先于 key**。
                     # ⭐ 顺带告诉用户 Nano 目前支持哪几家 —— 省掉「填了个第三家的 key
                     #    然后一直连不上」这条弯路。
-                    from core.models import vendors as _vendors, vendor_meta as _vmeta
-                    _vlist = _vendors()
-                    _vopts = {v: _vmeta(v)['label'] for v in _vlist}
-                    _cur_vendor = (os.environ.get('NANO_API_VENDOR') or _vlist[0]).strip().lower()
-                    if _cur_vendor not in _vopts:
-                        _cur_vendor = _vlist[0]
+                    _vlist = list(_vinfo)
+                    _vopts = {v: _vinfo[v]['label'] for v in _vlist}
+                    _cur_vendor = _env["vendor"]
                     with ui.column().style('gap:6px; width:100%;'):
                         with ui.row().classes('items-center gap-2'):
                             ui.label('厂商').style(
@@ -8059,7 +7760,7 @@ class WebUI:
                         # ⚠️ 两个 slot 都要给，缺一个就只有一半有图标：
                         #      option   下拉展开后的每一项
                         #      prepend  收起时框内那个（当前选中的）
-                        _vicons = {v: _vmeta(v)['icon'] for v in _vlist}
+                        _vicons = {v: _vinfo[v]['icon'] for v in _vlist}
                         _icon_map = ''.join(
                             "<img v-if=\"props.opt.label==='%s'\" src='%s' "
                             "style='width:18px;height:18px;border-radius:3px;flex-shrink:0;'>"
@@ -8095,10 +7796,9 @@ class WebUI:
 
                         def _sync_vendor_hint(v=None):
                             _v = v or _vendor_sel.value or _cur_vendor
-                            _m = _vmeta(_v)
                             # 📌 「留空即走官方」这句在下面「中转地址」那一格已经写了 ——
                             #    同一件事说两遍，还容易说得不一样。
-                            _vendor_hint.set_text(_m['key_hint'])
+                            _vendor_hint.set_text((_vinfo.get(_v) or {}).get('key_hint', ''))
 
                         def _sync_vendor(e):
 
@@ -8169,48 +7869,16 @@ class WebUI:
                         if not _key:
                             ui.notify('API Key 不能为空', type='warning', icon='warning')
                             return
-                        # 🔴 老代码按「有没有中转地址」决定 key 存哪个变量 ——
-                        #    又是把「地址填不填」当成「key 算不算数」的开关，
-                        #    而且 ANTHROPIC_API_KEY 这个名字对深度求索的 key 是错的。
-                        #    📌 **一把 key 就是一把 key**，存哪儿不该由另一个字段决定。
-                        # ⚠️ 变量名里的 RELAY 是历史包袱；改名要迁移用户已有的 .env，
-                        #    收益只是名字好看 ⇒ 不改（同 soft_cap_usd 那次的判断）。
-                        _vendor = (_vendor_sel.value or 'anthropic')
-                        _updates = {
-                            'NANO_API_VENDOR': _vendor,
-                            'NANO_API_RELAY_API_KEY': _key,
-                            'NANO_API_RELAY_BASE_URL': _relay or None,
-                            'ANTHROPIC_API_KEY': None,
-                        }
-                        os.environ['NANO_API_VENDOR'] = _vendor
-                        os.environ['NANO_API_RELAY_API_KEY'] = _key
-                        os.environ.pop('ANTHROPIC_API_KEY', None)
-                        if _relay:
-                            os.environ['NANO_API_RELAY_BASE_URL'] = _relay
-                        else:
-                            os.environ.pop('NANO_API_RELAY_BASE_URL', None)
-                        if _proxy:
-                            _updates['HTTP_PROXY']  = _proxy
-                            _updates['HTTPS_PROXY'] = _proxy
-                            os.environ['HTTP_PROXY']  = _proxy
-                            os.environ['HTTPS_PROXY'] = _proxy
-                        else:
-                            _updates['HTTP_PROXY']  = None
-                            _updates['HTTPS_PROXY'] = None
-                            os.environ.pop('HTTP_PROXY',  None)
-                            os.environ.pop('HTTPS_PROXY', None)
-                        try:
-                            _upsert_dotenv(_ENV_PATH, _updates)
-                        except Exception as _e:
-                            ui.notify(f'.env 写入失败：{_e}', type='negative')
-                            return
-                        ok = self.provider.reconfigure()
-                        if ok:
+                        # 写 `.env` 并原地重建 provider（后端 `api_settings.save_env`）
+                        _r = api_settings.save_env(_vendor_sel.value or 'anthropic', _key, _relay, _proxy)
+                        if _r["ok"]:
                             ui.notify('已保存并生效', type='positive', icon='check_circle')
                             self._refresh_relay_badge()
                             # ⚠️ 下拉框是常驻控件，不会自己重建 —— 必须显式刷。
                             self._refresh_model_select()
                             _dlg.close()
+                        elif _r["stage"] == "write":
+                            ui.notify(f'.env 写入失败：{_r["error"]}', type='negative')
                         else:
                             ui.notify('已写入 .env，但 provider 初始化失败——请检查 Key 是否有效', type='warning')
 
@@ -8239,18 +7907,16 @@ class WebUI:
            标签停在陈旧值而按钮仍可点）。控件换了，**那条判据没换**：
            📌 读控件的值要用框架保证「已同步」的钩子，不要用底层事件。
         """
-        cfg = usage_tracker.load_config()
-        cost = usage_tracker.today_cost()
+        _bud = api_usage.budget()
         # ⚠️ 同 OS 权限那处：代码改控件值会再次触发回调 ⇒ 用闸挡掉那一次。
         _busy = {"v": False}
 
         def _persist():
             try:
-                c = usage_tracker.load_config()
-                c["enabled"] = bool(enabled_sw.value)
-                c["soft_cap_usd"] = float(soft_in.value or self._CAP_SOFT_MIN)
-                c["hard_cap_usd"] = float(hard_in.value or self._CAP_SOFT_MIN + self._CAP_STEP)
-                usage_tracker.save_config(c)
+                api_usage.save_budget(
+                    enabled=bool(enabled_sw.value),
+                    soft_cap=float(soft_in.value or self._CAP_SOFT_MIN),
+                    hard_cap=float(hard_in.value or self._CAP_SOFT_MIN + self._CAP_STEP))
                 self._request_snapshot("budget")      # 用量警示按新限额重算
             except Exception as e:
                 ui.notify(f"保存限额失败：{e}", type="negative", icon="error")
@@ -8295,16 +7961,16 @@ class WebUI:
                         _hard_slot = _ph
             # 开关自己一列，不给标签 —— 开关的两个状态就是它的标签。
             with ui.column().classes("items-center justify-end").style("flex-shrink:0;"):
-                enabled_sw = ui.switch(value=cfg.get("enabled", True))                     .props("color=indigo-4")                     .on_value_change(lambda e: _persist())
+                enabled_sw = ui.switch(value=_bud["enabled"])                     .props("color=indigo-4")                     .on_value_change(lambda e: _persist())
 
         with _soft_slot:
             soft_in = ui.number(
-                value=float(cfg.get("soft_cap_usd", 5)),
+                value=_bud["soft_cap"],
                 min=self._CAP_SOFT_MIN, max=50, step=self._CAP_STEP, format="%.1f",
             ).props("dense outlined suffix=$").classes("w-full")              .on_value_change(_clamp_and_save)
         with _hard_slot:
             hard_in = ui.number(
-                value=float(cfg.get("hard_cap_usd", 10)),
+                value=_bud["hard_cap"],
                 min=self._CAP_SOFT_MIN + self._CAP_STEP, max=100,
                 step=self._CAP_STEP, format="%.1f",
             ).props("dense outlined suffix=$").classes("w-full")              .on_value_change(_clamp_and_save)
@@ -8320,7 +7986,7 @@ class WebUI:
         # ⚠️ 标题栏那句「今日已用 $x」要用它 —— 上一版改 docstring 时把这行
         #    连同 cfg 一起删了，结果**方法还在、点开就 NameError**。
         #    📌 按 AST 校验「方法在不在」抓不到这种：**在，但一跑就炸**。
-        cost = usage_tracker.today_cost()
+        cost = api_usage.today_cost()
 
         with self._ui_scope():
             with ui.dialog().props('no-backdrop-dismiss') as dialog, \
@@ -9177,45 +8843,6 @@ class WebUI:
                 _pick(tab)
             dialog.open()
 
-    def _vendor_model_options(self) -> dict:
-        """头栏主模型下拉的选项：**跟着当前厂商走**。
-
-        ```
-        ① 当前厂商的模型（厂商表 models 的顺序 = 价格升序，手排）
-        ② 与端点 Models API 拉到的清单取交集 —— 端点没有的就不列
-        ③ 两者都拿不到 → 回落内置 CLAUDE_MODELS（老行为，保证永远有得选）
-        ```
-        ⚠️ ② 只做**过滤**，不拿端点的全量当权威：某中转返回 71 个模型，
-           其中绝大多数我们没有价格/窗口/角色能力的声明。
-           📌 **「端点有」不等于「我们支持」** —— 支持与否由厂商表说了算。
-        ⚠️ 拉不到清单时**不过滤**（而不是过滤成空）——
-           断网不该让下拉变空。同 `load()` 那条「读不到就退回默认，绝不失能」。
-        """
-        try:
-            from core.models import load as _mload
-            _vendor = (getattr(self.provider, "vendor", "")
-                       or os.environ.get("NANO_API_VENDOR") or "anthropic").lower()
-            _models = list(((_mload().get(_vendor) or {}).get("models") or {}).keys())
-            if not _models:
-                raise ValueError("厂商表里没有该厂商的模型")
-            try:
-                from core.provider import endpoint_models
-                _live = endpoint_models(
-                    (os.environ.get("NANO_API_RELAY_BASE_URL") or "").strip(),
-                    (os.environ.get("NANO_API_RELAY_API_KEY") or "").strip(),
-                    _vendor)
-                if _live:
-                    _filtered = [m for m in _models if m in _live]
-                    if _filtered:
-                        _models = _filtered
-            except Exception:
-                pass          # 拉不到就不过滤 —— 断网不该让下拉变空
-            _names = {m["id"]: m["name"] for m in (CLAUDE_MODELS or [])}
-            return {m: _names.get(m, m) for m in _models}
-        except Exception as e:
-            logger.debug(f"[Model] 按厂商取模型清单失败，回落内置表: {e}")
-            return {m["id"]: m["name"] for m in (CLAUDE_MODELS or [])}
-
     def _turn_tok_suffix(self, tok_str: str, turn_usage: dict | None = None) -> str:
         """每条消息尾部那行的 token 部分，按用户选的档位给。
 
@@ -9234,7 +8861,7 @@ class WebUI:
         if mode == "full":
             try:
                 hit = ((turn_usage or {}).get("cache_hit") if "cache_hit" in (turn_usage or {})
-                       else usage_tracker.turn_cache_hit())
+                       else api_usage.current_turn_cache_hit())
                 if hit is not None:
                     out += f" · cache hit {int(hit * 100)}%"
             except Exception:
@@ -9247,27 +8874,15 @@ class WebUI:
         📌 token 数对新用户没有参照系 —— 他不知道 4.8K 是多是少，只会觉得贵。
         ⚠️ 这也是「那行数字吓人」的根治：不是把数字改小，是默认不摆在用户面前。
         """
-        import json as _json
-        import pathlib as _pl
         try:
-            p = data_path("throttle_config.json")
-            if p.exists():
-                v = str(_json.loads(p.read_text(encoding="utf-8")).get("_token_counter") or "")
-                if v in ("off", "tokens", "full"):
-                    return v
+            return api_settings.ui_prefs()["token_counter"]
         except Exception:
-            pass
-        return "off"
+            return "off"
 
     def _save_token_counter_mode(self, mode: str) -> None:
         """落盘 + 立刻刷新监控卡（不需要重启）。"""
-        import json as _json
-        import pathlib as _pl
         try:
-            p = data_path("throttle_config.json")
-            d = _json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
-            d["_token_counter"] = mode
-            p.write_text(_json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+            api_settings.save_ui_prefs(token_counter=mode)
             self._refresh_token_card()
         except Exception as e:
             logger.warning(f"[Usage] 保存 Token 计数器设置失败: {e}")
@@ -9290,8 +8905,7 @@ class WebUI:
                 return
             # ⚠️ `tokens` 和 `full` 两档在监控卡上**一样** —— 那张卡本来就叫
             #    「今日 Token」，cache hit 是给【每条消息那行】用的参照系。
-            _in, _out = usage_tracker.today_input_output()
-            txt = _fmt_tokens(_in + _out)
+            txt = api_usage.format_tokens(api_usage.today_tokens())
             lbl.set_text(txt)
         except Exception:
             pass
@@ -9307,11 +8921,8 @@ class WebUI:
            这个状态**真的会出现**：没 key 时 Nano 照常启动、停在未配置态。
            ⇒ 那时候整页禁用并说清为什么，不要给一个点了没反应的空下拉。
         """
-        from core.models import ROLES, role_label, role_pool, model_for_role
-
-        _main = getattr(self.provider, "target_model", "") or ""
-        _pools = {r: role_pool(_main, r) for r in ROLES}
-        _any = any(_pools.values())
+        _roles = api_settings.roles()
+        _any = any(r["pool"] for r in _roles)
 
         if not _any:
             # ⚠️ 空态要说清**为什么空**和**怎么才能不空** ——
@@ -9325,13 +8936,14 @@ class WebUI:
             "classifier": "在 auto 模式下，判定 Nano 执行的命令是否属于与意图不符的危险命令，并适时拦截，建议选用低成本模型。",
             "vision": "处理多模态输入，如图片和 PDF 扫描件。",
         }
-        for _role in ROLES:
-            _pool = _pools[_role]
-            _cur = model_for_role(_main, _role)
+        for _rinfo in _roles:
+            _role = _rinfo["role"]
+            _pool = _rinfo["pool"]          # {id: 展示名}
+            _cur = _rinfo["current"]
             with ui.row().classes("w-full items-center justify-between no-wrap").style(
                     "padding:14px 0; gap:20px;"):
                 with ui.column().classes("gap-1 min-w-0").style("flex:1;"):
-                    ui.label(role_label(_role)).style(
+                    ui.label(_rinfo["label"]).style(
                         "font-size:var(--nano-fs-md); color:var(--nano-fg);")
                     ui.label(_DESC.get(_role, "")).style(
                         "font-size:var(--nano-fs-sm); color:var(--nano-fg-soft); line-height:1.6;")
@@ -9342,7 +8954,7 @@ class WebUI:
                     continue
                 # ⚠️ 只有一个选项时也照样给下拉（禁用态）——
                 #    📌 换成纯文字的话，用户不知道"这里本来是可以选的"。
-                _opts = {m: (CLAUDE_MODEL_MAP.get(m, {}).get("name") or m) for m in _pool}
+                _opts = dict(_pool)
                 # ⚠️ 写法**照抄语言下拉**，两处细节都不能改：
                 #  · `popup-content-class` 要放进 **props** —— 弹层是挂在 body 上的
                 #    另一个 DOM 节点，类写在 `.classes()` 上根本到不了它，
@@ -9356,23 +8968,16 @@ class WebUI:
                            + (" disable" if len(_pool) == 1 else ""))                     .classes("lang-select-field")                     .style("min-width:170px; flex-shrink:0;")
 
     def _save_role_model(self, role: str, model_id: str) -> None:
-        """把「进阶配置」里的选择写进 throttle_config.json 的 `_role_models`。
+        """把「进阶配置」里的选择交给后端记下（`api_settings.set_role_model`）。
 
         📌 **用户选择和厂商事实分两张表**：厂商能力表（model_config.json）跟版本走，
            用户这一份跟用户走。混在一起的话，升级厂商表会冲掉用户的选择。
         ⚠️ 写完立刻生效 —— 三个角色都是**每次用的时候现问** `model_for_role()`，
            没有缓存，所以不需要重启，也不需要通知谁。
         """
-        import json as _json
-        import pathlib as _pl
         try:
-            cfg = data_path("throttle_config.json")
-            data = _json.loads(cfg.read_text(encoding="utf-8")) if cfg.exists() else {}
-            data.setdefault("_role_models", {})[role] = model_id or ""
-            cfg.write_text(_json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            from core.models import role_label as _rl
-            ui.notify(f"{_rl(role)} → {model_id}", type="positive", icon="tune")
-            logger.info(f"[Roles] {role} = {model_id}")
+            _label = api_settings.set_role_model(role, model_id)
+            ui.notify(f"{_label} → {model_id}", type="positive", icon="tune")
         except Exception as e:
             ui.notify(f"保存失败: {e}", type="negative")
             logger.warning(f"[Roles] 保存 {role} 失败: {e}")
@@ -9399,7 +9004,6 @@ class WebUI:
         #    提炼器提示词是英文，于是它读中文原话、写英文结论，再显示给中文用户。
         #    📌 那不只是"不好看"：**提炼器读中文写英文，等于凭空多做一次有损翻译。**
         # 📌 一件今天就能做完的事，不该被压在一件几天的工程后面。
-        from core import i18n as _I18N
         # ⚠️ `items-center` 而不是 `items-start`（2026-08-14：「明显偏上」）：
         #    左边是「标题 + 两行说明」，右边是一个单行控件。顶对齐时控件贴着
         #    标题那一行，视觉上就吊在整块的上沿。
@@ -9414,7 +9018,7 @@ class WebUI:
                 ui.label('调整 Nano 生成语言时的偏好，'
                          '当前界面不受影响，固定为简体中文。').style(
                     'font-size:var(--nano-fs-sm); color:var(--nano-dim); line-height:1.6;')
-            _opts = {k: v["label"] for k, v in _I18N.LANGS.items()}
+            _opts = api_settings.languages()
             # ⚠️⚠️ **`popup-content-class` 不是可选项** —— 全局有一条
             #    `.q-menu { background: transparent }`（见那条注释：清掉 Quasar
             #    自带的深灰容器，让内层卡片自己的背景说了算）。
@@ -9428,8 +9032,8 @@ class WebUI:
             #    强推理 · 多模态」（那段 JS hook 的就是 `.model-select-popup .q-item`，
             # 📌 **复用一个类，继承的不只是它的样子，还有所有挂在它身上的行为** ——
             #    而行为不写在样式表里，翻 CSS 是看不见它的。
-            ui.select(_opts, value=_I18N.current_lang(),
-                      on_change=lambda e: _I18N.set_lang(e.value)) \
+            ui.select(_opts, value=api_settings.current_language(),
+                      on_change=lambda e: api_settings.set_language(e.value)) \
                 .props('outlined dense options-dense '
                        'popup-content-class=nano-select-popup') \
                 .classes('lang-select-field') \
@@ -9497,7 +9101,7 @@ class WebUI:
                             'cursor:help; line-height:1;')
                         ui.tooltip('消耗金额为估算，实际金额以官方后台计费为准。').style(
                             'font-size:var(--nano-fs-sm); max-width:280px;')
-                ui.label(f'今日已用 {_cur()}{usage_tracker.today_cost():.3f}。'
+                ui.label(f'今日已用 {_cur()}{api_usage.today_cost():.3f}。'
                          '达到软上限时发出警告，达到硬上限时停止发送请求。').style(
                     'font-size:var(--nano-fs-sm); color:var(--nano-dim); line-height:1.6;')
             ui.button('管理', icon='tune', on_click=self._show_cost_cap_dialog) \
@@ -9739,12 +9343,9 @@ class WebUI:
     def _identity_text(self) -> str:
         """头栏身份：nano@昵称；没填昵称就只显示 nano。"""
         try:
-            import json as _j, pathlib as _pl
-            p = data_path("user_profile.json")
-            if p.exists():
-                nick = (_j.loads(p.read_text(encoding="utf-8")).get("nickname") or "").strip()
-                if nick:
-                    return f"nano@{nick}"
+            nick = api_settings.nickname()
+            if nick:
+                return f"nano@{nick}"
         except Exception:
             pass
         return "nano"
@@ -9752,12 +9353,9 @@ class WebUI:
     def _user_label(self) -> str:
         """聊天里用户提示符：填了昵称就用昵称，没填就 you。"""
         try:
-            import json as _j, pathlib as _pl
-            p = data_path("user_profile.json")
-            if p.exists():
-                nick = (_j.loads(p.read_text(encoding="utf-8")).get("nickname") or "").strip()
-                if nick:
-                    return nick
+            nick = api_settings.nickname()
+            if nick:
+                return nick
         except Exception:
             pass
         return "you"
@@ -14241,11 +13839,10 @@ class WebUI:
                 with ui.row().classes('items-center gap-2 pywebview-no-drag'):
                     # 模型选择器（挪到头栏右侧、导航左边；原绝对居中版已删）。
                     # 中转徽章精简到模型名左侧：中转=只"中转"两字(琥珀)，官方=不显示。
-                    current_model_id = self.provider.target_model
+                    current_model_id = api_settings.current_model()["id"]
                     # ⚠️ 换厂商之后，旧的 model id 不在新厂商的清单里 ——
-                    #    必须按【当前厂商的选项】兜底，不能按 GEMINI_MODEL_MAP
-                    #    （那是 Claude 专属的表，深度求索的 id 一个都不在里面）。
-                    _opts_now = self._vendor_model_options()
+                    #    必须按【当前厂商的选项】兜底（后端按厂商表 + 端点清单给出）。
+                    _opts_now = api_settings.model_options()
                     if current_model_id not in _opts_now:
                         current_model_id = next(iter(_opts_now), "")
                     with ui.row().style(
@@ -14256,10 +13853,10 @@ class WebUI:
                             'font-size:var(--nano-fs-xs); color:var(--nano-warn); background:rgba(var(--nano-warn-rgb),0.14); '
                             'border-radius:2px; padding:1px 5px; white-space:nowrap;'
                         ).tooltip('当前经过第三方 API 中转，非官方直连。可在设置（右上角三个点）的「环境配置」里切换。')
-                        self._relay_badge_label.set_visibility(getattr(self.provider, 'is_relay', False))
-                        # ⚠️ 跟着厂商走 —— 写死 GEMINI_MODELS 的话，切到深度求索之后
+                        self._relay_badge_label.set_visibility(api_settings.current_model()["relay"])
+                        # ⚠️ 跟着厂商走 —— 写死 Claude 的模型表的话，切到深度求索之后
                         #    下拉里还是三个 Claude，选谁都发不出去。
-                        _model_options = self._vendor_model_options()
+                        _model_options = _opts_now
                         self._model_select = ui.select(
                             options=_model_options, value=current_model_id, on_change=self._on_model_change,
                         ).props('borderless dense popup-content-class=model-select-popup') \
@@ -14434,10 +14031,7 @@ class WebUI:
                     # 当前模型
                     with ui.column().classes('monitor-metric theme-card gap-1'):
                         ui.label('当前模型').style('font-size:var(--nano-fs-xs); color:var(--nano-fg-soft);')
-                        _init_model_name = next(
-                            (m["name"] for m in CLAUDE_MODELS if m["id"] == self.provider.target_model),
-                            self.provider.target_model
-                        ).upper()
+                        _init_model_name = api_settings.current_model()["name"].upper()
                         self.model_lbl = ui.label(_init_model_name).style(
                             'font-size:var(--nano-fs-sm); color:var(--nano-ok); font-weight:500;'
                         )
@@ -14489,9 +14083,8 @@ class WebUI:
                     # 今日 Token
                     with ui.column().classes('monitor-metric theme-card gap-1'):
                         ui.label('今日 Token').style('font-size:var(--nano-fs-xs); color:var(--nano-fg-soft);')
-                        _today_tok = usage_tracker.today_input_output()
                         self.token_lbl = ui.label(
-                            _fmt_tokens(_today_tok[0] + _today_tok[1])
+                            api_usage.format_tokens(api_usage.today_tokens())
                         ).style('font-size:var(--nano-fs-sm); color:var(--nano-fg-soft); font-weight:500;')
                         # 建完立刻按当前档位刷一次（可能要补上 cache hit 那一段）
                         self._refresh_token_card()
@@ -15195,7 +14788,7 @@ class WebUI:
         # 但前提是得让用户知道去哪填，不能只留一个什么都不回答的输入框。
         # 延时挂载：等 WebView2 子进程连上再弹，否则弹窗会开在还没渲染的树上。
         try:
-            if not self.provider.is_configured:
+            if not api_settings.current_model()["configured"]:
                 ui.timer(1.2, lambda: self._show_env_config_dialog(), once=True)
         except Exception as _e:
             logger.warning(f"[UI] 首启配置检查失败（不影响启动）: {_e}")

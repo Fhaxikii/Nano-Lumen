@@ -316,6 +316,209 @@ def t_notes() -> None:
     check("get_memory_store" not in code, "app.py 不再直接用 memory_store")
 
 
+class _Provider:
+    def __init__(self, model="m-cheap", vendor="acme", relay=False, configured=True):
+        self.target_model, self.vendor, self.is_relay, self.is_configured = model, vendor, relay, configured
+        self.reconfigured = 0
+
+    def reconfigure(self):
+        self.reconfigured += 1
+        return True
+
+
+def t_settings() -> None:
+    print("\n▶ settings")
+    import os
+    import tempfile
+    from core.ui_api import settings as ST
+    import core.provider as CP
+    env_keys = ("NANO_API_VENDOR", "NANO_API_RELAY_API_KEY", "NANO_API_RELAY_BASE_URL",
+                "ANTHROPIC_API_KEY", "HTTP_PROXY", "HTTPS_PROXY", "NANO_MODEL")
+    saved_env = {k: os.environ.get(k) for k in env_keys}
+    prov = _Provider()
+    _state.bind(provider_obj=prov)
+    models_mod = dict(
+        load=lambda: {"acme": {"models": {"m-cheap": {}, "m-big": {}}}, "other": {"models": {"o1": {}}}},
+        vendors=lambda: ["acme", "other"],
+        vendor_meta=lambda v: {"label": v.upper(), "icon": f"/v/{v}.png", "key_hint": f"{v} key"},
+        ROLES=("distiller", "vision"),
+        role_label=lambda r: {"distiller": "压缩提炼", "vision": "视觉输入"}[r],
+        role_pool=lambda main, r: ["m-cheap", "m-big"] if r == "distiller" else [],
+        model_for_role=lambda main, r: "m-cheap" if r == "distiller" else "",
+    )
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+        td = pathlib.Path(td)
+        cfg = td / "throttle_config.json"
+        orig = (ST._app_config_path, ST._ENV_PATH, ST._profile_path, CP.endpoint_models,
+                CP.migrate_model_id)
+        ST._app_config_path = lambda: cfg
+        ST._ENV_PATH = td / ".env"
+        ST._profile_path = lambda: td / "user_profile.json"
+        CP.endpoint_models = lambda base, key, vendor: None
+        CP.migrate_model_id = lambda m: {"m-old": "m-big"}.get(m, m)
+        try:
+            with _FakeModule("core.models", **models_mod):
+                check(ST.model_options() == {"m-cheap": "m-cheap", "m-big": "m-big"},
+                      "下拉选项跟着当前厂商")
+                CP.endpoint_models = lambda base, key, vendor: {"m-big"}
+                check(list(ST.model_options()) == ["m-big"], "端点清单只做过滤")
+                CP.endpoint_models = lambda base, key, vendor: None
+
+                # 首次启动：没有配置文件
+                os.environ["NANO_MODEL"] = "m-big"
+                ST.apply_saved_default_model()
+                check(prov.target_model == "m-big" and cfg.exists()
+                      and json.loads(cfg.read_text(encoding="utf-8"))["_default_model_vendor"] == "acme",
+                      "首次启动用 NANO_MODEL，并记下厂商事实")
+                os.environ.pop("NANO_MODEL", None)
+
+                # 收藏：下线映射
+                cfg.write_text(json.dumps({"_default_model": "m-old", "_default_model_vendor": "acme",
+                                           "legacy_throttle": 1, "_model_policy": "x",
+                                           "_role_models": {"vision": "v1"}}), encoding="utf-8")
+                prov.target_model = "m-cheap"
+                ST.apply_saved_default_model()
+                saved = json.loads(cfg.read_text(encoding="utf-8"))
+                check(prov.target_model == "m-big" and saved["_default_model"] == "m-big",
+                      "收藏的下线型号迁移到新 id 并写回", str(saved))
+                check("legacy_throttle" not in saved and "_model_policy" not in saved
+                      and saved["_role_models"] == {"vision": "v1"},
+                      "写回时清掉废弃键、保留别的元数据")
+                # 收藏属于别的厂商 → 作废
+                cfg.write_text(json.dumps({"_default_model": "o1", "_default_model_vendor": "other"}),
+                               encoding="utf-8")
+                prov.target_model = "m-cheap"
+                ST.apply_saved_default_model()
+                check(prov.target_model == "m-cheap", "收藏属于别的厂商 → 不用它")
+                # 收藏不在当前清单里
+                cfg.write_text(json.dumps({"_default_model": "ghost", "_default_model_vendor": "acme"}),
+                               encoding="utf-8")
+                ST.apply_saved_default_model()
+                check(prov.target_model == "m-cheap", "收藏不在当前厂商清单里 → 不用它")
+
+                ST.set_default_model("m-big")
+                check(ST.default_model() == "m-big", "设为默认")
+                ST.set_default_model(None)
+                check(ST.default_model() == "", "取消默认")
+
+                cur = ST.set_model("m-big")
+                check(cur["id"] == "m-big" and prov.target_model == "m-big" and _serializable(cur),
+                      "切换主模型", str(cur))
+                prov.target_model = "gone"
+                r = ST.ensure_model_in_options()
+                check(r["current"] == "m-cheap" and prov.target_model == "m-cheap",
+                      "换厂商后当前模型不在清单里 → 换成清单第一个")
+
+                ST.save_ui_prefs(theme_mode="terminal", enhanced_mode=True, ocr_max_pages=80,
+                                 token_counter="full")
+                p = ST.ui_prefs()
+                check(p == {"theme_mode": "terminal", "enhanced_mode": True, "ocr_max_pages": 80,
+                            "token_counter": "full"}, "界面偏好存取", str(p))
+                d = json.loads(cfg.read_text(encoding="utf-8"))
+                d["_theme_mode"], d["_token_counter"] = "neon", "loud"
+                cfg.write_text(json.dumps(d), encoding="utf-8")
+                p2 = ST.ui_prefs()
+                check("theme_mode" not in p2 and p2["token_counter"] == "off",
+                      "不认识的主题名 / 档位不交给界面（计数器默认 off）", str(p2))
+
+                roles = ST.roles()
+                check(roles[0] == {"role": "distiller", "label": "压缩提炼",
+                                   "pool": {"m-cheap": "m-cheap", "m-big": "m-big"}, "current": "m-cheap"}
+                      and roles[1]["pool"] == {} and _serializable(roles), "角色模型：池子与当前选择")
+                check(ST.set_role_model("vision", "v2") == "视觉输入"
+                      and json.loads(cfg.read_text(encoding="utf-8"))["_role_models"]["vision"] == "v2",
+                      "记下角色模型的选择")
+
+                ec = ST.env_config()
+                check([v["id"] for v in ec["vendors"]] == ["acme", "other"]
+                      and ec["vendors"][0]["key_hint"] == "acme key", "环境配置：厂商清单与提示")
+                (td / ".env").write_text("KEEP=1\nANTHROPIC_API_KEY=old\nHTTP_PROXY=p\n", encoding="utf-8")
+                r = ST.save_env("other", " k-123 ", "", "")
+                env_text = (td / ".env").read_text(encoding="utf-8")
+                check(r == {"ok": True} and prov.reconfigured == 1, "保存后原地重建 provider", str(r))
+                check("KEEP=1" in env_text and "NANO_API_RELAY_API_KEY=k-123" in env_text
+                      and "ANTHROPIC_API_KEY" not in env_text and "HTTP_PROXY" not in env_text,
+                      "旧密钥 / 清空的代理整行删掉，不是注释掉", env_text)
+                check(ST.save_env("x", "  ", "", "")["stage"] == "input", "空 key 不写")
+        finally:
+            (ST._app_config_path, ST._ENV_PATH, ST._profile_path, CP.endpoint_models,
+             CP.migrate_model_id) = orig
+            for k, v in saved_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            _state.bind()
+
+        # 权限：只写 permissions，保留文件里别的字段
+        from core.os_layer import dsl
+        st = td / "os_state.json"
+        st.write_text(json.dumps({"auto_mode": True, "permissions": {"allow_dangerous": True}}),
+                      encoding="utf-8")
+        o_path, o_load = dsl.os_state_path, dsl.load_permissions
+        dsl.os_state_path = lambda *a, **k: st
+        dsl.load_permissions = lambda *a, **k: json.loads(st.read_text(encoding="utf-8"))["permissions"]
+        try:
+            check(ST.permissions()["allow_dangerous"] is True and ST.permissions()["allow_window_control"] is False,
+                  "权限：六个开关，没写过的为 False")
+            r = ST.set_permissions({"allow_window_control": True, "not_a_key": True})
+            raw = json.loads(st.read_text(encoding="utf-8"))
+            check(r == {"ok": True} and raw["auto_mode"] is True
+                  and raw["permissions"] == {"allow_dangerous": True, "allow_window_control": True},
+                  "写回时保留 auto_mode，不认识的键不写", str(raw))
+        finally:
+            dsl.os_state_path, dsl.load_permissions = o_path, o_load
+
+    for fn, bad in (("_load_app_config", ("throttle_config", "migrate_model_id", "target_model")),
+                    ("_save_app_config", ("throttle_config", "json.")),
+                    ("_toggle_default_model", ("GEMINI_MODEL_MAP", "target_model")),
+                    ("_on_model_change", ("target_model", "GEMINI_MODEL_MAP")),
+                    ("_build_settings_permissions", ("os_dsl", "cfg_path", "json.")),
+                    ("_build_settings_profile", ("user_profile", "data_path", "write_text")),
+                    ("_show_env_config_dialog", (".env')", "os.environ", "reconfigure", "core.models")),
+                    ("_build_settings_advanced", ("core.models", "CLAUDE_MODEL_MAP", "target_model")),
+                    ("_save_role_model", ("throttle_config", "core.models")),
+                    ("_token_counter_mode", ("throttle_config",)),
+                    ("_build_settings_cost_cap", ("usage_tracker",)),
+                    ("start_pipeline_task", ("usage_tracker", "cap_status"))):
+        hit = [b for b in bad if b in _code_only(fn)]
+        check(not hit, f"app.{fn} 不再直接碰后端 / 配置文件", ", ".join(hit))
+    src = S.module_text("app")
+    check("def _show_profile_dialog" not in src and "def _show_permissions_dialog" not in src
+          and "def _vendor_model_options" not in src, "没人调用的两个旧弹窗与界面侧的模型清单已删")
+
+
+def t_usage() -> None:
+    print("\n▶ usage")
+    from core.usage import usage_tracker as UT
+    from core.ui_api import usage as U
+    names = ("load_config", "save_config", "cap_status", "today_cost", "today_input_output")
+    saved = {n: UT.__dict__.get(n) for n in names}
+    store = {"enabled": True, "soft_cap_usd": 5.0, "hard_cap_usd": 10.0, "other": 1}
+    UT.load_config = lambda: dict(store)
+    UT.save_config = lambda c: store.update(c)
+    UT.cap_status = lambda: "soft"
+    UT.today_cost = lambda: 6.5
+    UT.today_input_output = lambda: (1000, 234)
+    try:
+        b = U.budget()
+        check(b == {"enabled": True, "soft_cap": 5.0, "hard_cap": 10.0, "status": "soft", "cost": 6.5},
+              "预算：限额设置 + 状态 + 今日花费", str(b))
+        U.save_budget(enabled=False, soft_cap=2.0, hard_cap=3.0)
+        check(store == {"enabled": False, "soft_cap_usd": 2.0, "hard_cap_usd": 3.0, "other": 1},
+              "保存限额（保留别的配置项）", str(store))
+        check(U.today_tokens() == 1234 and U.format_tokens(1234) == "1.2K", "今日 token 与格式化",
+              U.format_tokens(1234))
+    finally:
+        for n, v in saved.items():
+            if v is None:
+                UT.__dict__.pop(n, None)
+            else:
+                setattr(UT, n, v)
+    src = "\n".join(ln for ln in S.module_text("app").splitlines() if not ln.strip().startswith("#"))
+    check("usage_tracker." not in src and "_fmt_tokens(" not in src, "app.py 不再直接用 usage_tracker")
+
+
 def t_backend_bound() -> None:
     print("\n▶ 接口背后的后端对象在界面启动时登记")
     init = S.def_text("app", "__init__", owner="WebUI")
@@ -328,6 +531,8 @@ def main() -> int:
     t_skills()
     t_knowledge()
     t_notes()
+    t_settings()
+    t_usage()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)
     print(f"结果：{ok}/{len(_results)} 通过")

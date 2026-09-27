@@ -102,8 +102,9 @@ def t_user_auto_mode_io(tmp: pathlib.Path) -> None:
 
     app = S.module_text("app")
     seg = app.split("def _load_global_auto")[1].split("def _toggle_global_auto")[0]
-    check("os_dsl.user_auto_mode_on()" in seg and "os_dsl.set_user_auto_mode(" in seg,
-          "界面的读 / 存走 dsl，不自己读写文件")
+    check("api_settings.auto_mode()" in seg and "api_settings.set_auto_mode(" in seg
+          and "dsl.user_auto_mode_on()" in S.def_text("core.ui_api.settings", "auto_mode"),
+          "界面的读 / 存经 ui_api 走 dsl，不自己读写文件")
 
 
 # ── OS 动作确认 ───────────────────────────────────────────────────────────
