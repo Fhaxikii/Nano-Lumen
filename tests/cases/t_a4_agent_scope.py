@@ -532,12 +532,21 @@ def t_refusal_gives_an_exit() -> None:
     import core.orchestrator as _O
     _o = _O.Orchestrator.__new__(_O.Orchestrator)
 
-    def _say(action):
+    def _run(action):
         return _a.get_event_loop().run_until_complete(
             _O.Orchestrator._handle_os_execute_readonly(_o, {"action": action}, "x"))
 
+    def _say(action):
+        return _run(action).text
+
+    _out = _run("file_read")
+    check(getattr(_out, "failed", False) is True,
+          "⭐⭐ 拒绝**算失败** —— 按普通字符串返回会被当成成功，"
+          "步骤列表显示 ✓（第六次实机 cmd_log/18 的第 6 步）",
+          repr(_out)[:80])
+
     _fr = _say("file_read")
-    check("会改变这台电脑" not in _fr,
+    check("会改变这台电脑" not in _fr and "modif" not in _fr,
           "⭐⭐⭐ **不再说假因** —— `file_read` 不改变任何东西，"
           "它落在名单外是另一个原因。📌 [D12]：给模型的失败信息必须【正确】",
           _fr[:60])
@@ -545,15 +554,23 @@ def t_refusal_gives_an_exit() -> None:
           "⭐⭐⭐ **给出了它真正有的那个出口** —— Subagent白名单里就有 `load_full_file`。"
           "📌 模型需要的是一个出口，不是一个名字",
           _fr[:120])
-    check("不要因此宣布任务无法完成" in _fr,
+    check("Do not declare the whole task impossible" in _fr,
           "⭐⭐ 并明确堵住「就此放弃」那条路 —— "
           "🔴 实机那次它正是收到拒绝后直接写了一份「我无法完成此任务」的报告")
 
     _fw = _say("file_write")
-    check("load_full_file" not in _fw and "只读动作" in _fw,
-          "⭐ 而真的会写的动作**不给假出口** —— "
+    check("load_full_file" not in _fw and "edit_file, if the file already exists" in _fw
+          and "Creating a new file is not possible" in _fw,
+          "⭐ `file_write` 的出口**带条件**：已存在的文件用 `edit_file` 改，"
+          "新建文件在 Subagent 里没有路 —— 两句都要写明",
+          _fw[:200])
+    _fd = _say("file_delete")
+    check("edit_file" not in _fd and "Read-only actions available" in _fd,
+          "⭐ 没有替代品的动作**不给假出口** —— "
           "📌 一个「总能给出替代品」的兜底，会在没有替代品时编一个",
-          _fw[:80])
+          _fd[:80])
+    _cjk = [c for c in _fw + _fd if "\u4e00" <= c <= "\u9fff"]
+    check(not _cjk, "给模型的拒绝说明是英文", "".join(_cjk)[:20])
 
 
 def t_write_scope_is_exactly_one_tool() -> None:

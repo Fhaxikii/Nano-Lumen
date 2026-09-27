@@ -194,7 +194,7 @@ class SubagentMixin:
             for c in _calls:
                 # ⚠️ **用 AGENT 作用域 resolve** —— 这一行就是隔离的执行侧闸门：
                 #    模型哪怕幻觉出 `os_execute`，这里也拿不到 handler。
-                #    📌 的教训：给出去的一定要执行得了；反过来
+                #    📌 早先的教训：给出去的一定要执行得了；反过来
                 #       「执行得了却没给出去」是正常的，而这里是第三种：
                 #       **既没给出去、也执行不了** —— 那才是真正的隔离。
                 _ref = _cat.resolve(c.name, _TS.AGENT, _rtv)

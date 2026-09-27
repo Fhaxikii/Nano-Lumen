@@ -178,9 +178,9 @@ class OsExecuteMixin:
             # 于是Subagent收到一句它无法反驳、也无法绕开的话，就**放弃了整件事** ——
             # 而它手上明明有 `load_full_file`（v1.47 已确认绝对路径直接放行）。
             #
-            # 📌 那条逐字适用：**给模型的失败信息必须同时【正确】且【充分】** ——
+            # 📌 给模型的失败信息必须同时【正确】且【充分】 ——
             #    这里两条全犯了：说了假因，也没给出口。
-            # 📌 那条同源：**模型需要的是一个出口，不是一个名字。**
+            # 📌 模型需要的是一个出口，不是一个名字。
             #
             # ⚠️ **闸一个字没动**：判据仍然只有 `dsl.is_readonly()` 这一个出处，
             #    下面 `OSDispatcher(readonly_only=True)` 那道真闸照旧。
@@ -188,21 +188,30 @@ class OsExecuteMixin:
             # ⚠️ 下面这张是**建议**表，不是安全名单 —— 📌 安全名单不许手抄，
             #    而它是从 `readonly_actions()` 派生的；这张表只回答「那你可以改用什么」，
             #    写错了最坏的后果是一句没用的建议，不会放行任何东西。
+            # ⚠️ `file_write` 的出口是**有条件的**：`edit_file` 只能改已存在的文件，
+            #    新建文件在 Subagent 里没有任何路。所以建议里写明这个条件，
+            #    而不是笼统地说「改用 edit_file」。
+            # ⚠️ 返回 `ToolOutcome(failed=True)`：这次调用没有执行。按普通字符串返回时
+            #    会被当成成功，Subagent 的步骤列表里显示 ✓（第六次实机的 cmd_log/18）。
             _ALT = {
-                "file_read": "`load_full_file`（读整份文件，绝对路径可以直接给）"
-                             "或 `search_files`（只想在文件里找某段内容时用它）",
-                "clipboard_read": "",
-                "run_command": "",
+                "file_read": "load_full_file (reads the whole file; absolute paths are fine) "
+                             "or search_files (to find a passage inside files)",
+                "file_write": "edit_file, if the file already exists (replace its current "
+                              "text with the new text). Creating a new file is not possible "
+                              "here",
             }
             _alt = _ALT.get(_act, "")
-            return (f"[os_execute] 这个执行者（Subagent）只能调只读动作，`{_act}` 不在"
-                    f"只读名单里。"
-                    + (f"\n⭐ 你要做的这件事**有别的路**：改用 {_alt}。\n"
-                       if _alt else
-                       f"\n可用的只读动作：{', '.join(sorted(_dsl.readonly_actions()))}。\n")
-                    + f"如果这件事**必须**动真实文件、或者确实没有替代品，"
-                      f"就把你已经查到的东西如实报回给 main agent，由它来做 —— "
-                      f"不要因此宣布任务无法完成。")
+            return ToolOutcome(
+                f"[os_execute] Not run: this executor (a sub-agent) may only use read-only "
+                f"actions, and `{_act}` is not one of them."
+                + (f"\nUse this instead: {_alt}.\n"
+                   if _alt else
+                   f"\nRead-only actions available: "
+                   f"{', '.join(sorted(_dsl.readonly_actions()))}.\n")
+                + "If the task truly needs this action, report what you found so far to "
+                  "the main agent and let it do that part. Do not declare the whole task "
+                  "impossible because of it.",
+                failed=True)
         return await self._handle_os_execute(
             args, aid,
             call=_ctx.get("call"), used_model=_ctx.get("used_model", ""),
