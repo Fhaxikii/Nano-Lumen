@@ -173,7 +173,7 @@ class Orchestrator(
         self._rt_open_span: str | None = None
 
         # SkillSpec hard_validate 的报错。降级为直接代码生成时要把它带给模型 ——
-        # 只进日志的话，模型会原样再犯（实测 一个会话里犯了三次同类错误）。
+        # 只进日志的话，模型会原样再犯（实测一个会话里犯了三次同类错误）。
         self._last_spec_errors: list[str] = []
 
         # 最近一次审计窗口校验失败 / 被用户丢弃的 Skill。

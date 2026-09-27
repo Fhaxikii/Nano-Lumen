@@ -206,7 +206,7 @@ class ScreenMixin:
         模型除了在图里认标题之外没有任何手段发现自己换了对象。
 
         📌 **判据：不要让模型去「记得怀疑」，要把变化本身摆到它眼前。**
-        早先的设计 三层防护网第 1 层（"提示词写明挂起前后环境不能默认一致"）
+        早先设计的三层防护网第 1 层（"提示词写明挂起前后环境不能默认一致"）
         要求的是模型**自律**；这里给的是**事实**。两者不是重复 ——
         一条是"你应该怀疑"，一条是"这就是变了"。
 
@@ -528,7 +528,7 @@ class ScreenMixin:
         _n = self.memory.set_image_summary(_s)
         # ⚠️ 标志无论如何都要落下 —— 哪怕落库失败。
         #    📌 否则「记不下来」会变成「每一轮都再要求它记一次」，
-        #       而那正是 已明确不许出现的形状（像 base64 那个 bug 一样每轮注入）。
+        #       而那正是已明确不许出现的形状（像 base64 那个 bug 一样每轮注入）。
         self._turn_image_pending = False
         if not _n:
             return ("There is no image on the current turn to write down, so nothing was saved. "
@@ -559,7 +559,7 @@ class ScreenMixin:
         _ref = resolve_handle(_h)
         if not _ref:
             # ⚠️ 认不出**必须响亮地说**，不许含糊成"图没了" —— 前者用户能改（换个把手），
-            #    后者会让模型转头去要求用户重新上传，正是 一开始那个 bug。
+            #    后者会让模型转头去要求用户重新上传，正是一开始那个 bug。
             return (
                 f"No stored image matches handle {_h!r}. Handles look like img#a3f2c1d4 and "
                 "appear in the system note on the message that carried the image. "

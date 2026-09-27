@@ -302,7 +302,7 @@ class TurnMixin:
         #   ② 🔴 **必须在 `_image_note_request_block()` 之前** ——
         #      原来它排在 system_guide 组装之后，于是那一刻 `ui_images` 还是空的，
         #      `has_unsummarized_image()` 恒 False，**那段「顺手记一份摘要」的提示
-        #      永远不会出现**。实测实测：图答对了，`image_summary` 却是 None。
+        #      永远不会出现**。实测：图答对了，`image_summary` 却是 None。
         #      ⚠️ 而它**一声不响** —— 没有报错、没有告警，只是摘要永远不生成。
         #      📌 原来的测试钉住了约束 ①，然后在约束 ② 上栽了 ——
         #         **一条顺序断言只保护它写下的那个顺序。**（已补断言）
@@ -490,7 +490,7 @@ class TurnMixin:
         #       Catalog 答「有哪些工具」，health 答「哪些暂时不能用」。
         #    🔴 塞进 `availability` 会出一个具体的错：坏掉的工具 `resolve()` 返回
         #       None → 调用方走 UNKNOWN_TOOL 诊断 → 模型收到「这个工具不存在」。
-        #       **而那是假话。** 违反 「给模型的失败信息必须正确」——
+        #       **而那是假话。** 违反「给模型的失败信息必须正确」——
         #       "不存在"和"坏了"是两种故障，共用一个出口就是撒谎，
         #       而那道执行层 fail-fast 存在的全部意义正是说出**正确**的那一句。
         #    还有一条实际理由：health 状态**在一轮之内会变**（探针恢复），
@@ -525,7 +525,7 @@ class TurnMixin:
         #    （`dont_wait` / `stop_background` / `set_next_checkin`）
         #    **在轮与轮之间进出**，改的正是这个最脆弱的位置。
         # ⚠️ 这个副作用是 2026-08-22 加 `_when_has_carrier` 时**没想到的** ——
-        #    当时只顾着 「工具和事实来源必须由同一个条件控制」，
+        #    当时只顾着「工具和事实来源必须由同一个条件控制」，
         #    没意识到那个条件同时决定了缓存前缀稳不稳。
         #    📌 **一个判据在它自己的维度上正确，不代表它在别的维度上无害。**
         #
@@ -702,7 +702,7 @@ class TurnMixin:
                 #
                 # ⭐ 现在说的是真事：用户在你上一次回答成型**之前**又补了一句，
                 #    所以你会看到**连续多条 user 消息**，而**只应该给一个回答**。
-                #    这也顺带解决了 用户要的「标记第一条/第二条」——
+                #    这也顺带解决了用户要的「标记第一条/第二条」——
                 #    模型知道后面那条更新、前面那条可能已被推翻。
                 base_guide += (
                     "\n\n[Interjected] The user sent another message while you were "
@@ -879,7 +879,7 @@ class TurnMixin:
             system_guide = system_guide + _quote_injection
         # ⭐ 进行中的「一件事」：让模型看见它在替什么东西负责。
         # ⚠️ 这是「边界由模型判」的**前提** —— 不给它看，`task_boundary` 就是个
-        #    要它凭空猜的工具。同 「终止事实要传给模型」：
+        #    要它凭空猜的工具。同「终止事实要传给模型」：
         #    📌 **要模型做判断，就得先让它看见判断所需的事实。**
         # ⭐ 紧跟未决交互之后是有意的：两段都是「有东西挂在你名下」的路由级信息，
         #    而 `task_boundary` 的可见性正是由这段话决定的。
@@ -923,7 +923,7 @@ class TurnMixin:
         # ⭐ [2026-08-25] 窗口形态（mini / full）—— 见 `_build_window_mode_injection`。
         #    ⚠️ **必须现在就接上**，不许「先写好等以后用」（`awareness_lines()` 那笔账）。
         # ⭐⭐⭐ 记忆摘要无条件注入 —— 见 `_build_memory_injection`。
-        #    📌 这一行就是 用户那句「cc 每次都注入了摘要」的落地。
+        #    📌 这一行就是用户那句「cc 每次都注入了摘要」的落地。
         system_guide = system_guide + self._build_memory_injection()
         system_guide = system_guide + self._build_window_mode_injection()
         # 情感系统：Mood 染语气注入被动路径（设计 /）。落在缓存哨兵之后的动态段，
@@ -977,7 +977,7 @@ class TurnMixin:
             system_guide = system_guide + self._image_note_request_block()
             # ⭐⭐⭐ L3 索引条目 —— **无条件注入**，不是"需要时再检索"。
             #
-            # 🔴 这一条解掉的是 用户当年那个悖论：
+            # 🔴 这一条解掉的是用户当年那个悖论：
             #    「大模型真的忘记某个东西之后，它不就把『我记过这个东西、
             #      我应该去看笔记』这件事也忘了吗？」
             # ⭐ 参照 `MEMORY.md`：**索引不是被回忆起来的，是被塞进来的。**
@@ -1024,7 +1024,7 @@ class TurnMixin:
         # ⭐ L0→L1：把老交换的工具结果换成占位符。
         #
         # ⚠️⚠️ **默认关闭**（`data/model_config.json` 的 `_settings.ladder_enabled`）。
-        #    这是第一个**真的从模型上下文里拿走东西**的动作，必须由 用户显式打开。
+        #    这是第一个**真的从模型上下文里拿走东西**的动作，必须由用户显式打开。
         #    📌 **引入一个机制和启用一个机制是两件事** —— 一起做，出了问题
         #       分不清是机制的锅还是接线的锅（同「立架子和搬家具是两件事」）。
         #

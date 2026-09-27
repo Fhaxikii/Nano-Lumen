@@ -405,11 +405,11 @@ class PromptContextMixin:
         而这次要明确的粒度恰恰就是 request。
 
         ⚠️ **刻意不列工具名。** 当前 API manifest 已经是工具的唯一权威来源，
-           在这里再列一遍就是第二份名单（正是 花一整轮消灭的东西）。
+           在这里再列一遍就是第二份名单（正是花了一整轮消灭的东西）。
            所以这段话只讲**规则**，不讲**内容** —— 也因此它在一个 turn 内恒定。
 
         📌 而这段话之所以敢说 "Only tools attached to this model request are callable"，
-           是因为 让它**成为了真的**（`TOOL_NOT_ACTIVE` 那道闸）。
+           是因为那一轮让它**成为了真的**（`TOOL_NOT_ACTIVE` 那道闸）。
            在 ③ 之前它是一句假话 —— 实测实证：`create_new_skill` 不在本轮 6 个工具里，
            模型凭历史 schema 调它，**照样执行了**。
            📌 **要注入一句话，先让它成为真的。**

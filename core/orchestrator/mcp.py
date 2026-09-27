@@ -422,7 +422,7 @@ class McpMixin:
 
         ⚠️ 语言跟随用户界面语言（`language_clause`）—— 与 digest 同一条路。
            📌 而它一旦生成就**存下来不再变**：切换语言后旧内容保持原样，
-              这是 已经定过的规矩，不为它单开机制。
+              这是已经定过的规矩，不为它单开机制。
         """
         if not tool_names:
             return (fallback or "").strip()[:200]

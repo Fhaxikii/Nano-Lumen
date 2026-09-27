@@ -502,7 +502,7 @@ class ReactLoopMixin:
         📌 **中断点要选在「还没写进历史」的位置 —— 那样根本不需要任何补偿逻辑。**
            选在写入之后就得发明一套收尾（补 `tool_result`、防悬空 `tool_use` 的 400）；
            选在写入之前，那套收尾**根本不存在**。
-        ⭐ 所以 用户那个例子里 `GetSystemTime` **压根没被执行** ——
+        ⭐ 所以用户那个例子里 `GetSystemTime` **压根没被执行** ——
            模型带着两条消息重新决策时，它不会自相矛盾。
         """
         # ⚠️ **两种原因必须分开**，不许压成一个「被中断了」：
@@ -665,7 +665,7 @@ class ReactLoopMixin:
 
             # ── 3. 工具调用 ──────────────────────────────────────────────
             if decision.is_tool_action:
-                # ⭐⭐⭐ [协作式中断 · 检查点 B] **这一处才是 用户那个例子的正解。**
+                # ⭐⭐⭐ [协作式中断 · 检查点 B] **这一处才是用户那个例子的正解。**
                 #
                 #    模型已经决定要调工具（`tool_use` 已在 decision 里），
                 #    但**还没写进历史、更没执行**。此刻停 → 那次调用彻底不存在。
@@ -696,7 +696,7 @@ class ReactLoopMixin:
                 #    同一个问题，问的是唯一权威。
                 # ⚠️ 用 `resolve(...) is not None` 一起把「此刻 eligible」也验了，
                 #    否则可能挑出一个当前不该出现、随后又解析不到 handler 的工具
-                #    （那正是 「看得见执行不了」的形态）。
+                #    （那正是「看得见执行不了」的形态）。
                 def _is_exit_call(c) -> bool:
                     _d = _cat.get(c.name)
                     return (_d is not None and _d.flow is Flow.EXIT_REACT
@@ -873,7 +873,7 @@ class ReactLoopMixin:
                     #
                     # 🔴 这里改造前是 `if exit_call.name == "update_existing_skill":
                     #    elif … elif …` 五段分派 —— 那是**第二份按工具名建立的事实**，
-                    #    正是 要消灭的东西（的 AST 断言现在守着它不许回来）。
+                    #    正是这次要消灭的东西（现在有 AST 断言守着它不许回来）。
                     #    每一支各自那点专属逻辑已经**逐字**搬进 `_exit_*` 适配器，
                     #    行为零变化；这里只剩「谁处理」这一个问题，而它由 Catalog 回答。
                     #

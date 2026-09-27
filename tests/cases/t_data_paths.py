@@ -85,8 +85,8 @@ _FILE_ROOT = re.compile(r'''Path\(\s*__file__\s*\)|dirname\(\s*(?:os\.path\.absp
 
 
 def t_root_only_from_paths() -> None:
-    print("\n▶ core 里的项目根只来自 core.paths.ROOT")
-    files = sorted((ROOT / "core").rglob("*.py"))
+    print("\n▶ core 与界面里的项目根只来自 core.paths.ROOT")
+    files = [ROOT / "app.py", ROOT / "nano_koala.py"] + sorted((ROOT / "core").rglob("*.py"))
     hits = []
     for f in files:
         if f.name == "paths.py" and f.parent.name == "core":
@@ -96,7 +96,8 @@ def t_root_only_from_paths() -> None:
                 continue
             if _FILE_ROOT.search(line):
                 hits.append(f"{f.relative_to(ROOT)}:{i}")
-    check(not hits, "core 里没有模块用 __file__ 自己往上数层级推项目根", ", ".join(hits[:8]))
+    check(not hits, "core 与界面（app.py / nano_koala.py）里没有模块用 __file__ 自己往上数层级推项目根",
+          ", ".join(hits[:8]))
     check(len(files) > 30, "确实扫描到了 core（扫描器没有失效）", f"n={len(files)}")
     from tests._src import module_text
     check(_FILE_ROOT.search(module_text("core.paths")) is not None, "前置：正则能认出 core/paths.py 里那一处")

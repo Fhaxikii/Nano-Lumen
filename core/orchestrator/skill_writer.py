@@ -33,7 +33,7 @@ from core.tools.manifests import _WRITE_SKILL_MANIFEST
 #    每建一次 Skill 都要模型认真填两个**不产生任何行为差异**的枚举。
 #    📌 **删一个契约字段，要么留兼容层，要么把版本号推上去** ——
 #       两者都不做，下次有人拿旧模板生成 Skill 会炸得莫名其妙。
-#    ⭐ 这次敢真删是因为 已明确「没有用户已经生成的 skill，用户只有我自己」，
+#    ⭐ 这次敢真删是因为用户已明确「没有用户已经生成的 skill，用户只有我自己」，
 #      官方 Skill 和四个模板已一并改干净。
 _SKILL_PROTOCOL = '''
 [Nano Skill Development Protocol v3.2]
@@ -725,7 +725,7 @@ class SkillWriterMixin:
         if not ok:
             logger.warning(f"[SkillWriter] SkillSpec hard_validate 失败: {errors}")
             # ⚠️ **errors 必须交出去，不能只进日志。**
-            # 实测 实测：同一个会话里模型连犯三次同类错误
+            # 实测：同一个会话里模型连犯三次同类错误
             #   15:05  side_effects 含 'shell'      要求 dangerous，实际 readonly
             #   15:07  side_effects 含 'os_control' 要求 dangerous，实际 external_action
             #   15:11  side_effects 含 'shell'      要求 dangerous，实际 readonly
@@ -1195,7 +1195,7 @@ class SkillWriterMixin:
         只有以下副作用需要确认(readonly / file_read 不需要):
           - file_write / file_delete / shell / send_message / external_api / network
         """
-        # ⭐ 词表已搬到 `core/code_scan.py`，与 临时执行通道共用。
+        # ⭐ 词表已搬到 `core/code_scan.py`，与临时执行通道共用。
         #    📌 不共用的后果很具体：同一件事，两条路给用户两种说法。
         from core.code_scan import CONFIRM_LABELS as _CONFIRM_NEEDED
         try:
@@ -1283,7 +1283,7 @@ class SkillWriterMixin:
 
         # ── open_questions 非空 → 不许进代码生成 ──────────────────────────
         #
-        # ⭐ 这条行为原本长在 `conclude_exploration` 上，是实测 挣来的：
+        # ⭐ 这条行为原本长在 `conclude_exploration` 上，是实测挣来的：
         #    模型**一边在正文里问"你要哪个？"、一边调了那个工具**，
         #    于是澄清被绕过、直接开始写代码。做成必填参数之后，
         #    「还有没有问题」变成一个它必须显式回答的事实，而不是我们去猜措辞。

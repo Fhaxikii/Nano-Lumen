@@ -6,7 +6,9 @@ import json, re, pathlib
 from nicegui import ui, app as _napp
 from loguru import logger
 
-_BASE         = pathlib.Path(__file__).parent
+from core.paths import ROOT
+
+_BASE         = ROOT
 _ASSETS_DIR   = _BASE / 'assets' / 'nano_koala_assets'
 _ATLAS_PNG    = _BASE / 'assets' / 'koala_assets.png'
 _ATLAS_JSON   = _BASE / 'assets' / 'koala_assets.json'

@@ -916,7 +916,8 @@ def t_guard() -> None:
     bad_imports, bad_attrs = [], []
     for n in ast.walk(tree):
         if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] in ("core", "memory"):
-            if not (n.module or "").startswith("core.ui_api"):
+            # 白名单：`core.paths`（项目根这类纯常量，界面定位 assets / static 用）
+            if not (n.module or "").startswith("core.ui_api") and n.module != "core.paths":
                 bad_imports.append(f"{n.lineno}:{n.module}")
         elif isinstance(n, ast.Import):
             for a in n.names:

@@ -450,7 +450,7 @@ class InteractionMixin:
         # 🔴 旧实现在这里硬编码 `self._run_skill_exploration(...)` —— 探索拆掉之后
         #    这一段必须改，它是整次拆除里**唯一一处不改就会直接崩**的地方。
         #
-        # ⭐ 新链条（不发明新机制，用 已有的 `exit_flow_defer_to_model`）：
+        # ⭐ 新链条（不发明新机制，用已有的 `exit_flow_defer_to_model`）：
         #
         #     用户回答 → answer_open_interaction
         #              → 答案先原子落盘（ANSWERED）
@@ -477,7 +477,7 @@ class InteractionMixin:
         #
         # ⭐ 那么谁来把它收成 RESOLVED？—— **产生新状态的那一方**：
         #    · 模型再调 `create_new_skill` 且无未决问题 → `_rt_supersede_covered_clarifications`
-        #      按需求重叠度把它标成 SUPERSEDED（既有机制，实测 挣来的）
+        #      按需求重叠度把它标成 SUPERSEDED（既有机制，实测挣来的）
         #    · 模型再次自报未决问题 → 开一条**新的**澄清，旧的同样被上面那条收掉
         #    · 澄清有 TTL，最坏情况由过期兜底，不会变僵尸
         _p = rec.payload or {}

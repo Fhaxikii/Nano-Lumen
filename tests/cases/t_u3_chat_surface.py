@@ -286,7 +286,7 @@ def t_file_link_is_not_an_exec_hole() -> None:
 
     # 解析：相对路径按项目根，不按进程 cwd
     rp = ast.get_source_segment(APP, _fn(APP, "_resolve_local_path")) or ""
-    check("__file__" in rp,
+    check("ROOT" in rp and "getcwd" not in rp,
           "⭐⭐ 相对路径按**项目根**解析（cwd 会被别的代码改，同一个链接会指向不同文件）")
     check("pth.exists()" in rp, "不存在就返回 None（不假装打开了）")
 

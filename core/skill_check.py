@@ -143,7 +143,7 @@ def validate_skill_code(code: str, spec_side_effects: list | None = None) -> tup
     # 声明 readonly 但代码含 file_write → 直接拒绝
     # ⭐ spec 缺失时改用**代码自己声明的**那一行（见 `declared_side_effects_from_code`）。
     # 这样审计窗口与部署时喂的是同一个输入，不会再出现
-    # "窗口显示绿色可以部署、点下去说部署失败"（实测 图1）。
+    # "窗口显示绿色可以部署、点下去说部署失败"（实测图 1）。
     _effective_side_effects = spec_side_effects
     if _effective_side_effects is None:
         _effective_side_effects = declared_side_effects_from_code(tree)

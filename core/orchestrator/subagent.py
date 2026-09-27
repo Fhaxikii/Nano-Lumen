@@ -53,7 +53,7 @@ class SubagentMixin:
     # 🔴 改造前 `spawn_agent` 是**同步 await 到底**的，docstring 还写着
     #    「「后台」在这里指的是上下文隔离，不是"不等它"」—— 而早先的设计同一页写的是
     #    agent 是「**无法被回看的后台任务**」。两句话打架，而实现选了前一句。
-    #    后果 实测撞到了：**Subagent一跑，整条前台通道就堵死** ——
+    #    后果实测撞到了：**Subagent一跑，整条前台通道就堵死** ——
     #    插话只能进队列，那一段回应期的元信息行冻在写死的 `thinking · 0s`，
     #    等Subagent跑完才一次跳到 84s。
     # 📌 **一个东西如果在抽屉里叫「running task」，它就不该同时霸占前台。**
@@ -118,7 +118,7 @@ class SubagentMixin:
         "fully-specified edits - and report back once.\n"
         "You start cold: you cannot see the conversation that sent you, and you "
         "cannot ask questions. Work only from the instruction given.\n"
-        # 🔴🔴 **实测 2026-08-20：这三句话把 整个作废了。**
+        # 🔴🔴 **实测 2026-08-20：这三句话把前面整段说明作废了。**
         #    原文是「You can only read. You cannot change anything on this
         #    computer…」—— Subagent照着它回了一份「我的角色被限制为只读权限，
         #    无法完成第 3 步的文件改写」，而它手里**明明有 `edit_file`**。

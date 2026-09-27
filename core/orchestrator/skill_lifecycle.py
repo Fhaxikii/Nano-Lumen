@@ -646,7 +646,7 @@ class SkillLifecycleMixin:
         # ⚠️ 返回值（那句「将要删除 Skill「xxx」…」）**故意不再使用** ——
         #    只留它的副作用：设 `_pending_action` + 登记 Interaction。
         #    📌 2026-08-28 专门问过这句是不是固定文案：**是**，现在不再出现在气泡里。
-        #    ⚠️ 待办条目自身的展示文本仍是那句固定中文，属 范围，本次不动。
+        #    ⚠️ 待办条目自身的展示文本仍是那句固定中文，属多语言化（i18n）的范围，本次不动。
         self._request_management_confirmation(_op, _skill)
         _WHAT = {"delete": "Deleting", "disable": "Disabling", "enable": "Enabling"}[_op]
         yield _defer(

@@ -11,6 +11,7 @@ os.environ["PADDLE_PDX_MODEL_SOURCE"] = "huggingface"
 import asyncio
 import inspect
 import pathlib
+from core.paths import ROOT
 from core.ui_api import boot as api_boot
 from core.ui_api import history as api_history
 from core.ui_api import knowledge as api_kb
@@ -163,7 +164,7 @@ def _start_system_tray():
             print("[Tray] 窗口未就绪，跳过系统托盘")
             return
         try:
-            _img = Image.open(str(pathlib.Path(__file__).parent / "assets" / "nano_icon.ico"))
+            _img = Image.open(str(ROOT / "assets" / "nano_icon.ico"))
         except Exception as e:
             print(f"[Tray] 图标加载失败，跳过系统托盘：{e}")
             return
@@ -224,7 +225,7 @@ def _start_system_tray():
 def _apply_native_window_icon() -> None:
     try:
         from nicegui import app as _app
-        _ico = pathlib.Path(__file__).parent / "assets" / "nano_icon.ico"
+        _ico = ROOT / "assets" / "nano_icon.ico"
         if _ico.exists():
             _app.native.start_args['icon'] = str(_ico)
         # 最小窗口尺寸：像正常桌面应用一样，缩到底就停，内容永远装得下，
@@ -238,7 +239,7 @@ def _apply_native_window_icon() -> None:
         # 🔴 `pywebview.create_window(text_select=...)` **默认 False**，它在页面加载
         #    完成后注入一段 CSS：`body { user-select: none; cursor: default }`
         #    （见 pywebview 的 `js/customize.js`）。
-        # ⭐⭐ 这解释了 实测看到的两个现象，而且是**同一个原因**：
+        # ⭐⭐ 这解释了实测看到的两个现象，而且是**同一个原因**：
         #    ① 「网页版能选中，只有 native 不能」——那段 CSS 只在 native 注入
         #    ② 「启动头几秒能选，过一会儿就不能了」——**注入发生在加载之后**，
         #       秒数不固定是因为它跟页面 ready 的时机挂钩
@@ -268,7 +269,7 @@ _apply_native_window_icon()
 # `webview.platforms.winforms.BrowserView.instances` **永远是空的**，
 # `_relax_min_size` 每次都走到 `_inst is None` 那一支，
 # 打一条 `logger.debug` 然后 return。
-# ⇒ 表现正是 用户看到的：**位置对了（move 走代理，跨进程 OK），
+# ⇒ 表现正是用户看到的：**位置对了（move 走代理，跨进程 OK），
 #    尺寸纹丝不动（resize 被子进程里那个 780×760 的 MinimumSize 钳住）**。
 #
 # 📌 **「拿不到就静默返回」把一个必然失败伪装成了偶发降级** ——
@@ -369,7 +370,7 @@ _patch_webview_min_size()
 # ⭐⭐⭐ [2026-08-23] 聊天流里的图片：**缩略图 + 点开看大图**。一处实现，四处共用。
 #
 # 🔴 问题：Nano 的截图在气泡里画得又大又糊，而且**点不开** ——
-#    要看清只能去磁盘翻文件。而 用户随即指出这不止是截图的事：
+#    要看清只能去磁盘翻文件。而用户随即指出这不止是截图的事：
 #    **用户自己上传的图发出去之后，一样点不开。**
 #    📌 同一个缺陷散在四处（Nano 截图 / 发送前预览 / 发送后气泡 / 重放），
 #       每一处都各写了一段 `<img>`，于是「点开看大图」这件事没有任何一处负责。
@@ -594,7 +595,7 @@ def render_sys_error_card(text: str) -> None:
 #   📌 **「不丢」和「替用户做决定」是两件事** —— 消息还在、看得见，
 #      就已经满足「不丢」了（早先的设计用的词本来就是「重新**呈现**」）。
 #
-# ⚠️ **附件不救**：明说「已失效」，不去 那套图库里捞。
+# ⚠️ **附件不救**：明说「已失效」，不去那套图库里捞。
 #    📌 一个「看起来还在、点下去才发现没了」的附件，比明说没了更坏。
 #
 # ⚠️ 卡里那句提示是**固定文案，而且正当**：它是**界面构件**（在说明一件系统事实），
@@ -726,7 +727,7 @@ _STREAM_CURSOR = ' <span class="nano-cursor">▋</span>'
 #       **常量表必须能被证明等于真实分发链，而不是靠人记得同步。**
 #
 # ⚠️ 这张表**不产生任何运行时行为**，它是一份声明。真正画画的是各分支自己。
-#    这是刻意的：让它去驱动渲染就变成了第二个权威，而 的根因正是那个。
+#    这是刻意的：让它去驱动渲染就变成了第二个权威。
 
 # 进聊天流，且重启后能从落盘记录**完整重建**。
 _CHAT_EVENTS_REPLAYED = frozenset({
@@ -745,7 +746,7 @@ _CHAT_EVENTS_EPHEMERAL = frozenset({
     #   >   保留反而会让上下文 UI 里多出很多对用户的视觉杂音」
     # 📌 **即时信息需要一个退出口，而重启就是那个出口** —— 这条是"该消失"，
     #    不是"没来得及做持久化"。⚠️ 与**用户自己发的图**方向相反：
-    #    那个是「我曾经发过什么」，属于用户的历史，**必须留**（见 步 2）。
+    #    那个是「我曾经发过什么」，属于用户的历史，**必须留**。
     "screenshot_preview",
     # 「本轮被打断」的那一行。⚠️ 中断这件事本身由后续消息体现，
     # 而**插话那一支连已说出的文字都要擦掉**（见该分支的长注释）——
@@ -1466,7 +1467,7 @@ class WebUI:
     def refresh_pinned_interactions(self) -> None:
         """把未决交互刷到输入框上方那张常驻卡片上。
 
-        ═══ 设计约束（都是 已定）═══
+        ═══ 设计约束（都已定）═══
 
         · **位置 C**：composer 上方独立容器，不侵占聊天区、不盖输入框。
           没有未决交互时整块 `display:none`，一个像素都不占。
@@ -1588,7 +1589,7 @@ class WebUI:
                             'font-size:var(--nano-fs-lg); color:var(--nano-amber); flex-shrink:0; margin-top:2px;')
                         with ui.column().classes('min-w-0').style('gap:0; flex:1 1 auto;'):
                             # ⭐ `truncate` 只在**父容器能约束宽度**时才生效。
-                            # 实测 实测"文字飞出 UI"：这一列是 `flex:1 1 auto`，
+                            # 实测「文字飞出 UI」：这一列是 `flex:1 1 auto`，
                             # 而 flex item 的默认 `min-width:auto` 会让它被内容撑开，
                             # `overflow:hidden` 因此永远没有可裁的边界。
                             # `min-w-0` 加在列上还不够 —— label 自己也要能被压缩。
@@ -1654,7 +1655,7 @@ class WebUI:
                         # ⭐ `replay` —— 引用回复（用户的设计，**纯体验优化**）
                         #
                         # ⚠️ 原来的直接回复**仍然完全可用**，这个按钮只是让"我在回答哪个"
-                        # 变成显式的。它的价值场景是 用户描述的那个：
+                        # 变成显式的。它的价值场景是用户描述的那个：
                         # 待办挂了很久、中间和 Nano 聊了很多轮无关的事，
                         # 这时点一下比重新描述"我在回答哪个问题"方便得多。
                         #
@@ -1997,7 +1998,7 @@ class WebUI:
         对纯 NiceGUI 元素无所谓（重开时按 Python 侧状态重新渲染），
         但 **CodeMirror 是 JS 侧挂在那个 div 上的实例** —— DOM 一没，实例就没了；
         重开时拿到的是一个全新的空 div，而 `_cm_init` 是一次性 fire-and-forget，
-        没人再调它。表现就是 实测到的：**最小化再展开，代码框变成空白。**
+        没人再调它。表现就是实测到的：**最小化再展开，代码框变成空白。**
         （只是视觉：`code_holder[0]` 在 Python 侧还在，所以「验证并应用」仍然正常。
           但用户看到一个空框还敢点部署吗 —— 这才是真正的代价。）
 
@@ -2035,7 +2036,7 @@ class WebUI:
             # ⚠️ 下面那个 `with ... as chip_el` **绝对不能再叫 `chip`** —— 叫 `chip`
             #   会让 `chip` 在本函数里变成局部名，这一行读到的就是"未赋值的局部变量"，
             #   直接 UnboundLocalError，整个最小化动作崩掉。
-            #   （2026-08-06 实测 真崩过，还连累"改动存活不过最小化"
+            #   （2026-08-06 实测真崩过，还连累"改动存活不过最小化"
             #     那条测试被误判成同步问题。）
             if not chip:
                 # ⭐ 调用方自己有常驻入口（pinned card），不要再放一个悬浮条 ——
@@ -3068,7 +3069,7 @@ class WebUI:
                             # **指纹守卫在那条路上因此等于失效** ——
                             # 它永远比不出差异，因为差异从来没进到它比对的副本里。
                             #
-                            # 实测实测：改了一行 `import os`，Nano 说"已部署"，
+                            # 实测：改了一行 `import os`，Nano 说"已部署"，
                             # 装上去的文件里没有那行，用户完全没有信号。
                             #
                             # ⚠️ 只在**可编辑**状态回写。流式写入阶段（readonly=True）
@@ -3340,7 +3341,7 @@ class WebUI:
         # ⭐⭐⭐ [无缝对话] 续接的那一段**不重置用量、不新建 nano 块**。
         #
         # ⚠️ `reset_session()` 原来无条件调 —— 续接时会把上一段的 token **清零**，
-        #    而 已明确要求「token 计数器不能出现两个，也得出现在末尾」，
+        #    而用户已明确要求「token 计数器不能出现两个，也得出现在末尾」，
         #    那意味着它统计的是**整段回应期**，不是最后一个子轮。
         # ⚠️ 即读即清：这个标志只在「下一次调用的开头」有意义。
         _seam_cont = bool(getattr(self, "_resp_continuation", False))
@@ -3370,7 +3371,7 @@ class WebUI:
         if _seam_cont:
             # ⭐⭐⭐ **续接时是「复用」还是「新开」，由【那个元素现在有没有内容】决定。**
             #
-            # 🔴 **这里原来无条件新开一个 markdown —— 那造出了 实测看到的
+            # 🔴 **这里原来无条件新开一个 markdown —— 那造出了实测看到的
             #    「nano ❯ 和文字对不齐」**：
             #    插话时上一段被 `set_content("")` **擦空了、但没有被移除**，
             #    而它的 style 带 `min-height:1em` —— **空着也占一行**。
@@ -4262,7 +4263,7 @@ class WebUI:
                 #    被你补一句，他不会先把原话讲完再回应，**会停下、重说**。
                 #    📌 (b) 才是「就像真的两个人对话一样」，「留着接在后面」反而是
                 #       机器人的做法（而且在第二条撤回第一条时自相矛盾）。
-                # 📌 同时与 那条同源：**UI 必须是权威状态的忠实投影** ——
+                # 📌 同一条判据：**UI 必须是权威状态的忠实投影** ——
                 #    一个已经被推翻的答案，已经不属于权威回答了。
                 _is_stop = bool(step.get("stopped"))
                 logger.info(
@@ -4280,7 +4281,7 @@ class WebUI:
                         # ⚠️⚠️ **擦掉只属于「插话」那一支**（2026-08-09 实测 UI 反馈后分开）。
                         #
                         # 原来这两行在分叉**之前**，于是终止也会把已经说出来的字擦掉 ——
-                        # 而那违反 用户给终止定的原则：
+                        # 而那违反用户给终止定的原则：
                         #   「根据 UI 要显示真实情况的原则，**nano 说到哪里，就被打断到哪里**」
                         #
                         # ⭐ 两支的语义本来就相反，所以擦不擦也相反：
@@ -4343,7 +4344,7 @@ class WebUI:
                             # ⚠️⚠️ **先处理「那个元素空着也占一行」** —— 否则 thinking
                             #    立刻被打断那一格（用户截图里的第一个红框，一个字都没有）
                             #    会变成：`nano ❯` 一行、空 markdown 占一行、注记在第三行。
-                            # ⭐ 这与 之后那个「`nano ❯` 和文字对不齐」是**同一个 bug**：
+                            # ⭐ 这与之后那个「`nano ❯` 和文字对不齐」是**同一个 bug**：
                             #    `content_md` 的 style 带 `min-height:1em`，**空着也占一行**。
                             #    📌 **擦掉内容 ≠ 移除元素**（原判据），
                             #       而这里连擦都没擦 —— 它天生就是空的。
@@ -4450,7 +4451,7 @@ class WebUI:
                         #    而是「这一轮结束 且 队列里没有排着的了」。**
                         #
                         # 队列里还有 → 这一段只是回应期的**中途**：
-                        # 不藏转圈、不显 ✦、不写 token —— 因为 已明确
+                        # 不藏转圈、不显 ✦、不写 token —— 因为用户已明确
                         # 「token 计数器不能出现两个，也得出现在末尾」，
                         # 那意味着它统计的是**整段回应期**。
                         # 📌 一个「结束时才做的事」，在「一段可以包含多轮」之后，
@@ -4857,7 +4858,7 @@ class WebUI:
 
     # 🔴 流式专用：**不用 percent，不用动画**。
     #    `set_content()` 重渲染 markdown 的一瞬间 scrollHeight 会塌，
-    #    `percent=1.0 × 塌掉的高度` ≈ 顶部 —— 那就是 用户看到的"飞到上面"；
+    #    `percent=1.0 × 塌掉的高度` ≈ 顶部 —— 那就是用户看到的"飞到上面"；
     #    而 `duration>0` 的动画会被下一个 delta 打断、互相抢 —— 那是"来回抽"。
     #    📌 5181 行那段注释早就写过这个机制（当时是为缩窗写的）：
     #       「一个依赖旧高度的百分比，正是这个 bug 本身」。
@@ -4940,7 +4941,7 @@ class WebUI:
                 #    `window.min_size`（`winforms.py:210`，"Set the initial size now
                 #    that we have a window handle"），之后再改没有任何人看它。
                 #    📌 又写了一次「写好但零读取点」的东西 —— 而且它**不报错**，
-                #       表现就是 用户看到的「位置对了，尺寸纹丝不动」。
+                #       表现就是用户看到的「位置对了，尺寸纹丝不动」。
                 # ⭐ 真正的闸是 WinForms `Form.MinimumSize`，它**能运行时改**。
                 # ⚠️ 它要**物理像素**（同 pywebview 内部的写法：逻辑 × scale），
                 #    而 `resize()` 收的是**逻辑像素**（内部自己乘 scale）——
@@ -5591,7 +5592,7 @@ class WebUI:
         #            ui.notify('内核正在处理中，请稍候...'); return
         #    —— **用户打的字直接被丢掉**，得自己记着重发一遍。
         #
-        # 📌 与 那个「闸 vs 挂起」完全同形：
+        # 📌 与「闸 vs 挂起」那次完全同形：
         #    **闸的出口是失败，队列的出口是稍后处理。**
         #    **一个只有失败出口的机制，最终一定把成本转嫁给用户去手动重试。**
         #    上一次是让 Nano 撞墙（拿不到租约→动作失败→结束 turn），
@@ -5706,7 +5707,7 @@ class WebUI:
         #
         # ⚠️⚠️ **为什么必须放在这里、而不是发送函数的开头**：
         #    上面那条引用横幅（`_rt_q` / `_rt_iid`）读的是**实时状态**。
-        #    先清再渲染 → 横幅消失，而 已明确要求「发出去之后要能看出
+        #    先清再渲染 → 横幅消失，而用户已明确要求「发出去之后要能看出
         #    这条在回答哪个」（往上翻聊天记录时更需要它）。
         # ⭐ 而放在这里是安全的：`ui.label(...)` 在构造时就把文字**烤进了 DOM**，
         #    之后清掉变量不会影响已经画出来的那一条。
@@ -5723,7 +5724,7 @@ class WebUI:
         #       收尾要么自己读一次权威，要么在函数开头就有确定的初值。
         # 🔴🔴 [2026-08-22] **这里原来是 `.get("iid")`，而
         #    选中引用（`kind=selection`）根本没有 `iid`** —— 它只有 `q`。
-        #    于是整段复位对 那条入口**从来没执行过**：
+        #    于是整段复位对那条入口**从来没执行过**：
         #    发出去之后 composer 上方的引用条**一直留着**，
         #    下一条消息还会被当成在回答同一段话。
         #
@@ -5827,7 +5828,7 @@ class WebUI:
             #    用户等的是「我按下回车之后过了多久」，那个表从按下就该走。
             if _rt_inbox_busy:
                 # ⚠️ 包住：这一行是**元信息行的显示**，它失败不该让这条消息发不出去。
-                #    📌 展示层的故障，不许把能力本身搞掉（同 建记录那条）。
+                #    📌 展示层的故障，不许把能力本身搞掉（同建记录那条）。
                 try:
                     self._resp_state["_status_timer_task"] = asyncio.create_task(
                         self._pending_epoch_timer(self._resp_state))
@@ -6261,7 +6262,7 @@ class WebUI:
                 #       只写最里面那一层，外层照样把它撑开。
                 with ui.row().classes('items-center gap-2 flex-1 min-w-0 no-wrap').style(
                         'min-width:0; overflow:hidden;'):
-                    # 文件类型缩略图（外部评审 生成 + 用户自己抠的透明 PNG，
+                    # 文件类型缩略图（外部评审生成 + 用户自己抠的透明 PNG，
                     # 按扩展名映射，/icons 静态挂载）。
                     ui.image(icon_url).style(
                         'width:30px; height:30px; flex-shrink:0; object-fit:contain;'
@@ -6494,7 +6495,7 @@ class WebUI:
     @staticmethod
     def _file_type_icon_url(filename: str) -> str:
         """按扩展名返回缩略图 URL（/icons 静态挂载，assets/file_icons/
-        下的真图，外部评审 生成 + 用户自己抠的透明 PNG）。"""
+        下的真图，外部评审生成 + 用户自己抠的透明 PNG）。"""
         ext = pathlib.Path(filename).suffix.lower().lstrip(".")
         icon_map = {
             "docx": "docx", "doc": "docx",
@@ -7784,7 +7785,7 @@ class WebUI:
     def _build_settings_cost_cap(self):
         """用量限额的内容区。**即时生效，没有保存按钮。**
 
-        ⭐ 形态由 已定：步进器（不是滑块），且**硬上限永远被软上限顶着走**
+        ⭐ 形态已定：步进器（不是滑块），且**硬上限永远被软上限顶着走**
            —— 于是「软 > 硬」这个非法组合根本无法被造出来。
            📌 与其检测非法状态再提示，不如让它压根出现不了。
 
@@ -7987,7 +7988,7 @@ class WebUI:
                             ui.label(_sub).style('font-size:var(--nano-fs-xs); color:var(--nano-fg-soft); '
                                                  'white-space:nowrap; overflow:hidden; text-overflow:ellipsis;')
                             # ── 出错原因：分类过的人话 + 恢复建议 ──────
-                            # 🔴 这里**曾经**是 `s["last_error"][:36]`，与 那个
+                            # 🔴 这里**曾经**是 `s["last_error"][:36]`，与另一处的
                             #    28 字符截断是同一形状的错：
                             #    `ModuleNotFoundError: No module named 'mcp_server_fetch'`
                             #    有 48 字符，切完正好把**模块名**丢掉 ——
@@ -8360,7 +8361,7 @@ class WebUI:
         box.querySelectorAll('div.w-full').forEach((b0) => {
           if (b0.querySelector('div.w-full')) return;    // 只取叶子块，避免父子重复命中
           // 🔴 叶子块**未必带说话人前缀**（2026-08-14 实测：nano 那条有「nano ❯」，
-          //    用户那条只剩「你好」）。成因是 给用户气泡加的图片容器 ——
+          //    用户那条只剩「你好」）。成因是给用户气泡加的图片容器 ——
           //    它让 `Koala ❯` 那个 label 落在了叶子的**外面**。
           // ⭐ 所以往上爬到第一个带 `❯` 的祖先：那个字符就是每个气泡的说话人标记，
           //    **它本来就在 DOM 里**。
@@ -8484,7 +8485,7 @@ class WebUI:
             import pathlib as _pl
             pth = _pl.Path(raw).expanduser()
             if not pth.is_absolute():
-                pth = (_pl.Path(__file__).resolve().parent / pth)
+                pth = (ROOT / pth)
             pth = pth.resolve()
             return pth if pth.exists() else None
         except Exception:
@@ -8628,7 +8629,7 @@ class WebUI:
                 # 🔴🔴 **高度必须固定**，别再试着让它自适应。
                 #
                 # 2026-08-29 为了消掉「内容放得下却有滚动条」，把它改成
-                # `height:auto; min-height:430px`，结果 用户当场发现：
+                # `height:auto; min-height:430px`，结果用户当场发现：
                 # **切 tab 时整个面板忽大忽小**。
                 # 📌 两个问题被合成了一个解法，于是制造了第三个 ——
                 #    而第三个（面板跳变）比原来那个（多一条滚动条）难受得多。
@@ -9337,7 +9338,7 @@ class WebUI:
     #       live 和重放问的是同一个 `tool_use_id`、同一本账。
     #
     # 🔴🔴 **红线：只读 `conversation_messages`，绝不读 `MemoryManager.storage`。**
-    #    storage 是 的投影 —— 它一把那段降到 L1，工具结果就变成
+    #    storage 是上下文治理层的投影 —— 它一把那段降到 L1，工具结果就变成
     #    `[Tool output aged out...]` 占位符了。读错账本的表现是：
     #    **历史工具卡集体变成占位符，而且不报错**，透明度当场白做。
     #    ⭐ 这不是巧合，是两件事的方向本来就相反：
@@ -10305,7 +10306,7 @@ class WebUI:
     #
     # ⚠️ 头部用 `nano ❯` / `nano agent ❯`（用户给的两个选项里选了这个）：
     #    📌 那条指令是 **main agent** 写的，不是用户写的。没有头部的话，
-    #       它读起来会像是用户发的 —— 而 用户最早提的要求正是
+    #       它读起来会像是用户发的 —— 而用户最早提的要求正是
     #       「**用户要能看到 main agent 给 Subagent 写了什么指令**」。
     #
     # ⚠️ **不加与 [知识库]/[监控]/[任务] 并列的按钮**——
@@ -10531,7 +10532,7 @@ class WebUI:
            📌 后者会在历史里留下一串隐藏的空壳，重放时还得一个个清 ——
               **一个始终跟随的东西，本身就该只有一个。**
 
-        ⚠️ 与 常驻按钮的分工：
+        ⚠️ 与常驻按钮的分工：
            **pill 管「向未来」**（还有事在跑、跟着气泡、归零消失）、
            **常驻按钮管「向过去」**（翻 Finished 历史）——
            📌 两个不同的钟，不合并。
@@ -11016,7 +11017,7 @@ class WebUI:
         pill 立刻定型成「▶ 你回来了，继续」并打上 **✓** —— 而记录还活着、还在每轮注入。
         **屏幕说完成了，系统还在等。**
 
-        📌 判据（外部评审 交叉评审的不变量④，我们独立撞到同一条）：
+        📌 判据（外部交叉评审的不变量④，我们独立撞到同一条）：
            **UI 不能自己推断"完成"。** ✓ 必须来自权威状态，
            而不是"用户发消息了"这种与完成无关的事件。
 
@@ -11068,10 +11069,10 @@ class WebUI:
                            fallback_color: str) -> tuple[str, str]:
         """一条已经不在 active 里的等待，pill 该定型成什么字 —— **回权威问**。
 
-        ⚠️⚠️ **第二版（2026-08-09 实测 打回后重写）。**
+        ⚠️⚠️ **第二版（2026-08-09 实测打回后重写）。**
         🔴 第一版读的是切读期的兼容门面，它把新的六态**折成旧的两态**，
            于是一条 `CANCELLED` 出来是 `"resolved"`，我判 `== "cancelled"` 永远为假，
-           结果 pill 落到兜底文案「▶ 继续」（绿色）—— 正是 用户截图里那个。
+           结果 pill 落到兜底文案「▶ 继续」（绿色）—— 正是用户截图里那个。
         📌 **一个兼容层刻意丢掉的信息，不会因为下游需要它而回来。**
         📌 **写一个新的消费者时，要先读它数据来源的「忠实度表」** ——
            不许假设「字段名一样 ⇒ 语义一样」。当时兼容投影已经把
@@ -11267,7 +11268,7 @@ class WebUI:
     def _svg_export_pair(code: str, title: str) -> list:
         """把一份可视化源码摊成要落盘的文件：`[(后缀, 内容), ...]`。
 
-        ═══ 为什么 用户那份 .svg 打不开 ═══
+        ═══ 为什么用户那份 .svg 打不开 ═══
         🔴 模型产出的根标签是 `<svg width="100%" viewBox="0 0 600 400">` ——
            **没有 `xmlns`**。
            · 嵌在 HTML 里时：HTML 解析器**自动补上** SVG 命名空间 → 正常渲染，
@@ -11615,7 +11616,7 @@ class WebUI:
                 src: url('/fonts/Inter-600.woff2') format('woff2');
                 font-weight: 600; font-display: swap;
             }}
-            /* 终端风等宽字体栈（中文 fallback）。主皮用 时启用。 */
+            /* 终端风等宽字体栈（中文 fallback）。终端风主题下启用。 */
             /* 中文等宽很关键：英文走 JetBrains Mono，中文按顺序找【等宽】CJK——
                Sarasa Mono SC（若装/打包）→ NSimSun 新宋体（Windows 自带、真等宽、retro 终端味）。
                故意不放 YaHei（它不是等宽，会破坏终端对齐）。 */
@@ -12021,7 +12022,7 @@ class WebUI:
             .model-select-field .q-field__append {{
                 height:28px !important; align-items:center !important; padding:0 !important;
             }}
-            /* 问候语顶对齐（外部评审 方案）：scroll_area 真正吃掉剩余高度，内容从顶部开始 */
+            /* 问候语顶对齐（外部评审的方案）：scroll_area 真正吃掉剩余高度，内容从顶部开始 */
             .main-chat-col > .q-scrollarea {{
                 flex: 1 1 0% !important; min-height: 0 !important; width: 100% !important;
             }}
@@ -12198,7 +12199,7 @@ class WebUI:
                读作一个整体的圆角胶囊，而不是三个各自独立的元素拼在一起。 */
             /* min-width:0 + width:100%：textarea 默认带 cols 固有宽度，不肯随窗口
                收缩，窄窗会把整条 composer 顶大、飞出窗口右侧。强制可收缩。 */
-            /* 输入行单行中线对齐（外部评审 方案）：提示符/textarea/按钮统一 30px 中线 */
+            /* 输入行单行中线对齐（外部评审的方案）：提示符/textarea/按钮统一 30px 中线 */
             .composer-input-row {{ align-items: center !important; }}
             .composer-input-row .composer-prompt {{
                 height: 30px !important; line-height: 30px !important;
@@ -12478,7 +12479,7 @@ class WebUI:
                  · 拖拽区 —— 拖窗口时顺手选中标题文字，观感很差
                  · 按钮 / 图标 —— 双击会选中标签文字
                ⚠️ 聊天区、代码框、工具卡**一律不许出现在这张表里**，
-                  那正是 要修的东西。 */
+                  这些地方的文字必须能选中复制。 */
             .pywebview-drag-region,
             .nano-no-select,
             .q-btn, .q-tab, .q-item__label, .material-icons {{
@@ -12666,7 +12667,7 @@ class WebUI:
         #    模块里的 import 路径指向 `/cm/...`，路由不存在就是 404。
         try:
             from nicegui import app as _ngapp
-            _cm_dir = pathlib.Path(__file__).resolve().parent / "static" / "cm"
+            _cm_dir = ROOT / "static" / "cm"
             if _cm_dir.is_dir():
                 _ngapp.add_static_files("/cm", str(_cm_dir))
             else:
@@ -14183,7 +14184,7 @@ class WebUI:
             # ⚠️ 刻意**不走 `emit_chat`**：那是往聊天区发一条，一个任务里接管 5 次
             #    就是 5 条，吵。即时那一层要的是**状态**（有就显示、没有就消失），
             #    不是**事件**。自然语言那一层才走 emit_chat（异步、一次任务一次）。
-            # ⚠️ 刻意**不过 LLM**：过了就不是瞬发。这是 用户原设计
+            # ⚠️ 刻意**不过 LLM**：过了就不是瞬发。这是用户原设计
             #    「瞬时挂起 + 自然语言分离」里的"瞬时"那一半。
             #
             # 📌 抄的是上面那条日用量警告条的范式（同一个容器、同款隐藏/显示），
@@ -14294,7 +14295,7 @@ class WebUI:
                 #    引用待审卡那条有出口（卡片上的「取消引用」按钮），
                 #    而选中文字这条**根本没有承载它的东西** —— 卡片不存在。
                 # → 给它自己的承载物：输入框上方撑开一行，显示被引用的原文 + ✕。
-                # ⚠️ 只服务 `selection`：待审卡那条 已明确说不需要动
+                # ⚠️ 只服务 `selection`：待审卡那条已明确说不需要动
                 #    （它已经有出口了，再加一个就是两处表达同一件事）。
                 self._quote_bar = ui.row().classes(
                     'items-center gap-1.5 px-1 no-wrap w-full min-w-0'
@@ -14312,7 +14313,7 @@ class WebUI:
                         # ⚠️ 三件事一起才不会飞出去：`truncate`（单行省略号）+
                         #    `min-w-0`（否则 flex 子项按内容撑开、不肯缩）+
                         #    父级 `overflow:hidden`。
-                        #    📌 少任何一件都还是会撑破 —— 同 那条引用块的教训。
+                        #    📌 少任何一件都还是会撑破 —— 同引用块那次的教训。
                         self._quote_bar_text = ui.label('').classes(
                             'truncate min-w-0').style(
                             'font-size:var(--nano-fs-sm); color:var(--nano-fg-soft); line-height:1.7; '
@@ -14335,7 +14336,7 @@ class WebUI:
                 #
                 # ⭐ 它解决的是 ②a/②b/②c 留下的**最后一块体感缺口**：
                 # 待办已经跨重启存活、模型也看得见了，但**用户看不见**。
-                # 实测 ④ 那次测试里 用户得自己记着 Nano 问过什么才能重开后回答 ——
+                # 实测④那次测试里，用户得自己记着 Nano 问过什么才能重开后回答 ——
                 # 这张卡就是那个缺口。
                 self._pinned_card = ui.column().classes('w-full min-w-0 gap-1').style(
                     'display:none; padding:8px 10px; margin-bottom:6px; '
@@ -14347,7 +14348,7 @@ class WebUI:
                 #
                 # 第一版每条待办一行、往上堆。两条就把 composer 顶起来一截，
                 # 六条（1 前台 + 5 队列，的上限）会堆得非常高 ——
-                # 而 已定位置 C 时的原话是"最好不要占用其他UI的地方"，
+                # 而定位置 C 时的原话是"最好不要占用其他UI的地方"，
                 # 堆叠违背了那个前提。
                 #
                 # 改成**一次显示一条 + 翻页**：高度恒定，与待办数量无关。
@@ -14435,7 +14436,7 @@ class WebUI:
                             'color:var(--nano-amber); font-size:var(--nano-fs-xl); flex-shrink:0; line-height:1; font-family:var(--nano-mono);'
                         )
                         self._refresh_reply_prompt()
-                        # Bug3：plain Enter 发送、Shift+Enter 放行换行+autogrow 增高（外部评审 方案）
+                        # Bug3：plain Enter 发送、Shift+Enter 放行换行+autogrow 增高（外部评审的方案）
                         self.input_field = ui.input(placeholder='向 nano 发送消息…').props(
                             'borderless autofocus dense type=textarea autogrow rows=1'
                         ).classes('w-full min-w-0 main-input').on(
@@ -14628,14 +14629,14 @@ if __name__ == "__main__":
 
         # 静态资源必须在 render() 前注册，否则首次挂载时 CSS 里的 url(...)
         # 可能先于静态路由生效，不同机器缓存状态下表现不一致
-        _icons_dir = pathlib.Path(__file__).parent / "assets" / "file_icons"
+        _icons_dir = ROOT / "assets" / "file_icons"
         if _icons_dir.exists():
             _nicegui_app.add_static_files('/icons', str(_icons_dir))
         # 终端风字体：JetBrains Mono（OFL，已打包进 assets/fonts，离线可用，用户无需安装）
-        _vendors_dir = pathlib.Path(__file__).parent / "assets" / "vendors"
+        _vendors_dir = ROOT / "assets" / "vendors"
         if _vendors_dir.exists():
             _nicegui_app.add_static_files('/vendors', str(_vendors_dir))
-        _fonts_dir = pathlib.Path(__file__).parent / "assets" / "fonts"
+        _fonts_dir = ROOT / "assets" / "fonts"
         if _fonts_dir.exists():
             _nicegui_app.add_static_files('/fonts', str(_fonts_dir))
 
