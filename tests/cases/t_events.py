@@ -151,7 +151,7 @@ def t_ui_router():
     app = S.module_text("app")
     check("_oob_events" not in app and "_drain_oob_events" not in app and "handle_query(" not in app,
           "界面不再有轮外队列与轮询，不再自己调后端 handle_query")
-    check("self._events_q = _events.subscribe()" in app, "订阅在界面构造时建好（界面起来前的事件不丢）")
+    check("self._events_q = api_turn.subscribe_events()" in app, "订阅在界面构造时建好（界面起来前的事件不丢）")
 
 
 def main() -> int:

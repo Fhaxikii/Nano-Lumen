@@ -11,7 +11,7 @@ os.environ["PADDLE_PDX_MODEL_SOURCE"] = "huggingface"
 import asyncio
 import inspect
 import pathlib
-from core.paths import data_dir, data_path
+from core.ui_api import boot as api_boot
 from core.ui_api import history as api_history
 from core.ui_api import knowledge as api_kb
 from core.ui_api import mcp as api_mcp
@@ -20,7 +20,9 @@ from core.ui_api import proactive as api_proactive
 from core.ui_api import settings as api_settings
 from core.ui_api import usage as api_usage
 from core.ui_api import skills as api_skills
+from core.ui_api import state as api_state
 from core.ui_api import tools as api_tools
+from core.ui_api import turn as api_turn
 import re
 import time
 import types
@@ -34,8 +36,7 @@ from contextlib import nullcontext
 def _wire_check(event) -> None:
     """后端事件的可序列化检查（问题只记日志，不影响呈现）。"""
     try:
-        from core.runtime.wire import warn_if_not_serializable
-        warn_if_not_serializable(event)
+        api_turn.check_event(event)
     except Exception:
         pass
 
@@ -43,8 +44,7 @@ def _wire_check(event) -> None:
 def _start_backend_services(gui) -> None:
     """事件循环启动后开始后端心跳（`core.backend`）。"""
     try:
-        from core.backend import start_backend_services
-        start_backend_services(gui.agent)
+        api_boot.start_services()
     except Exception as e:
         logger.error(f"[Backend] 后端心跳启动失败: {e}")
 
@@ -61,10 +61,8 @@ def _register_native_window_process() -> None:
     """
     try:
         import multiprocessing as _mp
-        from core import self_identity as _si
         _pids = [p.pid for p in _mp.active_children() if p.pid]
-        for _pid in _pids:
-            _si.register_window_process(_pid)
+        api_boot.register_window_processes(_pids)
         if _pids:
             logger.debug(f"[SelfIdentity] 界面窗口进程 pid={_pids}")
         else:
@@ -90,33 +88,20 @@ load_dotenv()
 # 子进程会 import app.py；如果这里顶层 import core.provider / core.registry / RAG 等
 # 重模块，可能在窗口子进程里重复初始化 Provider、DPI、MCP、RAG，进而触发
 # PermissionError: [WinError 5] DuplicateHandle。
-# 所以 core.* 与 nano_koala 全部放到 _bootstrap_core_modules()，只在主进程启动时导入。
-Orchestrator = None
-get_provider = None
-registry = None
-MemoryManager = None
+# 所以 core.* 与 nano_koala 全部放到 _bootstrap_core_modules()，只在主进程启动时导入
+# （界面访问后端只经 `core.ui_api`，它的模块顶层都很轻，重模块在调用时才加载）。
 render_nano_koala_avatar = None
 
 def _bootstrap_core_modules() -> None:
-    """只在主进程里导入会产生副作用的核心模块。
+    """只在主进程里导入会产生副作用的模块（核心模块与头像渲染）。
 
     注意：native 窗口子进程 import 本文件时不会执行 __main__，因此不会走到这里；
     它只需要读取 app.native.start_args/window_args 这类轻量窗口参数。
     """
-    global Orchestrator, get_provider
-    global registry, MemoryManager, render_nano_koala_avatar
-
+    global render_nano_koala_avatar
     from nano_koala import render_nano_koala_avatar as _render_nano_koala_avatar
-    from core.orchestrator import Orchestrator as _Orchestrator
-    from core.provider import get_provider as _get_provider
-    from core.registry import registry as _registry
-    from memory.manager import MemoryManager as _MemoryManager
-
+    api_boot.load_modules()
     render_nano_koala_avatar = _render_nano_koala_avatar
-    Orchestrator = _Orchestrator
-    get_provider = _get_provider
-    registry = _registry
-    MemoryManager = _MemoryManager
 
 # ── WebView2 Runtime 探测（native 窗口的内核依赖）────────────────────
 def _webview2_runtime_present() -> bool:
@@ -808,41 +793,10 @@ class WebUI:
         # 聊天原文的权威在 Runtime SQLite；MemoryManager 只是当前会话、
         # 受 max_turns 约束的上下文投影。重启/刷新继续同一 session，只有显式
         # 「重置对话」才会在 Orchestrator 那边轮换它。
-        from core.runtime import get_kernel as _rt_get_kernel
-        from core.runtime.conversation import ConversationRepository
-        self.memory = MemoryManager(
-            max_turns=10,
-            conversation_repository=ConversationRepository(_rt_get_kernel().store),
-        )
-        # Provider 必须在主进程创建 WebUI 时初始化，不能放在模块顶层。
-        # Windows spawn 子进程 import app.py 时只需要读取 native 窗口参数，
-        # 不应再次创建 ClaudeProvider / 中转连接 / 模型配置。
-        # 走 get_provider 拿全进程唯一实例，不再自己 new 一个——
-        # 否则 self.provider.reconfigure() 只重建这一个，core/rag.py 三处多模态
-        # 用的是模块级那个，用户改完 key 后 RAG 还在用旧凭据直到重启。
-        self.provider = get_provider()
-        self.agent  = Orchestrator(self.provider, registry, self.memory)
-        # 界面接口（`core.ui_api`）背后的后端对象
-        from core.ui_api import _state as _api_state
-        _api_state.bind(agent_obj=self.agent, provider_obj=self.provider, memory_obj=self.memory)
-        # 后台载体结束 → 唤醒等它的挂起；载体状态变化 → 刷新抽屉与 Skill 活动态。
-        from core.runtime import carriers as _carriers
-        _carriers.add_listener(self._on_carrier_change)
-        # 谁在什么时候起一轮由后端调度器决定；界面是它的呈现方（唤醒轮的气泡、等待 pill）。
-        from core.session import get_scheduler as _get_sched
-        _sched = _get_sched()
-        _sched.attach(self.agent, self)
-        _carriers.set_completion_handler(_sched.notify_background_done)
-        # 🔴 衰减发生在**本轮 `final_result` 之后**（orchestrator 的 finally 里），
-        #    所以 UI 不能在 `final_result` 那一刻去问"有没有东西被移出去" —— 那时还没有。
-        #    2026-08-14 实测：模型侧 3 段已经移出、聊天区**一个字没变**，
-        #    正是说的那个 UI 说谎，只是原因比它猜的更靠前。
-        # 📌 **一个"事后才发生"的事实，不能用"事前的那个事件"去刷新** ——
-        #    要么等它自己说一声，要么就永远慢一拍。这里选前者。
-        self.agent._on_decay_applied = self._sync_evicted_after_turn
-        # 看屏幕前 Nano 要把自己最小化让开；core 不直接依赖 UI 框架，由这里交给它取主窗口的方法。
+        # 后端对象由 `core.ui_api.boot` 创建；界面是会话调度器的呈现方。
+        # 截图前要把 Nano 自己的原生窗口最小化再还原，所以把取窗口的办法交给后端。
         from nicegui import app as _napp_for_agent
-        self.agent._native_window = lambda: _napp_for_agent.native.main_window
+        api_boot.create(self, native_window=lambda: _napp_for_agent.native.main_window)
 
         self.scroll_area    = None
         self.chat_container = None
@@ -896,8 +850,7 @@ class WebUI:
         self._takeover_lbl      = None
         self._cost_warning_lbl  = None
         # 后端事件总线（`core.runtime.events`）：订阅一次，`_event_router` 按轮 id 分发。
-        from core.runtime import events as _events
-        self._events_q = _events.subscribe()
+        self._events_q = api_turn.subscribe_events()
         self._turn_queues: dict = {}      # turn_id → 这一轮还没被渲染取走的事件
         self._late_action_refs: dict = {}  # 终止后仍在后台自行结束的工具行（action_id → 行引用）
         # 初始化遮罩的数据（来自后端事件 init_facts / init_stage / init_ready）
@@ -1006,7 +959,6 @@ class WebUI:
 
         # 增强模式 / OCR 页数上限的默认值见 __init__ 开头那一组
         self._koala_current_skill = None
-        self._current_query: str = ""  # episodic: 本轮用户输入，final_result 时写摘要用
         # 流式 Skill 代码审计对话框状态（skill_code_start/delta/preview 三步协议）
         self._sk_stream_dialog = None
         self._sk_stream_code_area = None
@@ -1492,8 +1444,7 @@ class WebUI:
     def _load_snapshots(self) -> None:
         """界面刚起来（或重新连上）：取一份当前全量快照先画上；之后只收变化。"""
         try:
-            from core import snapshots
-            for _n, _d in snapshots.current().items():
+            for _n, _d in api_state.current().items():
                 self._apply_snapshot(_n, _d)
         except Exception as e:
             logger.warning(f"[Snapshot] 取初始快照失败（等后端推送）: {e}")
@@ -1501,8 +1452,7 @@ class WebUI:
     def _request_snapshot(self, name: str) -> None:
         """界面的操作刚改了状态：请后端立即重算这一份（变了就推回来重画）。"""
         try:
-            from core import snapshots
-            snapshots.refresh(name)
+            api_state.refresh(name)
         except Exception as e:
             logger.debug(f"[Snapshot] 请求重算 {name} 失败（等下一个周期）: {e}")
 
@@ -1534,7 +1484,6 @@ class WebUI:
         card = getattr(self, "_pinned_card", None)
         if card is None:
             return
-        from core.runtime import interaction as _it      # 只用 kind 常量
         _pin = (getattr(self, "_snap", None) or {}).get("pinned")
         if _pin is None:
             return
@@ -1584,7 +1533,7 @@ class WebUI:
                 #    "待审代码"（看起来对，实际是错的）。
                 #    📌 **兜底要让错误可见，而不是让错误看起来正常。**
                 _KIND_LABEL = {
-                    _it.Kind.SKILL_AUDIT: ("fact_check", "待审代码"),
+                    api_state.AUDIT_KIND: ("fact_check", "待审代码"),
                 }
                 # 页码归位：待办被处理掉之后页码可能越界
                 _n = len(recs)
@@ -1657,7 +1606,7 @@ class WebUI:
                         # **让它们永远不会同时出现** —— 审计类给 `<>`，其余给 `...`。
                         #
                         # 按这张卡片自己的 artifact_id 判，不是判"有没有最近那条"。
-                        _is_audit = (r.kind == _it.Kind.SKILL_AUDIT
+                        _is_audit = (r.kind == api_state.AUDIT_KIND
                                      and bool(r.has_pending_skill))
                         if _is_audit:
                             ui.button(icon='code').props('flat dense round size=sm').style(
@@ -1825,7 +1774,7 @@ class WebUI:
         那一刻 UI 完全没参与，它那份会一直停在旧值 —— 按钮永远显示「取消引用」。
         双权威在这里不是"可能不同步"，是**注定不同步**。
         """
-        return getattr(self.agent, "_reply_target", None)
+        return api_turn.reply_target()
 
     # 引用的两种来源。⚠️ **必须显式区分**，不许靠"iid 是不是空"去猜：
     #    📌 「一个字段不许表达两个现实」—— 两种引用注入给模型的话完全不同
@@ -1852,7 +1801,7 @@ class WebUI:
         kind = kind or self.QUOTE_INTERACTION
         _sel = (kind == self.QUOTE_SELECTION) and bool((question or "").strip())
         try:
-            self.agent._reply_target = (
+            api_turn.set_reply_target(
                 {"iid": iid or "", "q": (question or "")[:200], "kind": kind}
                 if (iid or _sel) else None)
         except Exception as e:
@@ -2230,8 +2179,7 @@ class WebUI:
         Auto 下被危险判定拦下的 `run_command` 到这里时没有「始终允许」按钮：
         它的 floor=3，天然走红色分支（见 `_show_os_action_confirm_dialog`）。
         """
-        from core.runtime.replies import reply_callback as _reply_cb
-        _on_confirm = _reply_cb(step, "confirm")
+        _on_confirm = api_turn.reply_handler(step, "confirm")
         try:
             if self._current_loading_label:
                 self._current_loading_label.set_text('等待你确认操作...')
@@ -2245,8 +2193,8 @@ class WebUI:
                 reason=step.get("reason", ""),
                 params_raw=step.get("params_raw", {}),
                 on_confirm=_on_confirm or (lambda: None),
-                on_always=_reply_cb(step, "always") or (lambda: None),
-                on_cancel=_reply_cb(step, "cancel") or (lambda: None),
+                on_always=api_turn.reply_handler(step, "always") or (lambda: None),
+                on_cancel=api_turn.reply_handler(step, "cancel") or (lambda: None),
                 agent_label=step.get("agent_label", ""),
                 auto_blocked=step.get("auto_blocked", ""),
             )
@@ -2286,6 +2234,10 @@ class WebUI:
                     self.refresh_skill_list()
             elif _kind in ("init_facts", "init_stage", "init_ready"):
                 self._on_init_event(_ev)
+            elif _kind == "carrier_changed":
+                self._on_carrier_change(_ev)
+            elif _kind == "decay_applied":
+                self._sync_evicted_after_turn()
             elif _kind == "state_snapshot":
                 self._apply_snapshot(_ev.get("name", ""), _ev.get("data") or {})
             elif _kind == "chat_message":
@@ -2328,12 +2280,11 @@ class WebUI:
 
     async def _turn_events(self, turn_id: str):
         """某一轮的事件流（从总线分发来的），到 `turn_end` 为止；后端那一轮出错时抛出。"""
-        from core.runtime.events import TURN_END
         q = self._turn_queue(turn_id)
         try:
             while True:
                 ev = await q.get()
-                if (ev or {}).get("event") == TURN_END:
+                if (ev or {}).get("event") == api_turn.TURN_END:
                     if ev.get("error"):
                         raise RuntimeError(ev["error"])
                     return
@@ -3725,7 +3676,6 @@ class WebUI:
 
             # ── 选择卡片 ─────────────────────────────────────────────
             if step.get("event") == "user_choice_request":
-                from core.runtime.replies import reply_callback as _reply_cb
                 # 支持一次弹出多张选择卡片（cards 列表）；向后兼容单卡（顶层 question/choices）
                 _cards = step.get("cards")
                 if not _cards:
@@ -3749,8 +3699,8 @@ class WebUI:
                     if _idx >= _total:
                         return
                     _c = _cards[_idx]
-                    _real_choice = _reply_cb(_c, "choice") or (lambda v: None)
-                    _real_dismiss = _reply_cb(_c, "dismiss") or (lambda: None)
+                    _real_choice = api_turn.reply_handler(_c, "choice") or (lambda v: None)
+                    _real_dismiss = api_turn.reply_handler(_c, "dismiss") or (lambda: None)
 
                     def _wrapped_choice(v, _i=_idx):
                         _real_choice(v)
@@ -3787,23 +3737,21 @@ class WebUI:
             # 🔴 而且对 stdio，「连上」本身就是在本机执行第三方代码 ——
             #    这是执行第三方代码前的**最后一道**，auto 豁免它 = 那道就不存在了。
             if step.get("event") == "mcp_connect_confirm":
-                from core.runtime.replies import reply_callback as _reply_cb
                 with self._ui_scope():
                     self._show_mcp_connect_dialog(
                         info=step.get("info") or {},
                         purpose_line=step.get("purpose_line", ""),
                         what_it_does=step.get("what_it_does", ""),
-                        on_confirm=_reply_cb(step, "confirm") or (lambda: None),
-                        on_cancel=_reply_cb(step, "cancel") or (lambda: None),
+                        on_confirm=api_turn.reply_handler(step, "confirm") or (lambda: None),
+                        on_cancel=api_turn.reply_handler(step, "cancel") or (lambda: None),
                     )
                 continue
 
             if step.get("event") == "execution_confirm":
                 _skill_name  = step.get("skill_name", "")
                 _side_effects = step.get("side_effects", [])
-                from core.runtime.replies import reply_callback as _reply_cb
-                _confirm_cb  = _reply_cb(step, "confirm")
-                _cancel_cb   = _reply_cb(step, "cancel")
+                _confirm_cb  = api_turn.reply_handler(step, "confirm")
+                _cancel_cb   = api_turn.reply_handler(step, "cancel")
 
                 # 修复：不移除 loading_container——确认对话框弹出后，
                 # 用户点确认到最终回复之间还有"工具执行+总结"几秒钟，
@@ -4001,9 +3949,8 @@ class WebUI:
 
             # ── 缩窗前的临时 auto 授权（缩窗即开始操作屏幕，先要授权）──────
             if step.get("event") == "mini_auth_request":
-                from core.runtime.replies import reply_callback as _reply_cb
-                _approve = _reply_cb(step, "approve")
-                _reject  = _reply_cb(step, "reject")
+                _approve = api_turn.reply_handler(step, "approve")
+                _reject  = api_turn.reply_handler(step, "reject")
                 if step.get("preapproved"):
                     # 用户选了 Auto（后端判定）→ 不弹授权，缩窗后回复同意
                     await self._enter_mini()
@@ -4296,7 +4243,7 @@ class WebUI:
                     #       "说"了一串 402 报错，然后为此道歉。
                     # ⚠️ 落盘失败不许影响这张卡已经画出来的事实（展示层优先）。
                     try:
-                        self.agent.memory.add_ui_only_record(_err_text, "sys_error")
+                        api_turn.record_ui_error(_err_text)
                     except Exception as _e_se:
                         logger.warning(f"[L14] System Error 落盘失败（卡片已画）: {_e_se}")
                     self.scroll_area.scroll_to(percent=1.0, duration=0.2)
@@ -4508,7 +4455,7 @@ class WebUI:
                         # 那意味着它统计的是**整段回应期**。
                         # 📌 一个「结束时才做的事」，在「一段可以包含多轮」之后，
                         #    判据必须从「这一轮完了吗」换成「整段完了吗」。
-                        _seam_more = (bool(getattr(self, "_rt_inbox_parked", None)) or
+                        _seam_more = (api_turn.has_queued() or
                                       _waiting_for_carrier)
                         if _seam_more:
                             logger.info("[Seam] 这一段答完了但队列里还有 → "
@@ -4565,11 +4512,11 @@ class WebUI:
                 self._refresh_token_card()
                 self._refresh_context_card()
                 # ⚠️ **不在这里同步"被移出的那几段"** —— 衰减发生在本轮 `final_result`
-                #    之后（见 `self.agent._on_decay_applied` 的接线）。
+                #    之后（后端发轮外事件 `decay_applied`，见 `_handle_out_of_turn`）。
                 # 本轮 write_user_note 写入的笔记：ReAct 内不发终端事件（会截断 tool_results），
                 # 改在这里统一弹"Nano 似乎记住了什么"气泡 + 加进右侧记忆抽屉的待确认卡片。
                 try:
-                    _notes = list(getattr(self.agent, '_notes_written_this_turn', []) or [])
+                    _notes = list(step.get("notes_written") or [])
                     if _notes:
                         from datetime import datetime as _dt2
                         with self._ui_scope():
@@ -4582,16 +4529,10 @@ class WebUI:
                                         "ts": _dt2.now().strftime("%Y-%m-%d %H:%M:%S")})
                             self._render_pending_cards()
                             self._update_memory_badge()
-                        self.agent._notes_written_this_turn = []
                 except Exception:
                     pass
 
-                # Episodic: 写本轮会话摘要到跨会话记忆
-                try:
-                    _eq = getattr(self, '_current_query', '')
-                    self.agent.record_session_end(_eq, _content)
-                except Exception:
-                    pass
+                # 本轮摘要写进跨会话记忆由后端在泵出 final_result 时做（`core.session`）
                 return
 
             # ── user_note 待确认事件 ──────────────────────────────────────
@@ -4637,27 +4578,6 @@ class WebUI:
 
     # ── Safe wrapper ──────────────────────────────────────────────────────
 
-    @property
-    def pipeline_lock(self):
-        """同一时刻只能有一轮在跑的那把锁（在后端调度器上）。"""
-        from core.session import get_scheduler
-        return get_scheduler().lock
-
-    @property
-    def _rt_inbox_parked(self) -> dict:
-        """排队项（在后端调度器上；用户消息的排队项第 4b 步前仍带界面句柄）。"""
-        from core.session import get_scheduler
-        return get_scheduler().parked
-
-    @property
-    def _rt_inbox_running_id(self):
-        from core.session import get_scheduler
-        return get_scheduler().running_inbox_id
-
-    @_rt_inbox_running_id.setter
-    def _rt_inbox_running_id(self, v):
-        from core.session import get_scheduler
-        get_scheduler().running_inbox_id = v
 
     async def _safe_execute_pipeline(self, query, loading_container, turn_id: str):
         # 用户插话会创建 successor 并覆盖全局 `self._resp_state`。旧 pipeline
@@ -5353,14 +5273,14 @@ class WebUI:
         return getattr(self, "_rendering_view", None) or getattr(self, "_resp_state", None)
 
     def _turn_running(self) -> bool:
-        """（对用户而言）现在有没有一轮在跑：持有 `pipeline_lock` 且用户没有按过终止。
+        """（对用户而言）现在有没有一轮在跑：后端持有调度锁（`api_turn.busy()`）且用户没有按过终止。
 
         按过终止后后端可能还在收尾（仍持有锁），但对用户这一轮已经结束：按钮变回发送，
         新消息进队列，等后端停下后接着处理。
         """
         try:
             _rs_now = self._live_view() or {}
-            return self.pipeline_lock.locked() and not _rs_now.get("stop_clicked")
+            return api_turn.busy() and not _rs_now.get("stop_clicked")
         except Exception:
             return False
 
@@ -5461,13 +5381,12 @@ class WebUI:
             except Exception as e:
                 logger.debug(f"[Stop] 终止后收尾工具行失败: {e}")
         try:
-            from core.runtime.replies import resolve
             for it in [step] + list(step.get("cards") or []):
                 rid = it.get("reply_id")
                 acts = it.get("actions") or []
                 for a in ("cancel", "reject", "dismiss"):
                     if rid and a in acts:
-                        resolve(rid, a)
+                        api_turn.reply(rid, a)
                         break
         except Exception as e:
             logger.debug(f"[Stop] 终止后回绝待确认事件失败: {e}")
@@ -5575,7 +5494,7 @@ class WebUI:
         后端剩下的事件由 `_stoppable_stream` 继续消费、不再显示。
         """
         try:
-            self.agent.request_stop("用户点了终止按钮")
+            api_turn.request_stop("用户点了终止按钮")
         except Exception as e:
             logger.error(f"[Stop] 请求终止失败: {e}")
             return
@@ -5660,7 +5579,6 @@ class WebUI:
         has_attach = bool(self._pending_image_bytes) or bool(self._temp_files)
         if not query and not has_attach:
             return
-        self._current_query = query  # episodic: 记录本轮用户输入
         _bud = api_usage.budget()
         if _bud["status"] == "hard":
             ui.notify(
@@ -5683,7 +5601,7 @@ class WebUI:
         #    唯一的差别落在最后那一步：忙就不起 pipeline，交给队列。
         #    ⚠️ 刻意**不在这里 return**：用户按了发送就该立刻看见自己那条消息，
         #       「用户的话被收下了」这件事不该等到内核闲下来才可见。
-        _rt_inbox_busy = self.pipeline_lock.locked()
+        _rt_inbox_busy = api_turn.busy()
         # ⚠️⚠️⚠️ **必须在这里就把活着的那个回应期快照下来。**
         #
         # 🔴 打回的那个 bug 就是漏了这一步：把「忙不忙」的判断放在了函数开头，
@@ -5824,7 +5742,7 @@ class WebUI:
                 # ⚠️ 移交由 orchestrator 自己完成（两个字段都在它身上，UI 不碰）。
                 #    它清掉 `_reply_target` → composer 提示符立刻能刷回普通态；
                 #    同时把指向存进 `_reply_target_turn` → 模型这一轮读得到。
-                _handed = self.agent.hand_off_reply_target()
+                _handed = api_turn.hand_off_reply_target()
                 self._refresh_reply_prompt()
                 logger.info(f"[UI] 引用已发出（{_handed or _rt_live}）→ 移交本轮，UI 侧复位")
             except Exception as _e_rt:
@@ -5948,11 +5866,7 @@ class WebUI:
             self._refresh_temp_file_badge()
 
         # 空文字时用默认 query（模型需要非空 query 才能正常路由）
-        # ⚠️ 语言策略**不在这里自己写** —— 收编到 `core.i18n.language_clause()`。
-        #    原文写死了「Reply in Chinese unless…」，跟另外五处各说各的。
-        from core.i18n import language_clause as _lc
-        effective_query = query if query else (
-            "Please process the uploaded content. " + _lc("your reply"))
+        # 只有附件、没有文字时交给模型的那句（带语言偏好）由后端补（`api_turn.submit`）。
 
         # ⭐⭐ 先落库 —— **无论忙不忙都落**。
         #
@@ -5965,7 +5879,6 @@ class WebUI:
         #    忙但接不上 → 排队。无论哪种都先落库（这句话在系统里的唯一身份）。
         # ⚠️ 「接得上」只看界面有没有一个活着、正在跑的回应期气泡（`_seam_live` 在函数开头就快照了，
         #    中间两百行会覆盖 `_resp_state`）。接不上时退化成排队，不退化成不处理。
-        from core.session import get_scheduler
         _rs_live = _seam_live or {}
         # 被终止过的回应期不再续接：终止后发的新消息开新气泡（排队到后端这一轮真正停下）。
         # 两处都要看：插话之后 `_resp_state` 已是下一段，被终止的是后端正在跑的那一轮。
@@ -5973,8 +5886,8 @@ class WebUI:
                          and _rs_live.get("running")
                          and not _rs_live.get("stop_clicked") and not _rs_live.get("ui_stopped")
                          and not (self._live_view() or {}).get("stop_clicked"))
-        _key, _mode = get_scheduler().submit_user_message(
-            effective_query, image_bytes=_img_bytes, image_mime=_img_mime,
+        _key, _mode = api_turn.submit(
+            query, image_bytes=_img_bytes, image_mime=_img_mime,
             temp_hint=_temp_hint, can_continue=_can_cont)
         _view = self._resp_state
         self._user_views[_key] = _view
@@ -6884,7 +6797,7 @@ class WebUI:
         _sk = ev.get("skill_name") or ""
         try:
             with self._ui_scope():
-                if ev.get("rt_task_id") or ev.get("event") == "carrier_promoted":
+                if ev.get("rt_task_id") or ev.get("change") == "carrier_promoted":
                     self._request_snapshot("tasks")
                 if _sk:
                     self._set_skill_ui_status(
@@ -9202,40 +9115,19 @@ class WebUI:
             dialog.open()
 
     def _do_reset_conversation(self, dialog):
-        if self.pipeline_lock.locked():
+        # 丢弃排队的消息（用户显式要求）、开新会话、作废上下文厚度、清空临时附件：后端一次做完
+        result = api_turn.reset_conversation()
+        if result.get("busy"):
             dialog.close()
             ui.notify('当前有任务正在执行，请等待完成后再重置', type='warning')
             return
-        # ⭐ 重置对话 = **用户显式**要求丢掉排队的消息。
-        # ⚠️ 这是**唯一**允许丢弃 inbox 消息的路径。
-        #    📌 **用户自己决定丢，和系统悄悄丢，是两件事** —— 账上要能分开，
-        #       所以记成 DISCARDED 而不是删掉。
+        self._user_views.clear()
+        if result.get("discarded"):
+            logger.info(f"[Inbox] 重置对话 → 丢弃 {result['discarded']} 条排队消息（用户显式要求）")
         try:
-            from core.runtime import inbox as _ib
-            _n = _ib.discard_all_pending("用户重置对话")
-            self._rt_inbox_parked.clear()
-            self._user_views.clear()
-            if _n:
-                logger.info(f"[Inbox] 重置对话 → 丢弃 {_n} 条排队消息（用户显式要求）")
-        except Exception as e:
-            logger.warning(f"[Inbox] 清队列失败: {e}")
-        result = self.agent.reset_conversation()
-        # ⭐ 上下文厚度也跟着归位 —— **忘掉历史那部分，底噪留着**。
-        #    📌 重置之后上下文回到底噪（system + 工具表），**不是回到 0**；
-        #       显示 0 是一句谎话。
-        try:
-            from core.context.meter import forget_conversation_size, get_meter
-            forget_conversation_size()
-            get_meter()._anchor = None      # 本次运行的锚也作废（历史真的没了）
-            # 🔴 **必须立刻重画卡片**（2026-08-14 实测：用户报「重置按钮不会让
-            #    上下文的数字更新，只有重置 + 重启 nano 才会」）。
-            #    改数据 ≠ 改界面：`forget_conversation_size()` 只动了落盘和锚，
-            #    而那张卡是**事件驱动**的（只在 `final_result` 时重画）——
-            #    重置不产生 `final_result`，所以它一直显示旧值直到下一次对话。
-            # 📌 **一个由事件驱动刷新的显示，在「没有事件的那条路径」上必须手动补一次。**
             self._refresh_context_card()
         except Exception as e:
-            logger.debug(f"[F5] 重置上下文厚度跳过: {e}")
+            logger.debug(f"[F5] 重置后刷新上下文卡片跳过: {e}")
         dialog.close()
         # 清空聊天区
         if self.chat_container:
@@ -9247,11 +9139,7 @@ class WebUI:
             self._render_empty_state_greeting()
         # 重置清掉的是对话，不是错误：未修复的故障卡要留在界面上。
         self._redraw_live_faults()
-        # 清空临时知识库和文件列表
-        try:
-            api_kb.clear_temp_files()
-        except Exception:
-            pass
+        # 临时附件在后端已随重置清空，这里清界面上的列表
         self._temp_files = []
         self._refresh_temp_file_badge()
         self._clear_pending_image()
@@ -11145,8 +11033,7 @@ class WebUI:
         if fresh:
             self._request_snapshot("waits")
             try:
-                from core import snapshots
-                self._snap["waits"] = snapshots.current("waits")
+                self._snap["waits"] = api_state.current("waits")
             except Exception:
                 pass
         _ws = (getattr(self, "_snap", None) or {}).get("waits")
@@ -11202,38 +11089,34 @@ class WebUI:
         ⚠️ 读不出记录时退回调用方给的兜底，不猜 —— 少说比说错好。
         """
         try:
-            from core.runtime.kernel import get_kernel
-            from core.runtime import waitcond as _wc
-            rec = _wc.find_by_id(get_kernel(), suspension_id)
+            rec = api_turn.wait_outcome(suspension_id)
         except Exception:
             return fallback_text, fallback_color
         if rec is None:
             # 记录压根没了（历史清理过）→ 只说「结束了」，不声称怎么结束的
             return "✓ 已结束", "var(--nano-dim)"
-        _S = _wc.WaitStatus
-        if rec.status == _S.CANCELLED:
+        _st = rec["status"]
+        if _st == "CANCELLED":
             return "✕ 已取消等待", "var(--nano-fg-soft)"
-        if rec.status == _S.EXPIRED:
+        if _st == "EXPIRED":
             return "✕ 没等到（已过期）", "var(--nano-fg-soft)"
-        if rec.status == _S.ORPHANED:
+        if _st == "ORPHANED":
             # ⚠️ 这一档要**看得出来不对劲**：它意味着等的东西再也没回来，
             #    是被兜底回收的。用户有权知道这不是正常收尾。
             return "✕ 等的东西没回来", "var(--nano-danger)"
-        if rec.status in (_S.SATISFIED, _S.CONSUMED):
+        if _st in ("SATISFIED", "CONSUMED"):
             # ⭐ 具体是哪种唤醒也回权威读（`satisfied_by`）——
             #    否则 tick 抢在唤醒路径前面时会用通用措辞盖掉更具体的那句，
             #    而那种降级**只在偶发时出现**，是最难查的一类。
             return ({"background": ("▶ 后台完成，继续", "var(--nano-ok)"),
                      "timer":      ("▶ 到点了，继续", "var(--nano-ok)"),
                      "manual":     ("▶ 已手动继续", "var(--nano-ok)")}
-                    .get((rec.satisfied_by or "").lower(),
-                         (fallback_text, fallback_color)))
+                    .get(rec["satisfied_by"].lower(), (fallback_text, fallback_color)))
         return fallback_text, fallback_color
 
     async def _wake_now(self, suspension_id: str):
         """[立即执行]：用户提前触发自己委托的定时计划（调度器决定现在起还是排队）。"""
-        from core.session import get_scheduler
-        st = get_scheduler().wake_now(suspension_id)
+        st = api_turn.wake_now(suspension_id)
         if st == "ended":
             ui.notify("这个等待已经结束了", type="info")
             self._settle_waiting_pill(suspension_id, "✓ 已结束")
@@ -11245,8 +11128,7 @@ class WebUI:
 
     async def _cancel_suspension(self, suspension_id: str):
         """[取消计划]：取消用户委托的定时计划，不再唤醒。"""
-        from core.session import get_scheduler
-        get_scheduler().cancel_wait(suspension_id)
+        api_turn.cancel_wait(suspension_id)
         self._settle_waiting_pill(suspension_id, "✕ 已取消等待", color="var(--nano-fg-soft)")
 
     # ── 呈现方（`core.session.TurnScheduler` 调用）：唤醒轮的气泡与等待 pill ──
@@ -14710,10 +14592,7 @@ if __name__ == "__main__":
     # 控制台日志：默认 INFO；config/dev_flags.json 中 console_debug 开启时输出 DEBUG。
     # 必须在其他模块产生日志之前配置。
     try:
-        import sys as _sys
-        from core import dev_flags as _dev_flags
-        logger.remove()
-        logger.add(_sys.stderr, level="DEBUG" if _dev_flags.enabled("console_debug") else "INFO")
+        api_boot.configure_logging()
     except Exception as _log_err:
         print(f"[Log] 控制台日志配置失败，沿用默认设置: {_log_err}")
 
@@ -14722,58 +14601,24 @@ if __name__ == "__main__":
         # 免得只留在 cmd 里）。真正的主力是 rag.py 里那几处 write-ahead breadcrumb，
         # 因为 segfault / os._exit / import 期终止这三种钩子一个都抓不到。
         try:
-            from core import crash_journal as _cj
-            _cj.install_hooks()
+            api_boot.install_crash_hooks()
         except Exception as _e:
             print(f"[CrashJournal] 钩子安装失败（不影响启动）：{_e}")
 
         _bootstrap_core_modules()
 
         # ── Runtime Kernel 的启动恢复 ────────────────────────────
-        # ⚠️ 必须在 `ui.run()` 之前【同步】跑，不能挂 ui.timer：上一个进程留下的
-        # 活 ToolBatchSpan 是脏状态，而这段窗口（WebUI() 构造 → RAG 初始化线程启动）
-        # 恰好是最容易再出事的地方。理由同 crash_journal.startup_scan() 与 health 的写入端。
-        #
-        # 早先时刻意没接线（那时 Kernel 里没有任何跨重启需要恢复的东西）；
-        # 早先一旦让 Span 落盘，不接就会让"重启时处于 OPEN"被下一轮的 sweep
-        # 误判成"批次中途抛异常"——实测 shadow 第一天就撞到了这个误判。
+        # ⚠️ 必须在 `ui.run()` 之前【同步】跑，不能挂 ui.timer：上一个进程留下的活 ToolBatchSpan
+        #    是脏状态，而 WebUI() 构造 → RAG 初始化线程启动这段窗口恰好最容易再出事。
+        #    身份留痕与「这一次是新进程」的提示也绑在这里（进程启动），不绑 `on_connect`
+        #    （那是每一次 socket 握手，网络抖一下就会重放）。
         try:
-            from core.runtime import get_kernel as _rt_get_kernel
-            from core.runtime import reconcile_on_startup as _rt_reconcile
-            _rt_rep = _rt_reconcile(_rt_get_kernel())
-            # ⭐ 留给「重启后问一句」用。⚠️ 存 details 不是 id 列表 ——
-            #    只有 id 的话 Nano 说不出「那件事是什么」（见 ReconcileReport 注释）。
-            # 🔴 **这里是模块级代码，没有 `self`。** 第一版写成 `self._startup_…`
-            #    → 运行时 `name 'self' is not defined`，被那个 `except` 吞成
-            #    「启动恢复失败（不影响启动）」—— 📌 一条被吞掉的 NameError，
-            #    表现成的是「恢复失败」，而不是「有人写错了变量」。
-            # ⚠️ 这里**本来就在模块作用域**，不需要（也不能）写 `global` ——
-            #    它上面那条声明带类型标注，`global` 一个带标注的名字是 SyntaxError。
-            from core import startup as _startup
-            _startup.set_interrupted(getattr(_rt_rep, "interrupted_details", []) or [])
-            # 被中断的事项由 Nano 在界面上询问用户是否继续，控制台只在 DEBUG 下记录。
-            if _rt_rep.did_anything or any((_rt_rep.extra or {}).values()):
-                logger.debug(f"[Runtime] 启动恢复：{_rt_rep.summary()} extra={_rt_rep.extra}")
-
-            # ⭐ 本次运行的身份留痕。**挂在恢复报告之后**——
-            #    "这次是谁在跑"和"这次恢复了什么"天然是一份东西，
-            #    分开写两处会立刻产生"哪份是准的"这个问题。
-            # ⚠️ 失败不抛：它是留痕，不是正确性依赖。
-            from core.runtime import identity as _rt_ident
-            _rt_ident.record_run(_rt_get_kernel(), _rt_rep.summary())
-
-            # ⭐ 挂上"这一次是新进程"的一次性提示。
-            #    ⚠️⚠️ 绑在这里（进程启动）而**不是** NiceGUI `on_connect` ——
-            #    后者的语义是"每一次 socket 握手"，**重连也会触发**
-            #    （ping_timeout≈2-4s，网络抖一下就重放）。绑它等于把
-            #    "网络抖了一下"当成"进程重启了"。理由是 用血换来的。
-            _rt_ident.arm_restart_notice(_rt_get_kernel())
+            api_boot.startup_recovery()
         except Exception as _rt_err:
             # 启动恢复失败绝不能阻断启动 —— 它是修脏状态的，不是必需路径。
             logger.error(f"[Runtime] 启动恢复失败（不影响启动）: {_rt_err}")
 
-        api_kb.ensure_dir()
-        api_skills.reload_all()
+        api_boot.prepare()
 
         gui = WebUI()
         
@@ -14797,7 +14642,7 @@ if __name__ == "__main__":
         # MCP：进程退出时优雅关闭所有 server worker（终止 stdio 子进程，避免残留）。
         async def _mcp_shutdown():
             try:
-                await api_mcp.shutdown()
+                await api_boot.shutdown()
             except Exception:
                 pass
         _nicegui_app.on_shutdown(_mcp_shutdown)

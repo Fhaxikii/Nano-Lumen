@@ -520,12 +520,15 @@ def t_pill_settle_from_authority() -> None:
     #    不是「读到的东西分不分得出取消」。
     # 📌 **一条只验「读了哪个字段」的断言，不能替你验「那个字段答不答得出你的问题」。**
     _w = wsrc.replace('"', "'")
-    check("find_by_id" in _w,
+    check("api_turn.wait_outcome(" in _w
+          and "find_by_id" in S_def_text("core.ui_api.turn", "wait_outcome"),
           "⭐⭐⭐ 它读的是 **`waitcond.find_by_id`（不折叠的权威六态）**，"
           "**不是**切读期的兼容投影（六态折两态）—— "
           "📌 **一个兼容层刻意丢掉的信息，不会因为下游需要它而回来**；"
           "📌 **「读权威」不只是「别读缓存」，还包括「别读一个降了分辨率的投影」**")
-    check("WaitStatus" in _w and "CANCELLED" in _w and "ORPHANED" in _w,
+    # 终态名由后端原样给出（`api_turn.wait_outcome` 的 status 就是 WaitStatus 的值）
+    check("CANCELLED" in _w and "EXPIRED" in _w and "ORPHANED" in _w
+          and "str(rec.status)" in S_def_text("core.ui_api.turn", "wait_outcome"),
           "⭐⭐ 六态里该分开的都分开了（取消 / 过期 / 等的东西没回来）—— "
           "而 `ORPHANED` 那一档刻意用**警示色**：它意味着等的东西再也没回来，"
           "是被兜底回收的，用户有权知道这不是正常收尾")

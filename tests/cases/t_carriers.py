@@ -22,6 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 import tests._console  # noqa: F401,E402
 from tests import _src as S  # noqa: E402
+S_def_text = S.def_text
 
 from loguru import logger  # noqa: E402
 logger.remove()
@@ -193,9 +194,11 @@ def t_wire_and_wiring() -> None:
     for gone in ("_handed_back_carriers", "_start_handed_back_carrier", "_promote_carrier_to_background",
                  "def _cancel_carrier", "_is_handed_back_skill_running", "_handback_await"):
         check(gone not in app, f"界面不再有 `{gone}`")
-    check("_carriers.set_completion_handler(_sched.notify_background_done)" in app
-          and "_carriers.add_listener(self._on_carrier_change)" in app,
-          "完成回调登记为后端调度器的 notify_background_done；界面只登记状态监听")
+    _boot = S_def_text("core.ui_api.boot", "create")
+    check("carriers.set_completion_handler(sched.notify_background_done)" in _boot
+          and "carriers.add_listener(_carrier_changed)" in _boot
+          and '_kind == "carrier_changed"' in app,
+          "完成回调登记为后端调度器的 notify_background_done；状态变化以轮外事件告诉界面")
 
 
 def main() -> int:

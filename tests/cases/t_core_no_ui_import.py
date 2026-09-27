@@ -54,7 +54,10 @@ def t_window_is_injected() -> None:
     check("self._native_window" in impl and ".minimize()" in impl and ".restore()" in impl,
           "_look_at_screen_impl 通过 _native_window 最小化并恢复")
     app_src = module_text("app")
-    check("self.agent._native_window = " in app_src, "app.py 注入了 _native_window")
+    from tests._src import def_text as _dt
+    check("api_boot.create(self, native_window=" in app_src
+          and "agent._native_window = native_window" in _dt("core.ui_api.boot", "create"),
+          "app.py 经 ui_api.boot 登记取原生窗口的办法")
 
 
 if __name__ == "__main__":

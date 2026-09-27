@@ -139,7 +139,9 @@ def t_single_owner() -> None:
 
     # setter 写的是 agent 那份
     _, seg = _func(APP_T, APP, "_set_reply_target")
-    check("self.agent._reply_target" in seg,
+    from tests._src import def_text as _dt
+    check("api_turn.set_reply_target(" in seg
+          and "_reply_target = " in _dt("core.ui_api.turn", "set_reply_target"),
           "_set_reply_target 写的是 agent 上那份权威副本")
 
 

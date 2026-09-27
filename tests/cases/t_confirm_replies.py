@@ -132,7 +132,9 @@ def t_ui_does_not_read_callbacks() -> None:
     src = S.module_text("app")
     hits = re.findall(r"""\.get\(\s*["']on_(?:confirm|cancel|always|auto|choice|dismiss|approve|reject)["']""", src)
     check(not hits, "app.py 不再从事件里取 on_* 回调", ", ".join(hits[:5]))
-    check(src.count("reply_callback") >= 5, "app.py 用 reply_callback 包装回复", str(src.count("reply_callback")))
+    check(src.count("api_turn.reply_handler(") >= 5
+          and "reply_callback(" in S.def_text("core.ui_api.turn", "reply_handler"),
+          "app.py 经 ui_api 用 reply_callback 包装回复", str(src.count("api_turn.reply_handler(")))
 
 
 def t_wire() -> None:

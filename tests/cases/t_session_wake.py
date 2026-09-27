@@ -283,9 +283,12 @@ def t_ui_wiring():
                  "def notify_background_done", "def _drain_inbox", "self.pipeline_lock = asyncio.Lock()"):
         check(gone not in app, f"界面不再有 `{gone}`")
     for need in ("def run_wake_turn", "def settle_wake", "def settle_cancelled_handback",
-                 "def render_user_turn", "_sched.attach(self.agent, self)",
-                 "_carriers.set_completion_handler(_sched.notify_background_done)"):
+                 "def render_user_turn", "api_boot.create(self"):
         check(need in app, f"界面实现呈现方 / 登记：`{need}`")
+    _boot = S.def_text("core.ui_api.boot", "create")
+    for need in ("sched.attach(agent, presenter)",
+                 "carriers.set_completion_handler(sched.notify_background_done)"):
+        check(need in _boot, f"后端创建时登记呈现方与完成回调：`{need}`")
 
 
 def main() -> int:

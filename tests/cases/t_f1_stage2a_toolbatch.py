@@ -29,6 +29,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
 from tests._src import module_text  # noqa: E402
+from tests._src import def_text as S_def_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -457,8 +458,10 @@ def t_orchestrator_wiring(tmp):
 
     # 启动恢复必须在 ui.run() 之前同步调用
     appsrc = module_text("app")
-    check("_rt_reconcile(_rt_get_kernel())" in appsrc, "app.py 接了 reconcile_on_startup")
-    check(appsrc.index("_rt_reconcile(_rt_get_kernel())") < appsrc.index("ui.run(**_run_kwargs)"),
+    check("api_boot.startup_recovery()" in appsrc
+          and "reconcile_on_startup(get_kernel())" in S_def_text("core.ui_api.boot", "startup_recovery"),
+          "app.py 经 ui_api.boot 接了 reconcile_on_startup")
+    check(appsrc.index("api_boot.startup_recovery()") < appsrc.index("ui.run(**_run_kwargs)"),
           "  启动恢复在 ui.run() 【之前】（不能等事件循环）")
     # 参数从旧字段变成 None（没有旧字段可喂）；要守的性质没变：
     # 唤醒 turn 绕过 `_handle_query_impl`，所以它必须自己 sweep 一次。

@@ -1072,12 +1072,12 @@ class TurnMixin:
                     # ⚠️ 投影已经服从权威了，**这时候才轮到 UI**。
                     #    📌 UI 与模型必须看到同一件事：模型侧移出去了而聊天区还显示，
                     #       用户就会接着问"你刚才说的那个"。
-                    _cb = getattr(self, "_on_decay_applied", None)
-                    if callable(_cb):
-                        try:
-                            _cb()
-                        except Exception as _ui_err:
-                            logger.debug(f"[Decay] 通知 UI 同步失败: {_ui_err}")
+                    #    通知走轮外事件 `decay_applied`（界面据此重画聊天区）。
+                    try:
+                        from core.runtime import events as _ev_decay
+                        _ev_decay.publish({"event": "decay_applied"}, None)
+                    except Exception as _ui_err:
+                        logger.debug(f"[Decay] 通知 UI 同步失败: {_ui_err}")
         except Exception as _decay_err:
             # ⚠️ 治理层的故障**绝不许**把对话搞挂 —— 不降级只是上下文厚一点。
             logger.warning(f"[Decay] L0→L1 跳过（不影响对话）: {_decay_err}")

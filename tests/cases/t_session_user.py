@@ -248,7 +248,8 @@ def t_ui_wiring():
     app = S.module_text("app")
     code = "\n".join(l for l in app.splitlines() if not l.strip().startswith("#"))
     sp = code.split("def start_pipeline_task")[1].split("\n    def ")[0]
-    check("get_scheduler().submit_user_message(" in sp, "发送交给调度器决定")
+    check("api_turn.submit(" in sp
+          and "submit_user_message(" in S.def_text("core.ui_api.turn", "submit"), "发送交给调度器决定")
     check("self._rt_inbox_parked[" not in code and "asyncio.create_task(self._safe_execute_pipeline" not in code,
           "界面不再自己排队、不再自己起轮")
     se = code.split("async def _safe_execute_pipeline")[1].split("\n    async def ")[0].split("\n    def ")[0]

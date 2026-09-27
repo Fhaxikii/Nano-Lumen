@@ -38,6 +38,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401
 from tests._src import module_text  # noqa: E402
+from tests._src import def_text as S_def_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -119,7 +120,8 @@ def t_startup_terminates_and_still_speaks() -> None:
     #       不是「有人写错了变量」。**
     # ⭐ 而 `t_l23_missing_imports` 那个作用域检查器**本该抓到却没抓到** ——
     #    因为 `self`/`cls` 当时在它的 `_BUILTINS` 豁免表里（已摘掉，见那边留痕）。
-    check("_startup.set_interrupted(" in APP and "def set_interrupted" in STARTUP,
+    check("api_boot.startup_recovery()" in APP and "def set_interrupted" in STARTUP
+          and "startup.set_interrupted(" in S_def_text("core.ui_api.boot", "startup_recovery"),
           "⭐⭐ 启动恢复认定的「被中断的活」交给后端 core.startup（那段代码本来就在模块级）")
     # ⚠️ 按 **AST 判有没有那次属性访问**，不在源码里搜字符串 ——
     #    上面那段留痕注释里就逐字写着它。📌 本项目第六次栽在

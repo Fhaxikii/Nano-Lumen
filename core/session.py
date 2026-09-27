@@ -96,11 +96,15 @@ def inbox_pending() -> int:
         return 0
 
 
-async def _with_turn_usage(source):
-    """给这一轮的 `final_result` 带上本轮用量（`turn_usage`：token 数与缓存命中率）。
+async def _with_turn_usage(source, agent: Any = None, user_text: str = ""):
+    """一轮的 `final_result` 泵出时要做的三件事：
 
-    用量按轮归属（`core.usage` 的上下文变量，由这一轮的后端在开头打点）。这个包装与后端
-    在同一个任务里迭代，读到的就是这一轮；界面在别的协程里，读不到这个归属。
+    · 带上本轮用量（`turn_usage`：token 数与缓存命中率）。用量按轮归属（`core.usage` 的上下文变量，
+      由这一轮的后端在开头打点）；这个包装与后端在同一个任务里迭代，读到的就是这一轮，
+      界面在别的协程里读不到这个归属。
+    · 带上本轮 `write_user_note` 写下的笔记（`notes_written`，界面弹「记住了什么」并加进待确认卡片），
+      并清空 orchestrator 上的那张列表。
+    · 把本轮摘要写进跨会话记忆（`record_session_end`，用这段回应期最后一条用户消息）。
     """
     async for ev in source:
         if isinstance(ev, dict) and ev.get("event") == "final_result" and "turn_usage" not in ev:
@@ -112,6 +116,18 @@ async def _with_turn_usage(source):
                                                "cache_hit": _ut.turn_cache_hit(_tid)}}
             except Exception as e:
                 logger.debug(f"[Turn] 本轮用量没附上（界面退回读当前轮）: {e}")
+            if agent is not None:
+                try:
+                    _notes = list(getattr(agent, "_notes_written_this_turn", []) or [])
+                    if _notes:
+                        ev = {**ev, "notes_written": _notes}
+                        agent._notes_written_this_turn = []
+                except Exception as e:
+                    logger.debug(f"[Turn] 本轮笔记没附上: {e}")
+                try:
+                    agent.record_session_end(user_text or "", str(ev.get("content") or ""))
+                except Exception as e:
+                    logger.debug(f"[Turn] 本轮摘要没写进跨会话记忆: {e}")
         yield ev
 
 
@@ -142,6 +158,7 @@ class TurnScheduler:
         self.running_inbox_id: Optional[str] = None
         self.seam_part = 1                     # 当前回应期的第几段（插话一次 +1）
         self.epoch = 0                         # 当前回应期的编号（新开一段回应期 +1，续接不变）
+        self.last_user_text = ""               # 最后一条用户消息（写跨会话摘要用；唤醒轮沿用它）
         self.presenter: Optional[Presenter] = None
         self.agent: Any = None                 # 提供 resume_suspension / memory
         self._turn_listeners: list[Callable[[bool], None]] = []
@@ -233,7 +250,8 @@ class TurnScheduler:
         返回呈现方是否正常结束。"""
         from core.runtime import events as _events
         turn_id = uuid.uuid4().hex[:12]
-        pump = asyncio.ensure_future(_events.pump_turn(turn_id, _with_turn_usage(source)))
+        pump = asyncio.ensure_future(_events.pump_turn(
+            turn_id, _with_turn_usage(source, self.agent, self.last_user_text)))
         ok = False
         try:
             if self.presenter is not None:
@@ -252,6 +270,7 @@ class TurnScheduler:
             self.turn_state(True)
             self._activity_event("user_message")
             self._clear_stop()
+            self.last_user_text = str(payload.get("text") or "")
             try:
                 source = self._user_source(payload)
                 if await self._run_turn(source, lambda tid: self.presenter.render_user_turn(

@@ -91,6 +91,9 @@ class _FakeUI:
         from app import WebUI
         self._cls = WebUI
         self.agent = _FakeAgent()
+        # 引用目标经 ui_api 读写（权威副本在 orchestrator 上）：登记这个替身
+        from core.ui_api import _state
+        _state.bind(agent_obj=self.agent)
         self._pinned_snapshot = ""
         self.QUOTE_INTERACTION = WebUI.QUOTE_INTERACTION
         self.QUOTE_SELECTION = WebUI.QUOTE_SELECTION

@@ -157,7 +157,9 @@ def t_real_app_wires_durable_memory_and_reset() -> None:
     init = next(node for node in webui.body
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "__init__")
     init_text = ast.unparse(init)
-    check("ConversationRepository" in app_source and "conversation_repository=" in init_text,
+    _boot = S_def_text("core.ui_api.boot", "create")
+    check("api_boot.create(self" in init_text and "ConversationRepository" in _boot
+          and "conversation_repository=" in _boot,
           "WebUI 的真实 MemoryManager 绑定 Runtime 对话仓储")
 
     orch_tree = ast.parse(orch_source)

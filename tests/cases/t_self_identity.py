@@ -119,7 +119,9 @@ def t_app_registers_native_window() -> None:
     win_proc.start()
     user_app = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
-        ns: dict = {"logger": types.SimpleNamespace(debug=lambda *a, **k: None,
+        from core.ui_api import boot as _api_boot
+        ns: dict = {"api_boot": _api_boot,
+                    "logger": types.SimpleNamespace(debug=lambda *a, **k: None,
                                                     warning=lambda *a, **k: None)}
         exec(src, ns)
         ns["_register_native_window_process"]()

@@ -37,10 +37,19 @@ _LOG = types.SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: No
                              warning=lambda *a, **k: None)
 
 
+def _reply(rid, action, *args):
+    from core.runtime.replies import resolve
+    return resolve(rid, action, *args)
+
+
+# 界面函数里的 `api_turn` 换成替身：后端是否在跑、终止请求由各用例自己给；确认的回复走真实的 replies
+_API = types.SimpleNamespace(busy=lambda: False, request_stop=lambda src="": None, reply=_reply)
+
+
 def _load(name: str):
     import textwrap
     src = textwrap.dedent(S.def_text("app", name, owner="WebUI"))
-    ns: dict = {"asyncio": asyncio, "logger": _LOG}
+    ns: dict = {"asyncio": asyncio, "logger": _LOG, "api_turn": _API}
     exec(src, ns)
     return ns[name]
 
@@ -88,9 +97,10 @@ def t_stream() -> None:
         lock = asyncio.Lock()
         await lock.acquire()
         stops = []
+        _API.busy = lock.locked
+        _API.request_stop = lambda src="": stops.append(src)
         me = types.SimpleNamespace(
-            agent=types.SimpleNamespace(request_stop=lambda src="": stops.append(src)),
-            _resp_state=rs, pipeline_lock=lock, _refresh_send_btn=lambda: None,
+            _resp_state=rs, _refresh_send_btn=lambda: None,
             _dismiss_confirms_of=lambda *a, **k: None, _live_view=lambda: rs)
         check(turn_running(me) is True, "按终止之前：锁在、按钮是终止")
         t_stop = time.monotonic()
@@ -164,8 +174,8 @@ def t_stop_cancels_pending_confirms() -> None:
     note(rs, {"event": "final_text_delta", "delta": "x"})
     check(rs.get("reply_ids") == [(rid, ["confirm", "cancel"])], "记下了本回应期显示过的确认", str(rs.get("reply_ids")))
     other = R.register({"confirm": lambda: got.append("sub-confirm"), "cancel": lambda: got.append("sub-cancel")})
-    me = types.SimpleNamespace(agent=types.SimpleNamespace(request_stop=lambda src="": None),
-                               _resp_state=rs, _refresh_send_btn=lambda: None,
+    _API.request_stop = lambda src="": None
+    me = types.SimpleNamespace(_resp_state=rs, _refresh_send_btn=lambda: None,
                                _dismiss_confirms_of=lambda *a, **k: None,
                                _live_view=lambda: rs)
     me._discard_after_stop = lambda step: discard(me, step)
@@ -240,7 +250,7 @@ def t_wiring() -> None:
     print("\n▶ 接线")
     app = S.module_text("app")
     tr = S.def_text("app", "_turn_running", owner="WebUI")
-    check("stop_clicked" in tr and "pipeline_lock.locked()" in tr, "按过终止后 _turn_running 为假（按钮变回发送）")
+    check("stop_clicked" in tr and "api_turn.busy()" in tr, "按过终止后 _turn_running 为假（按钮变回发送）")
     rq = S.def_text("app", "_request_stop", owner="WebUI")
     check('_rs_now["stop_clicked"] = True' in rq and "_evt.set()" in rq, "终止按钮置标志并唤醒包装器")
     check("async for step in self._stoppable_stream(_stream, _rs):" in app, "navigate_pipeline 走包装后的事件流")

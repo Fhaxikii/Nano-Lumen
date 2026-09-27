@@ -30,6 +30,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401
 from tests._src import module_text  # noqa: E402
+from tests._src import def_text as S_def_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -436,7 +437,8 @@ def t_continuity_across_restart() -> None:
 
     # 重置路径确实接上了
     app_src = module_text("app")
-    check("forget_conversation_size" in app_src,
+    check("api_turn.reset_conversation()" in app_src
+          and "forget_conversation_size" in S_def_text("core.ui_api.turn", "reset_conversation"),
           "⭐ 「重置对话」按钮里确实调了它 —— 📌 写了没人调，和没写一模一样")
     check("_refresh_context_card()" in app_src.split("self.ctx_lbl = ui.label")[1][:400],
           "⭐ 卡片建完立刻填一次（否则启动后会一直是 `--` 直到用户先说话）")

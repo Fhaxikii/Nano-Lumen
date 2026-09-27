@@ -380,7 +380,8 @@ def t_app_wiring() -> None:
           "⭐ 每条消息都落库 —— **闲着也落**（`item_id` 是这句话的唯一身份，"
           "而崩溃可能发生在任何时刻）")
     check('self.parked[key] = ("user", payload)' in _submit
-          and "get_scheduler().submit_user_message(" in live,
+          and "api_turn.submit(" in live
+          and "submit_user_message(" in S_def_text("core.ui_api.turn", "submit"),
           "忙时进内存队列，不起 pipeline")
     check("await self.drain()" in _sess_live.split("async def run_user_turn")[1],
           "轮结束后排空队列")
@@ -398,7 +399,8 @@ def t_app_wiring() -> None:
     check(seg[drain_i - 400:drain_i].count("async with self.lock") == 0,
           "⚠️ 且它前面没有重新进入锁", "")
 
-    check("_ib.discard_all_pending" in live,
+    check("api_turn.reset_conversation()" in live
+          and "inbox.discard_all_pending(" in S_def_text("core.ui_api.turn", "reset_conversation"),
           "⭐ 重置对话 = 用户显式丢弃（唯一允许丢的路径）")
     check("payload={\"item_id\": item_id}" in module_text("core.session"),
           "⭐ 认领传的是**具体那一条**的 id")

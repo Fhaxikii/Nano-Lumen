@@ -738,11 +738,211 @@ def t_tools() -> None:
           "app.py 不再直接问工具目录 / Subagent 记录 / 载体表")
 
 
+def t_turn() -> None:
+    print("\n▶ turn")
+    from core.ui_api import turn as TU
+    got = []
+
+    class _Sched:
+        parked = {"k": ("user", {})}
+
+        def submit_user_message(self, text, **kw):
+            got.append(("submit", text, kw.get("can_continue")))
+            return "k1", "run"
+
+        def busy(self):
+            return self.b
+
+        def discard_parked(self):
+            got.append("discard_parked")
+
+        def wake_now(self, sid):
+            return "parked"
+
+        def cancel_wait(self, sid):
+            return True
+    sch = _Sched()
+    sch.b = False
+
+    class _Ag:
+        _reply_target = None
+        memory = types.SimpleNamespace(add_ui_only_record=lambda text, kind: got.append((kind, text)))
+
+        def reset_conversation(self):
+            got.append("reset")
+            return {"msg": "已重置"}
+
+        def hand_off_reply_target(self):
+            return "int_1"
+
+        def request_stop(self, src):
+            got.append(("stop", src))
+
+    orig = TU._sched
+    TU._sched = lambda: sch
+    _state.bind(agent_obj=_Ag())
+    try:
+        check(TU.submit("你好", can_continue=True) == ("k1", "run") and got[-1] == ("submit", "你好", True),
+              "发消息交给调度器")
+        TU.submit("   ")
+        check(got[-1][1].startswith("Please process the uploaded content.") and "reply" in got[-1][1],
+              "只有附件没有文字时，后端补一句「请处理上传的内容」（带语言偏好）", got[-1][1])
+        check(TU.has_queued() is True and TU.busy() is False, "队列 / 忙的查询")
+        TU.set_reply_target({"iid": "int_1", "q": "x", "kind": "interaction"})
+        rt = TU.reply_target()
+        rt["iid"] = "changed"
+        check(TU.reply_target()["iid"] == "int_1", "引用目标返回副本（改了不影响权威）")
+        TU.set_reply_target(None)
+        check(TU.reply_target() is None and TU.hand_off_reply_target() == "int_1", "清除 / 移交引用")
+        TU.request_stop("按钮")
+        TU.record_ui_error("402")
+        check(("stop", "按钮") in got and ("sys_error", "402") in got, "终止 / 界面错误卡")
+        with _FakeModule("core.runtime.inbox", discard_all_pending=lambda why: 2), \
+                _FakeModule("core.context.meter", forget_conversation_size=lambda: got.append("forget"),
+                            get_meter=lambda: types.SimpleNamespace(_anchor=1)), \
+                _FakeModule("core.rag", clear_temp_knowledge=lambda: got.append("clear_temp")) as _fr:
+            # `from core import rag` 在真模块已导入时读的是包属性：一起顶替，免得调到真的
+            import core
+            _real_rag = getattr(core, "rag", None)
+            core.rag = _fr
+            try:
+                sch.b = True
+                check(TU.reset_conversation()["busy"] is True and "reset" not in got, "有一轮在跑时不重置")
+                sch.b = False
+                r = TU.reset_conversation()
+            finally:
+                if _real_rag is not None:
+                    core.rag = _real_rag
+        check(r == {"busy": False, "msg": "已重置", "discarded": 2}
+              and all(x in got for x in ("discard_parked", "reset", "forget", "clear_temp")),
+              "重置：丢排队、开新会话、作废上下文厚度、清临时附件，一次做完", str(r))
+        check(TU.wake_now("w") == "parked" and TU.cancel_wait("w") is True, "立即执行 / 取消等待")
+    finally:
+        TU._sched = orig
+        _state.bind()
+
+
+def t_turn_finalize() -> None:
+    print("\n▶ 一轮的 final_result：笔记与跨会话摘要在后端")
+    import asyncio
+    from core import session as SS
+    rec = []
+
+    class _Ag:
+        _notes_written_this_turn = [{"note_id": 7, "display_text": "喜欢深色"}]
+
+        def record_session_end(self, q, c):
+            rec.append((q, c))
+
+    ag = _Ag()
+
+    async def src():
+        yield {"event": "tool_start"}
+        yield {"event": "final_result", "content": "好的"}
+
+    async def run():
+        return [ev async for ev in SS._with_turn_usage(src(), ag, "记住我喜欢深色")]
+    out = asyncio.run(run())
+    check(out[1].get("notes_written") == [{"note_id": 7, "display_text": "喜欢深色"}]
+          and ag._notes_written_this_turn == [], "本轮笔记附在 final_result 上，并清空后端那张列表")
+    check(rec == [("记住我喜欢深色", "好的")], "跨会话摘要用这段回应期最后一条用户消息写", str(rec))
+    check("notes_written" not in out[0], "别的事件不动")
+    app = S.module_text("app")
+    check('step.get("notes_written")' in app and "record_session_end" not in app
+          and "_notes_written_this_turn" not in app, "界面只弹气泡、加卡片")
+
+
+def t_boot() -> None:
+    print("\n▶ boot")
+    import core.runtime as RT
+    from core.runtime import carriers as CAR, events as EV
+    from core import session as SS
+    from tests._patch import patch_global
+    built = {}
+
+    class _Mem:
+        def __init__(self, max_turns, conversation_repository):
+            built["mem"] = (max_turns, conversation_repository)
+
+    class _Orc:
+        def __init__(self, p, reg, mem):
+            built["orc"] = (p, reg, mem)
+            self._native_window = None
+
+    CAR._reset_for_tests()
+    SS.reset_for_tests()
+    q = EV.subscribe()
+    restore = patch_global("core.runtime", "get_kernel", lambda: types.SimpleNamespace(store="STORE"))
+    try:
+        with _FakeModule("core.orchestrator", Orchestrator=_Orc), \
+                _FakeModule("core.provider", get_provider=lambda: "PROV"), \
+                _FakeModule("core.registry", registry="REG"), \
+                _FakeModule("core.runtime.conversation", ConversationRepository=lambda store: ("REPO", store)), \
+                _FakeModule("memory.manager", MemoryManager=_Mem):
+            from core.ui_api import boot as B
+            presenter = object()
+            win = lambda: "WIN"  # noqa: E731
+            B.create(presenter, native_window=win)
+        ag = _state.agent
+        check(built["mem"] == (10, ("REPO", "STORE")) and built["orc"][0] == "PROV"
+              and _state.provider == "PROV" and ag._native_window is win,
+              "创建记忆（绑对话账本）、provider、orchestrator，登记给接口；取窗口的办法交给后端")
+        check(SS.get_scheduler().presenter is presenter and SS.get_scheduler().agent is ag,
+              "会话调度器以界面为呈现方")
+        CAR._notify({"event": "carrier_promoted", "skill_name": "S", "rt_task_id": "t1"})
+        evs = []
+        while not q.empty():
+            evs.append(q.get_nowait())
+        check((None, {"event": "carrier_changed", "change": "carrier_promoted", "skill_name": "S",
+                      "rt_task_id": "t1"}) in evs, "载体状态变化以轮外事件告诉界面", str(evs)[:160])
+    finally:
+        restore()
+        CAR._reset_for_tests()
+        SS.reset_for_tests()
+        _state.bind()
+        try:
+            EV.unsubscribe(q)
+        except Exception:
+            pass
+    t = S.module_text("core.orchestrator")
+    check('publish({"event": "decay_applied"}, None)' in t and "_on_decay_applied" not in t,
+          "衰减之后发轮外事件 decay_applied（不再回调界面挂上的函数）")
+    check('_kind == "decay_applied"' in S.module_text("app"), "界面收到 decay_applied 重画聊天区")
+
+
+def t_guard() -> None:
+    print("\n▶ 守护：app.py 只从 core.ui_api 拿后端能力")
+    tree = ast.parse(S.module_text("app"))
+    bad_imports, bad_attrs = [], []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] in ("core", "memory"):
+            if not (n.module or "").startswith("core.ui_api"):
+                bad_imports.append(f"{n.lineno}:{n.module}")
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                if a.name.split(".")[0] in ("core", "memory"):
+                    bad_imports.append(f"{n.lineno}:{a.name}")
+        elif (isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+              and n.value.id in ("self", "gui") and n.attr in ("agent", "provider", "memory")):
+            bad_attrs.append(f"{n.lineno}:{n.value.id}.{n.attr}")
+    check(not bad_imports, "app.py 没有 core.ui_api 以外的 core / memory 导入", ", ".join(bad_imports[:8]))
+    check(not bad_attrs, "app.py 不持有 orchestrator / provider / memory", ", ".join(bad_attrs[:8]))
+    for mod in ("boot", "turn", "skills", "knowledge", "notes", "settings", "usage", "mcp",
+                "proactive", "history", "tools", "state"):
+        src = S.module_text(f"core.ui_api.{mod}")
+        heavy = [ln for ln in src.splitlines()
+                 if ln.startswith(("from core.", "import core.", "from memory", "import memory"))
+                 and not ln.startswith(("from core.ui_api", "from core.runtime.events import TURN_END"))]
+        check(not heavy, f"ui_api.{mod} 顶层不导入重模块（窗口子进程也会 import 界面）", "; ".join(heavy))
+
+
 def t_backend_bound() -> None:
     print("\n▶ 接口背后的后端对象在界面启动时登记")
     init = S.def_text("app", "__init__", owner="WebUI")
-    check("_api_state.bind(agent_obj=self.agent, provider_obj=self.provider, memory_obj=self.memory)"
-          in init, "WebUI 建好 orchestrator 后立刻登记给 ui_api（否则接口在生产里全部报「后端还没启动」）")
+    check("api_boot.create(self" in init
+          and "_state.bind(agent_obj=agent, provider_obj=provider, memory_obj=memory)"
+          in S.def_text("core.ui_api.boot", "create"),
+          "界面启动时由 ui_api.boot 创建后端对象并登记（否则接口在生产里全部报「后端还没启动」）")
 
 
 def main() -> int:
@@ -756,6 +956,10 @@ def main() -> int:
     t_proactive()
     t_history()
     t_tools()
+    t_turn()
+    t_turn_finalize()
+    t_boot()
+    t_guard()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)
     print(f"结果：{ok}/{len(_results)} 通过")
