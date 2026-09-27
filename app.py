@@ -12,6 +12,7 @@ import asyncio
 import inspect
 import pathlib
 from core.paths import data_dir, data_path
+from core.ui_api import history as api_history
 from core.ui_api import knowledge as api_kb
 from core.ui_api import mcp as api_mcp
 from core.ui_api import notes as api_notes
@@ -19,6 +20,7 @@ from core.ui_api import proactive as api_proactive
 from core.ui_api import settings as api_settings
 from core.ui_api import usage as api_usage
 from core.ui_api import skills as api_skills
+from core.ui_api import tools as api_tools
 import re
 import time
 import types
@@ -4220,8 +4222,7 @@ class WebUI:
                         try:
                             if _ref.get("row_col") is not None and not _ref.get("u8_done"):
                                 _ref["u8_done"] = True
-                                # ⚠️ 账本索引作废：这一轮刚写进去的它还不知道。
-                                self._u8_ledger_index = None
+                                # 账本索引在后端：查不到这条结果时它自己重建（`api_tools.detail`）
                                 self._attach_tool_detail(
                                     _ref.get("row"), _ref["row_col"],
                                     _ref.get("tool_use_id", "") or step.get("tool_use_id", "") or "",
@@ -4547,10 +4548,9 @@ class WebUI:
                     # 回看那一轮的 final_result 只意味着 Nano 这次看完了，
                     # 不是原来的 Skill 已经结束。真正的完成由 carrier 的 finally
                     # 收口；在那之前该状态必须保持 RUNNING。
-                    from core.runtime import carriers as _carriers_ui
                     self._set_skill_ui_status(
                         active_sk,
-                        "RUNNING" if _carriers_ui.skill_running(active_sk) else "OK")
+                        "RUNNING" if api_tools.skill_running(active_sk) else "OK")
 
                 self.scroll_area.scroll_to(percent=1.0, duration=0.2)
                 self.status_lbl.set_text("SYS_IDLE")
@@ -6876,13 +6876,11 @@ class WebUI:
 
     def _refresh_handed_back_skill_statuses(self) -> None:
         """新 pipeline 重置抽屉后，恢复仍有载体在跑的本地 Skill 的 RUNNING。"""
-        from core.runtime import carriers as _carriers
-        for name in _carriers.running_skill_names():
+        for name in api_tools.running_skill_names():
             self._set_skill_ui_status(name, "RUNNING")
 
     def _on_carrier_change(self, ev: dict) -> None:
         """载体表的状态变化（起跑 / 结束 / 进抽屉）→ 刷新抽屉与本地 Skill 的活动态。"""
-        from core.runtime import carriers as _carriers
         _sk = ev.get("skill_name") or ""
         try:
             with self._ui_scope():
@@ -6890,7 +6888,7 @@ class WebUI:
                     self._request_snapshot("tasks")
                 if _sk:
                     self._set_skill_ui_status(
-                        _sk, "RUNNING" if _carriers.skill_running(_sk) else "OK")
+                        _sk, "RUNNING" if api_tools.skill_running(_sk) else "OK")
         except Exception as e:
             logger.debug(f"[B1] 载体状态刷新界面失败（忽略）: {e}")
 
@@ -7151,8 +7149,7 @@ class WebUI:
         if lbl is None:
             return
         try:
-            from core.context.budget import snapshot as _bs
-            s = _bs(self.provider.target_model)
+            s = api_history.context_budget()
             if s.get("degraded"):
                 lbl.set_text("失准")
                 lbl.style('font-size:var(--nano-fs-sm); color:var(--nano-danger); font-weight:500;')
@@ -7207,8 +7204,7 @@ class WebUI:
         if ring is None:
             return
         try:
-            from core.context.budget import snapshot as _bs
-            s = _bs(self.provider.target_model)
+            s = api_history.context_budget()
             ring.set_content(self._context_ring_svg(s))
             # ⚠️ **不加 tooltip**（2026-08-14：遮挡）——
             #    圆环点开就是那个面板，面板第一行就写着「上下文」。
@@ -7236,8 +7232,7 @@ class WebUI:
         if box is None or menu is None:
             return
         try:
-            from core.context.budget import snapshot as _bs
-            s = _bs(self.provider.target_model)
+            s = api_history.context_budget()
         except Exception:
             return
         _known = bool(s.get("known")) and not s.get("degraded")
@@ -9167,9 +9162,7 @@ class WebUI:
         if not _dir:
             return          # 用户取消 —— 不弹任何提示，取消不是错误
         try:
-            from core.runtime.export import export_all
-            from core.runtime.kernel import get_kernel
-            stat = export_all(_dir, get_kernel())
+            stat = api_history.export(_dir)
             ui.notify(f"已导出 {stat['sessions']} 段会话 / {stat['messages']} 条消息"
                       + (f" / {stat['images']} 张图片" if stat["images"] else "")
                       + f" → {stat['dir']}", type='positive', icon='download_done')
@@ -9431,8 +9424,7 @@ class WebUI:
         try:
             # 问统一工具目录 —— live 侧那张 `_display_map` 已随 cutover 删除，
             # 两边现在读的是**同一处声明**（这正是重放要的：重算，不是抄一份）。
-            return self.agent._get_tool_catalog().presentation(
-                _name, getattr(call, "args", {}) or {}) or _name
+            return api_tools.display_name(_name, getattr(call, "args", {}) or {})
         except Exception:
             return _name
 
@@ -9462,59 +9454,6 @@ class WebUI:
     #    **历史工具卡集体变成占位符，而且不报错**，透明度当场白做。
     #    ⭐ 这不是巧合，是两件事的方向本来就相反：
     #       管「给模型留多少」，管「给用户留多少」。
-
-    def _ledger_tool_record(self, tool_use_id: str):
-        """按 `tool_use_id` 从**落盘账本**取 `(工具名, 参数, 结果)`。
-
-        ⭐⭐ **参数也从这里取，不从 live 事件里穿过来。**
-           tool_start 事件里有个 `action_input: str(args)[:200]`，看着能用 ——
-           但那样参数就有了**两个来源**（live 走事件、重放走账本），
-           📌 而两个来源只会在"我两次想法相同"的前提下一致。
-           这一轮已经被这个形状咬过两次（的计量 vs 投影、live vs hydrate）。
-
-        ⚠️ 缓存**miss 时重建** —— live 侧刚跑完的那条比缓存新。
-           📌 一个只建一次的索引，会让"刚发生的事"永远查不到。
-        """
-        if not tool_use_id:
-            return "", {}, None
-
-        def _pick(idx):
-            _c = idx.get(("call", tool_use_id))
-            _r = idx.get(("res", tool_use_id))
-            _n = getattr(_c, "name", "") or getattr(_r, "name", "") or ""
-            return _n, (getattr(_c, "args", None) or {}), _r
-
-        _cache = getattr(self, "_u8_ledger_index", None)
-        if _cache is not None and ("res", tool_use_id) in _cache:
-            return _pick(_cache)
-        try:
-            _repo = self.memory.conversation_repository
-            _sid = self.memory.conversation_session_id
-            if _repo is None or not _sid:
-                return "", {}, None
-            _new = {}
-            for m in _repo.load_messages(_sid):
-                for tc in (getattr(m, "tool_calls", None) or []):
-                    if getattr(tc, "tool_use_id", ""):
-                        _new[("call", tc.tool_use_id)] = tc
-                for tr in (getattr(m, "tool_results", None) or []):
-                    if getattr(tr, "tool_use_id", ""):
-                        _new[("res", tr.tool_use_id)] = tr
-                # 旧的单工具形状（role="tool_call" / "tool"）
-                if m.role == "tool_call" and getattr(m, "tool_use_id", ""):
-                    _new[("call", m.tool_use_id)] = m
-                elif m.role == "tool" and getattr(m, "tool_use_id", ""):
-                    _new[("res", m.tool_use_id)] = m
-            self._u8_ledger_index = _new
-            return _pick(_new)
-        except Exception as e:
-            # ⚠️ **warning 不是 debug** —— 这条走通了才有透明度可言。
-            #    📌 第一版写的是 `debug`，于是 `self.memory.conversation_repository`
-            #       根本不存在（真名私有）这件事，表现为工具卡展开显示
-            #       「没有可展示的参数或结果」—— **一句读起来完全正常的话**。
-            #       一个静默失败如果还配了一句得体的兜底文案，它就永远不会被发现。
-            logger.warning(f"[U8] 从账本取工具记录失败 {tool_use_id}: {e}")
-            return "", {}, None
 
     def _attach_tool_detail(self, row, container, tool_use_id: str,
                             fallback_name: str = "", *, direct=None) -> None:
@@ -9604,12 +9543,11 @@ class WebUI:
         try:
             col.clear()
             if direct is not None:
-                _name, _args, _res = direct
-                _name = _name or fallback_name
+                _dn, _da, _dtxt, _derr = direct
+                _d = api_tools.detail_of(_dn or fallback_name, _da, _dtxt, _derr)
             else:
-                _name, _args, _res = self._ledger_tool_record(tool_use_id)
-                _name = _name or fallback_name
-            _blocks = self.agent._get_tool_catalog().detail(_name, _args, _res)
+                _d = api_tools.detail(tool_use_id, fallback_name)
+            _blocks = [types.SimpleNamespace(**b) for b in _d["blocks"]]
             with col:
                 if not _blocks:
                     # ⚠️ 说清是"没有内容"还是"没取到" —— 📌 两者对用户是不同的事，
@@ -9617,7 +9555,7 @@ class WebUI:
                     ui.label('（这次调用没有可展示的参数或结果）').style(
                         'font-size:var(--nano-fs-xs); color:var(--nano-faint); font-family:var(--nano-mono);')
                     return
-                if _res is None and tool_use_id and direct is None:
+                if not _d["result_saved"] and tool_use_id and direct is None:
                     ui.label('⚠ 结果尚未落盘（这一步可能还在跑）').style(
                         'font-size:var(--nano-fs-xs); color:var(--nano-dim); font-family:var(--nano-mono);')
                 for b in _blocks:
@@ -9721,10 +9659,30 @@ class WebUI:
 
                 pill_row.on('click', toggle)
 
+    @staticmethod
+    def _as_message(d: dict):
+        """把后端给的消息字典包成可按属性读的对象（重放的渲染代码按属性读）。
+
+        工具调用 / 结果各包一层；它们里面的 `args`、`content` 等保持原样。
+        """
+        _m = types.SimpleNamespace(**{k: v for k, v in d.items()
+                                      if k not in ("tool_calls", "tool_results", "ordinal", "created_at")})
+        _m.tool_calls = [types.SimpleNamespace(**c) for c in (d.get("tool_calls") or [])]
+        _m.tool_results = [types.SimpleNamespace(**r) for r in (d.get("tool_results") or [])]
+        _m.visible_to_user = d.get("visible_to_user", True)
+        _m._conversation_ordinal = d.get("ordinal")
+        _m._conversation_created_at = d.get("created_at")
+        for _k in ("reply_quote", "render_kind", "name", "tool_use_id"):
+            if not hasattr(_m, _k):
+                setattr(_m, _k, "" if _k != "tool_use_id" else None)
+        if not hasattr(_m, "ui_images"):
+            _m.ui_images = []
+        return _m
+
     def _replay_durable_conversation(self) -> bool:
         """Passively project current durable history; never rerun model, tools, or work."""
         try:
-            messages = self.memory.conversation_messages()
+            messages = [self._as_message(d) for d in api_history.messages()]
         except Exception as e:
             logger.error(f"[F3] 读取持久对话失败，保留空白 UI: {e}")
             return False
@@ -9930,14 +9888,7 @@ class WebUI:
            的 `_ladder` 说明 —— 模型侧、投影侧、UI 侧必须同一个答案。
         """
         try:
-            from core.context.decay_store import DecayStore, L3, L4
-            from core.runtime.kernel import get_kernel
-            _sid = self.memory.conversation_session_id
-            if not _sid:
-                return []
-            rows = DecayStore(get_kernel().store).active_entries(_sid)
-            return [(o, e) for o, e in sorted(rows.items())
-                    if str(e.get("level")) in (L3, L4) and e.get("index_entry")]
+            return [(d["ordinal"], d) for d in api_history.moved_out_exchanges()]
         except Exception:
             return []
 
@@ -9985,9 +9936,7 @@ class WebUI:
         #        L4 = 索引已过期      → 记忆还在库里，但**不再自动想起**
         #    把它们加在一起显示成「还记得 N 条」，是把一件已经不成立的事
         #    继续报给用户。📌 **一个数字必须只回答一个问题。**
-        from core.context.decay_store import L3 as _L3
-        _l3 = [str(e.get("index_entry")) for _, e in entries
-               if str(e.get("level")) == _L3]
+        _l3 = [str(e.get("index_entry")) for _, e in entries if e.get("recallable")]
         _l4n = len(entries) - len(_l3)
         _lines = _l3
         if not _lines:
@@ -10070,12 +10019,11 @@ class WebUI:
         refs = list(getattr(msg, "ui_images", None) or [])
         if not refs:
             return
-        try:
-            from core.runtime.blobs import image_data_uri
-        except Exception:
-            return
         for _ref in refs:
-            _uri = image_data_uri(_ref)
+            try:
+                _uri = api_history.image_uri(_ref)
+            except Exception:
+                _uri = ""
             if not _uri:
                 logger.debug(f"[D10] 重放：图片 {_ref} 已不在图库，跳过")
                 continue
@@ -10500,14 +10448,10 @@ class WebUI:
         if self._agent_body is None:
             return
         try:
-            run = self.agent.agent_run(_tid)
+            _ar = api_tools.agent_run(_tid)
+            run, _tok = _ar["run"], _ar["tokens"]
         except Exception:
-            run = {}
-        try:
-            from core.usage import usage_tracker as _ut
-            _tok = _ut.agent_tokens(_tid)
-        except Exception:
-            _tok = 0
+            run, _tok = {}, 0
         _steps = list(run.get("steps") or [])
         _live = run.get("ok") is None and bool(run.get("started"))
         _dur = 0.0
@@ -10597,13 +10541,10 @@ class WebUI:
                                     f"font-family:var(--nano-mono); "
                                     f"color:{'var(--nano-danger)' if _err else 'var(--nano-ok)'};")
 
-                        class _R:
-                            content = _txt
-                            is_error = _err
                         # ⭐⭐ **同一个展开出口**—— 只是取数方式不同：
                         #    Subagent那一步不在对话账本里，所以 `direct=` 直接给。
                         self._attach_tool_detail(_r, _rowc, "", _name,
-                                                 direct=(_name, _args, _R()))
+                                                 direct=(_name, _args, _txt, _err))
 
                 # ── Subagent的报告 ──
                 # ⚠️ 头部已经在工具 pill 之前画过了（见上），这里只接正文 ——
@@ -10646,7 +10587,7 @@ class WebUI:
     def _tool_display(self, name: str, args: dict) -> str:
         """工具的友好名。⚠️ 走 目录，**不另写一张表**。"""
         try:
-            return self.agent._get_tool_catalog().presentation(name, args or {}) or name
+            return api_tools.display_name(name, args or {})
         except Exception:
             return name
 
@@ -10657,8 +10598,7 @@ class WebUI:
         """
         _tid = getattr(rec, "task_id", "") or ""
         try:
-            from core.runtime import carriers as _carriers
-            if _carriers.cancel(_tid):
+            if api_tools.cancel_background(_tid):
                 ui.notify('已终止', type='positive')
             else:
                 ui.notify('这个任务已经不在跑了', type='info')

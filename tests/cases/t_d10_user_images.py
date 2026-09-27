@@ -37,6 +37,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401  GBK 控制台保护，必须在任何 print 之前
 from tests._src import module_text  # noqa: E402
+from tests._src import def_text as S_def_text  # noqa: E402
 
 _results: list[tuple[bool, str, str]] = []
 
@@ -182,7 +183,9 @@ def t_ui_reads_history_not_context() -> None:
         seg = ast.get_source_segment(app_src, fn) or ""
         check("ui_images" in seg,
               "⭐⭐ 它读 `ui_images` —— 📌 上下文可以忘，历史不可以")
-        check("image_data_uri" in seg, "从 Nano 自己的图库读，不碰用户原始路径")
+        check("api_history.image_uri" in seg
+              and "image_data_uri" in S_def_text("core.ui_api.history", "image_uri"),
+              "从 Nano 自己的图库读（经 ui_api），不碰用户原始路径")
 
     caller = None
     for n in ast.walk(app_tree):

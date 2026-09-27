@@ -58,7 +58,10 @@ def t_cancel_has_a_ui_caller() -> None:
     print("[1] `■` 的 handler 调到后端载体表")
     src = module_text("app")
     seg = _func_src(src, "_cancel_bg_from_ui")
-    check("_carriers.cancel(" in seg, "⭐⭐ `_cancel_bg_from_ui` 调用 `carriers.cancel`")
+    from tests._src import def_text as _dt
+    check("api_tools.cancel_background(" in seg
+          and "carriers.cancel(" in _dt("core.ui_api.tools", "cancel_background"),
+          "⭐⭐ `_cancel_bg_from_ui` 经 ui_api 调用 `carriers.cancel`")
     tree = ast.parse(src)
     _fn = next((f for f in ast.walk(tree)
                 if isinstance(f, ast.FunctionDef) and f.name == "_render_bg_row"), None)

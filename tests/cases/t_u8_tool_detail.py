@@ -71,7 +71,7 @@ def _seed():
 
 
 class _StubMemory:
-    """只提供 `_ledger_tool_record` 真正用到的两样东西。"""
+    """只提供账本读取真正用到的两样东西。"""
 
     def __init__(self, repo, sid, storage):
         self.conversation_repository = repo
@@ -80,18 +80,16 @@ class _StubMemory:
 
 
 def _bound(memory):
-    """把 `WebUI._ledger_tool_record` 绑到 stub 上**真的调用它**。
+    """把 stub memory 登记给界面接口，返回**真的**账本读取函数（`core.ui_api.tools._ledger_record`）。
 
     ⚠️⚠️ 不构造整个 WebUI（要 NiceGUI 运行时），但**也不重写一份逻辑** ——
        📌 本项目的判据：跨模块边界必须有一项真的走过去；
           自制假对象 + 自己重写的逻辑，只能证明两次想法相同。
     """
-    from app import WebUI
-    class _Host:
-        pass
-    h = _Host()
-    h.memory = memory
-    return WebUI._ledger_tool_record.__get__(h, _Host)
+    from core.ui_api import _state, tools
+    _state.bind(memory_obj=memory)
+    tools._ledger.update(sid=None, index={})
+    return tools._ledger_record
 
 
 def t_reads_ledger_not_storage() -> None:
@@ -199,13 +197,13 @@ def t_clip_announces_itself() -> None:
 
 def t_no_storage_in_u8_path() -> None:
     print("\n[5] ⭐⭐ 结构守卫：这几个方法里**不许出现 storage**")
-    src = module_text("app")
-    tree = ast.parse(src)
     bad = []
-    for fn in ast.walk(tree):
+    _fns = [fn for src in (module_text("app"), module_text("core.ui_api.tools"))
+            for fn in ast.walk(ast.parse(src))]
+    for fn in _fns:
         if not isinstance(fn, ast.FunctionDef):
             continue
-        if fn.name not in ("_ledger_tool_record", "_fill_tool_detail",
+        if fn.name not in ("_ledger_record", "detail", "_fill_tool_detail",
                            "_attach_tool_detail"):
             continue
         # ⚠️ 走 AST 找**属性访问**，不是在源码文本里搜 "storage" ——
@@ -215,7 +213,7 @@ def t_no_storage_in_u8_path() -> None:
             if isinstance(n, ast.Attribute) and n.attr == "storage":
                 bad.append(f"{fn.name} → .storage")
     check(not bad,
-          "⭐⭐⭐ 三个方法都不碰 `.storage` —— "
+          "⭐⭐⭐ 账本读取（后端）与界面上的两个方法都不碰 `.storage` —— "
           "🔴 碰了的话 [F5] 一降级，透明度就归零（第 1 项已经真跑过一遍）",
           str(bad))
 

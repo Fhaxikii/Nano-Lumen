@@ -631,6 +631,113 @@ def t_proactive() -> None:
           "app.py 不再直接用主动智能的内部模块；没人调用的旧入口已删")
 
 
+def t_history() -> None:
+    print("\n▶ history")
+    from memory.manager import ChatMessage, ToolCall, ToolResultBlock
+    from core.ui_api import history as H
+
+    u = ChatMessage(role="user", content="看看这个", ui_images=["img_1"], reply_quote="上一句")
+    setattr(u, "_conversation_ordinal", 3)
+    setattr(u, "_conversation_created_at", 100.0)
+    c = ChatMessage(role="tool_calls", content="")
+    c.tool_calls = [ToolCall(name="os_execute", tool_use_id="tu_1", args={"command": "dir"}, index=0)]
+    r = ChatMessage(role="tool_results", content="")
+    r.tool_results = [ToolResultBlock(name="os_execute", tool_use_id="tu_1", content="ok", is_error=False)]
+    hidden = ChatMessage(role="assistant", content="[System record] x", visible_to_user=False)
+
+    class _Mem:
+        conversation_session_id = "s1"
+
+        def conversation_messages(self):
+            return [u, c, r, hidden]
+    _state.bind(memory_obj=_Mem())
+    try:
+        ms = H.messages()
+        check(_serializable(ms), "消息可序列化")
+        check(ms[0]["role"] == "user" and ms[0]["ordinal"] == 3 and ms[0]["created_at"] == 100.0
+              and ms[0]["ui_images"] == ["img_1"] and ms[0]["reply_quote"] == "上一句",
+              "带 role / 序号 / 落盘时刻，以及引用与图片", str(ms[0])[:160])
+        check(ms[1]["tool_calls"][0]["args"] == {"command": "dir"}
+              and ms[2]["tool_results"][0]["content"] == "ok" and ms[3]["visible_to_user"] is False,
+              "工具调用与结果、可见性都在")
+        import app as A
+        m0 = A.WebUI._as_message(ms[0])
+        m1 = A.WebUI._as_message(ms[1])
+        check(m0.role == "user" and m0._conversation_ordinal == 3 and m0.reply_quote == "上一句"
+              and m0.visible_to_user is True and m1.tool_calls[0].tool_use_id == "tu_1"
+              and m1.tool_calls[0].args == {"command": "dir"} and m1.render_kind == "",
+              "界面把字典包回对象后，重放按属性读得到同样的字段")
+
+        class _DS:
+            def __init__(self, store):
+                pass
+
+            def active_entries(self, sid):
+                return {7: {"level": "L4", "index_entry": "old", "end_ordinal": 9},
+                        2: {"level": "L3", "index_entry": "clue", "end_ordinal": 4},
+                        5: {"level": "L1", "index_entry": "x"}}
+        import core.runtime.kernel as K
+        orig = K.get_kernel
+        K.get_kernel = lambda: types.SimpleNamespace(store=None)
+        try:
+            with _FakeModule("core.context.decay_store", DecayStore=_DS, L3="L3", L4="L4"):
+                mo = H.moved_out_exchanges()
+        finally:
+            K.get_kernel = orig
+        check(mo == [{"ordinal": 2, "end_ordinal": 4, "index_entry": "clue", "recallable": True},
+                     {"ordinal": 7, "end_ordinal": 9, "index_entry": "old", "recallable": False}],
+              "移出上下文的交换：老→新，区分还想得起 / 不再自动想起", str(mo))
+    finally:
+        _state.bind()
+    src = "\n".join(ln for ln in S.module_text("app").splitlines() if not ln.strip().startswith("#"))
+    check(all(x not in src for x in ("self.memory.", "decay_store", "core.context.budget",
+                                     "image_data_uri", "export_all")),
+          "app.py 不再直接读对话账本 / 衰减表 / 图库 / 导出 / 上下文预算")
+
+
+def t_tools() -> None:
+    print("\n▶ tools")
+    from core.ui_api import tools as T
+
+    class _B:
+        def __init__(self, label, body, kind="text"):
+            self.label, self.body, self.kind = label, body, kind
+
+    class _Cat:
+        def presentation(self, name, args):
+            return "检索知识库" if name == "query_local_knowledge" else ""
+
+        def detail(self, name, args, result):
+            return [_B("参数", str(args)), _B("结果", getattr(result, "content", ""),
+                                               "error" if getattr(result, "is_error", False) else "text")]
+
+    class _Ag:
+        def _get_tool_catalog(self):
+            return _Cat()
+
+        def agent_run(self, tid):
+            return {"instruction": "do", "steps": [("read", {"p": 1}, "txt", False)], "ok": True}
+
+    _state.bind(agent_obj=_Ag())
+    try:
+        check(T.display_name("query_local_knowledge", {}) == "检索知识库"
+              and T.display_name("raw_tool", {}) == "raw_tool", "友好名；算不出用裸名")
+        d = T.detail_of("read", {"p": 1}, "boom", True)
+        check(d == {"blocks": [{"label": "参数", "body": "{'p': 1}", "kind": "text"},
+                               {"label": "结果", "body": "boom", "kind": "error"}], "result_saved": True},
+              "直接给出的明细（Subagent 的步骤）", str(d))
+        ar = T.agent_run("t1")
+        check(ar["run"]["steps"] == [["read", {"p": 1}, "txt", False]] and _serializable(ar),
+              "Subagent 监控：步骤可序列化", str(ar)[:120])
+        check(T.detail("", "x") == {"blocks": [], "result_saved": False}, "没有 id 时不查账本")
+    finally:
+        _state.bind()
+    src = "\n".join(ln for ln in S.module_text("app").splitlines() if not ln.strip().startswith("#"))
+    check(all(x not in src for x in ("_get_tool_catalog", "agent.agent_run(", "_ledger_tool_record",
+                                     "_carriers.cancel", "_carriers.running_skill_names")),
+          "app.py 不再直接问工具目录 / Subagent 记录 / 载体表")
+
+
 def t_backend_bound() -> None:
     print("\n▶ 接口背后的后端对象在界面启动时登记")
     init = S.def_text("app", "__init__", owner="WebUI")
@@ -647,6 +754,8 @@ def main() -> int:
     t_usage()
     t_mcp()
     t_proactive()
+    t_history()
+    t_tools()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)
     print(f"结果：{ok}/{len(_results)} 通过")

@@ -46,6 +46,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401
 from tests._src import module_text  # noqa: E402
+from tests._src import def_text as S_def_text  # noqa: E402
 
 from loguru import logger
 logger.remove()
@@ -293,7 +294,9 @@ def t_source_invariants() -> None:
     body = ast.unparse(fn) if fn else ""
     check("aio = asyncio.ensure_future" in body and "'aio': aio" in body.replace('"', "'"),
           "⭐⭐⭐ AST：`ensure_future` 的返回值存进载体表")
-    check("def cancel" in car and "_carriers.cancel(" in app, "⭐ 终止入口存在且界面 `■` 调它")
+    check("def cancel" in car and "api_tools.cancel_background(" in app
+          and "carriers.cancel(" in S_def_text("core.ui_api.tools", "cancel_background"),
+          "⭐ 终止入口存在且界面 `■` 经 ui_api 调它")
 
     # ② CancelledError 接在 Exception 之前（3.8+ 它继承 BaseException，不被 except Exception 捕获）
     run_fn = None

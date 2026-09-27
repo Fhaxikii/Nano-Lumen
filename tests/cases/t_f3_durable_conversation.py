@@ -18,6 +18,7 @@ os.chdir(ROOT)
 
 import tests._console  # noqa: F401
 from tests._src import module_text  # noqa: E402
+from tests._src import def_text as S_def_text  # noqa: E402
 
 from core.runtime import RuntimeStore
 from core.runtime.conversation import ConversationRepository, _message_from_payload
@@ -198,7 +199,8 @@ def t_ui_replay_is_passive_and_uses_durable_messages() -> None:
                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                    and node.name == "_replay_durable_conversation"), None)
     replay_text = ast.unparse(replay) if replay else ""
-    check(replay is not None and "conversation_messages()" in replay_text,
+    check(replay is not None and "api_history.messages()" in replay_text
+          and "conversation_messages()" in S_def_text("core.ui_api.history", "messages"),
           "重放器从完整 durable session 读取，而不是从 bounded storage 读取")
     check("handle_query" not in replay_text and "navigate_pipeline" not in replay_text
           and "_run_react_loop" not in replay_text,
