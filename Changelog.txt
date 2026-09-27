@@ -2204,7 +2204,7 @@
 - "x running task(s)" follows the timer of the latest reply instead of taking a line of its own.
 - The countdown on high-risk confirmations is 3 seconds.
 - Clicks are located by the real control name or ID from the window's control tree.
-- Internal restructuring (no behaviour change): confirmation dialogs reply by ID, background heartbeats run outside the UI timers, one module decides which windows are Nano's own, Auto approval is decided by the core instead of the interface, background tasks are held by the core, messages and wake-ups are scheduled by the core, all core-to-interface events go through one channel, proactive speech, startup messages, fault cards and Skill reloading are produced by the core, and unused code for the old proactive speech was removed.
+- Internal restructuring (no behaviour change): confirmation dialogs reply by ID, background heartbeats run outside the UI timers, one module decides which windows are Nano's own, Auto approval is decided by the core instead of the interface, background tasks are held by the core, messages and wake-ups are scheduled by the core, all core-to-interface events go through one channel, proactive speech, startup messages, fault cards and Skill reloading are produced by the core, the interface's status displays (pending reviews, task drawer, takeover bar, status cards, budget warning) are pushed by the core when they change, and unused code for the old proactive speech was removed.
 
 ### Fixes
 - Fixed programs that Nano opened being treated as Nano's own window, so using them did not make Nano pause.
@@ -2244,7 +2244,7 @@
 - 「x running task(s)」接在最新一条回复的计时器后面，不再单独占一行。
 - 高危确认的倒计时改为 3 秒。
 - 点击优先按窗口控件树中的真实名称或 ID 定位。
-- 内部结构调整（行为不变）：确认弹窗改为按编号回复，后台心跳移出界面定时器，统一判断哪些窗口属于 Nano 自己，Auto 放行改由核心判定而非界面，后台任务改由核心持有，消息与唤醒改由核心调度，核心发给界面的事件统一走一条通道，主动开口、启动提示、故障卡与 Skill 重载改由核心发出，删除旧主动开口机制的无用代码。
+- 内部结构调整（行为不变）：确认弹窗改为按编号回复，后台心跳移出界面定时器，统一判断哪些窗口属于 Nano 自己，Auto 放行改由核心判定而非界面，后台任务改由核心持有，消息与唤醒改由核心调度，核心发给界面的事件统一走一条通道，主动开口、启动提示、故障卡与 Skill 重载改由核心发出，界面常驻显示的状态（待审卡、任务抽屉、接管状态条、状态卡片、用量警示）改由核心在变化时推送，删除旧主动开口机制的无用代码。
 
 ### 修复
 - 修复 Nano 打开的程序被当成 Nano 自己的窗口，用户使用这些程序时 Nano 不会停手的问题。
