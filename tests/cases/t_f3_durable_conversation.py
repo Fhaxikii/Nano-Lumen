@@ -412,9 +412,17 @@ def t_no_system_note_still_uses_add_message() -> None:
             out.append(a.values[0].value)
 
     bad, good = [], 0
-    for f in ("app", "core.orchestrator", "core.session"):
+    # `core.ui_api` 里界面动作带来的系统记录经 `_note(text)` 写（它就是 add_system_note）
+    for f in ("app", "core.orchestrator", "core.session", "core.ui_api"):
         src = module_text(f)
         for n in ast.walk(ast.parse(src)):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_note"
+                    and len(n.args) == 1):
+                hs = []
+                _heads(n.args[0], hs)
+                if any(h.lstrip().startswith("[") for h in hs):
+                    good += 1
+                continue
             if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                     and n.func.attr in ("add_message", "add_system_note")
                     and len(n.args) >= 2):

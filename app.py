@@ -12,6 +12,7 @@ import asyncio
 import inspect
 import pathlib
 from core.paths import data_dir, data_path
+from core.ui_api import skills as api_skills
 import re
 import time
 import types
@@ -1064,8 +1065,10 @@ class WebUI:
         self.skill_list_container.clear()
         self.skill_ui_elements.clear()
 
+        _sk = api_skills.list_skills()
+        _sk_flags = {d["name"]: d for d in _sk["enabled"]}
         with self.skill_list_container:
-            if not registry.skills:
+            if not _sk["enabled"]:
                 with ui.row().classes('px-3 py-3 items-center gap-2'):
                     ui.icon('inbox').classes('text-[14px]').style('color:var(--nano-fg) !important;')
                     ui.label('暂无已注册工具').classes('text-[12px]').style('color:var(--nano-fg) !important;')
@@ -1074,8 +1077,8 @@ class WebUI:
                 # 原来是4个并排图标按钮（信息/源码/暂停/删除），行内噪音大；
                 # 收成一个"更多操作"(⋯)菜单，跟设置/外观那两个菜单同一套
                 # 视觉语言，只在需要时展开。
-                is_official = registry.is_official_skill(name)
-                is_os = registry.is_os_skill(name)
+                is_official = bool(_sk_flags.get(name, {}).get("official"))
+                is_os = bool(_sk_flags.get(name, {}).get("os"))
                 with ui.row().classes('w-full items-center justify-between px-2 py-2 rounded-xl hover:bg-white/[0.04] transition-all group no-wrap'):
                     with ui.row().classes('items-center gap-2 flex-1 min-w-0 no-wrap'):
                         # READY 状态目前永远是唯一状态，圆点统一用绿色表示"就绪"。
@@ -1167,7 +1170,7 @@ class WebUI:
 
             # 侧边栏空间有限，只内联显示最近的若干个，
             # 超出的塞进"查看全部工具"弹窗，跟知识库文件列表同一个思路。
-            permanent_names = list(registry.skills)
+            permanent_names = [d["name"] for d in _sk["enabled"]]
             SKILL_INLINE_LIMIT = 6
             for name in permanent_names[:SKILL_INLINE_LIMIT]:
                 _render_skill_row(name)
@@ -1183,7 +1186,7 @@ class WebUI:
                     'width:100%; font-size:var(--nano-fs-sm); color:var(--nano-fg-mute) !important; margin-top:2px;'
                 )
 
-            disabled_skills = registry.list_disabled_skills() if hasattr(registry, 'list_disabled_skills') else []
+            disabled_skills = _sk["disabled"]
             if disabled_skills:
                 ui.separator().classes('opacity-10 my-2')
                 with ui.row().classes('px-2 items-center gap-2 mb-1'):
@@ -1224,24 +1227,13 @@ class WebUI:
         帮用户快速判断"这个工具是做什么的、能不能解决我的问题"，
         不用打开源码也不用先调用试一次。
         """
-        skill_obj = registry.skills.get(skill_name)
-        if skill_obj is None:
+        _info = api_skills.skill_info(skill_name)
+        if _info is None:
             ui.notify(f'未找到 Skill: {skill_name}', type='warning')
             return
-        try:
-            manifest = skill_obj.get_manifest() or {}
-        except Exception:
-            manifest = {}
-        description = manifest.get('description', '') or '（未提供描述）'
-
-        purpose = ''
-        not_responsible_for: list = []
-        try:
-            spec = skill_obj.get_spec()
-            purpose = getattr(spec, 'purpose', '') or ''
-            not_responsible_for = list(getattr(spec, 'not_responsible_for', None) or [])
-        except Exception:
-            pass
+        description = _info["description"] or '（未提供描述）'
+        purpose = _info["purpose"]
+        not_responsible_for: list = list(_info["not_responsible_for"])
 
         with self._ui_scope():
             with ui.dialog().props('no-backdrop-dismiss') as dialog, \
@@ -1294,8 +1286,8 @@ class WebUI:
             dialog.open()
 
     def _show_skill_source_dialog(self, skill_name: str):
-        source = registry.get_skill_source(skill_name, include_disabled=True) if hasattr(registry, 'get_skill_source') else None
-        if not source:
+        source_code = api_skills.skill_source(skill_name)
+        if source_code is None:
             ui.notify(f'未找到 Skill: {skill_name}', type='warning')
             return
         with self._ui_scope():
@@ -1321,7 +1313,7 @@ class WebUI:
 
             async def _mount_src_cm():
                 await asyncio.sleep(0.15)      # 等 dialog DOM 挂上
-                await self._cm_init(_src_area, source.get('code', ''), readonly=True)
+                await self._cm_init(_src_area, source_code or '', readonly=True)
             asyncio.create_task(_mount_src_cm())
 
     def _confirm_disable_skill(self, skill_name: str):
@@ -1349,47 +1341,23 @@ class WebUI:
             dialog.open()
 
     def _disable_skill(self, skill_name: str, dialog):
-        result = registry.disable_skill(skill_name) if hasattr(registry, 'disable_skill') else {"ok": False, "msg": "当前 Registry 不支持禁用"}
+        result = api_skills.disable(skill_name)
         dialog.close()
-        ui.notify(result.get('msg', '已处理'), type='positive' if result.get('ok') else 'negative')
+        ui.notify(result['msg'] or '已处理', type='positive' if result['ok'] else 'negative')
         self.refresh_skill_list()
-        if result.get('ok'):
-            _msg = result.get('msg') or f'Skill "{skill_name}" has been disabled'
-            self.agent.memory.add_system_note(
-                "assistant",
-                f'[System record: the user disabled Skill "{skill_name}" from the UI sidebar; this was not executed in the current chat.] {_msg}'
-            )
 
     def _delete_skill(self, skill_name: str, dialog):
-        result = registry.delete_skill_file(skill_name) if hasattr(registry, 'delete_skill_file') else {"ok": False, "msg": "当前 Registry 不支持删除"}
+        # 侧边栏直接删除绕过了聊天里的确认流程；给对话留的那条系统记录（写明是界面上
+        # 用户点的，不是 Nano 做的）由后端一起写（`core.ui_api.skills.delete`）。
+        result = api_skills.delete(skill_name)
         dialog.close()
-        ui.notify(result.get('msg', '已处理'), type='positive' if result.get('ok') else 'negative')
+        ui.notify(result['msg'] or '已处理', type='positive' if result['ok'] else 'negative')
         self.refresh_skill_list()
-        # 侧边栏直接点删除，绕过了聊天里的 SKILL_DELETE 确认流程，之前完全不写
-        # memory——Nano 后续被问起这个 Skill 时毫无所知，不是"忘了"，是从没被
-        # 告知过。和聊天内删除一样写一条 assistant 记录，供后续统一的
-        # "Skill 没找到"事实生成复用。
-        # 注意措辞：role="assistant" 会让模型把这条记录读成"我自己说/做的"，
-        # 导致被追问"为什么"时编出"我执行了删除操作"这种第一人称幻觉——
-        # 这条记录其实是用户在UI侧边栏点的，不是Nano在对话里做的，必须显式
-        # 标注来源，不能让模型误认为是自己的动作。
-        if result.get('ok'):
-            _msg = result.get('msg') or f'Skill "{skill_name}" has been deleted'
-            self.agent.memory.add_system_note(
-                "assistant",
-                f'[System record: the user deleted Skill "{skill_name}" from the UI sidebar; this was not executed in the current chat.] {_msg}'
-            )
 
     def _enable_skill(self, skill_name: str):
-        result = registry.enable_skill(skill_name) if hasattr(registry, 'enable_skill') else {"ok": False, "msg": "当前 Registry 不支持启用"}
-        ui.notify(result.get('msg', '已处理'), type='positive' if result.get('ok') else 'negative')
+        result = api_skills.enable(skill_name)
+        ui.notify(result['msg'] or '已处理', type='positive' if result['ok'] else 'negative')
         self.refresh_skill_list()
-        if result.get('ok'):
-            _msg = result.get('msg') or f'Skill "{skill_name}" has been enabled'
-            self.agent.memory.add_system_note(
-                "assistant",
-                f'[System record: the user enabled Skill "{skill_name}" from the UI sidebar; this was not executed in the current chat.] {_msg}'
-            )
 
     def _ui_scope(self):
         return self._ui_client if self._ui_client is not None else nullcontext()
@@ -1597,8 +1565,8 @@ class WebUI:
         ⚠️ **只读投影**：这个函数一个字都不写状态。它照后端推来的快照
         （`core.snapshots.pinned_state`：只含 Skill 代码审计这一种，以及引用回复的目标）渲染，
         完了。所有写入仍然只走 Kernel（唯一写路径）。
-        点按钮触发的是既有的 `apply_pending_skill` / `cancel_pending_skill`，
-        它们内部会关交互 —— 卡片自己不碰。
+        点按钮触发的是 `api_skills.apply_draft` / `discard_draft`（背后是 orchestrator 的
+        `apply_pending_skill` / `cancel_pending_skill`），它们内部会关交互 —— 卡片自己不碰。
         """
         card = getattr(self, "_pinned_card", None)
         if card is None:
@@ -2073,7 +2041,7 @@ class WebUI:
         所以这里记住上一次建的那个 dialog，能复用就复用。
         """
         # pinned card 现在可能有多条，卡片按 filename 告诉我们点的是哪一个。
-        _p = self.agent._get_pending_skill(filename)
+        _p = api_skills.pending_draft(filename)
         if not _p:
             ui.notify(
                 f'「{filename}」那份待审代码已经不在了（超时或已处理）'
@@ -3194,9 +3162,7 @@ class WebUI:
                             # 那时回写是无意义的，还会和后续 delta 打架。
                             if cm_state.get("readonly"):
                                 return
-                            _own = self.agent._get_pending_skill(fn_box[0])
-                            if _own is not None:
-                                _own["code"] = code_holder[0]
+                            api_skills.update_draft_code(fn_box[0], code_holder[0])
                         except Exception as ex:
                             logger.warning(f"[UI] CodeMirror 内容同步失败: {ex}")
 
@@ -3278,8 +3244,8 @@ class WebUI:
             apply_btn.props(remove='disabled')
 
     def _validate_skill_code(self, code: str, label_el) -> bool:
-        from core.skill_check import validate_skill_code
-        ok, errors = validate_skill_code(code)
+        _v = api_skills.validate_code(code)
+        ok, errors = _v["ok"], _v["errors"]
         if not ok:
             label_el.set_text("⚠ " + "  ·  ".join(errors))
             label_el.style('color:var(--nano-danger)')
@@ -3291,15 +3257,11 @@ class WebUI:
     def _on_discard_skill(self, dialog, filename: str | None = None):
         # 带上**这个弹窗自己那份**的 filename。多条待审并存时，
         # 不传就会丢掉"最近那条"—— 而用户点的可能是更早那个弹窗上的按钮。
-        result = self.agent.cancel_pending_skill(filename)
+        # 让 Nano 知道这份草稿已被丢弃的系统记录由后端一起写（`core.ui_api.skills.discard_draft`）
+        result = api_skills.discard_draft(filename)
         dialog.close()
         ui.notify(result["msg"], type='warning', icon='delete')
         discard_msg = result["msg"] + "（未部署）"
-        # 写进 memory，让 Nano 知道这个 Skill 已被丢弃，不要再引用它
-        self.agent.memory.add_system_note(
-            "assistant",
-            f"[System record: the user discarded the pending Skill in the UI; it was not deployed.] {result.get('msg', '')}"
-        )
         with self.chat_container:
             with ui.row().classes('items-center gap-2 px-2 mb-6'):
                 ui.icon('delete_outline').style('font-size:var(--nano-fs-lg); color:var(--nano-fg-soft);')
@@ -3314,15 +3276,11 @@ class WebUI:
         code_holder[0] = current_code
         # 把用户在编辑器里改过的代码写回**这一份**载荷，不是"最近那条"。
         # 写错人的后果很实在：用户改的是 A，改动却落到了 B 上。
-        _own = self.agent._get_pending_skill(filename)
-        if _own is not None:
-            _own["code"] = current_code
+        api_skills.update_draft_code(filename, current_code)
         if not self._validate_skill_code(current_code, validation_lbl):
             ui.notify('代码存在问题，请修复后再部署', type='negative')
             return
-        from core import skill_watch as _skw
-        _skw.suppress(2.5)
-        result = self.agent.apply_pending_skill(filename)
+        result = api_skills.apply_draft(filename, current_code)
         if result["ok"]:
             dialog.close()
             if code_area is not None:
@@ -3338,10 +3296,6 @@ class WebUI:
             ui.notify(result["msg"].split("\n\n")[0], type='positive', icon='check_circle')
             self.refresh_skill_list()
             apply_msg = result["msg"].split("\n\n")[0] + "（已部署）"
-            self.agent.memory.add_system_note(
-                "assistant",
-                f"[System record: a pending Skill was deployed from the UI.] {result['msg'].split(chr(10) + chr(10))[0]}"
-            )
             with self.chat_container:
                 with ui.row().classes('items-center gap-2 px-2 mb-6'):
                     ui.icon('check_circle_outline').style('font-size:var(--nano-fs-lg); color:var(--nano-ok);')
@@ -15374,7 +15328,7 @@ if __name__ == "__main__":
             logger.error(f"[Runtime] 启动恢复失败（不影响启动）: {_rt_err}")
 
         KNOWLEDGE_DIR.mkdir(parents=True, exist_ok=True)
-        registry.reload_all()
+        api_skills.reload_all()
 
         gui = WebUI()
         
