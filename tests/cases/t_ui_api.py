@@ -182,7 +182,15 @@ def t_skills() -> None:
         check(not hit, f"app.{fn} 不再直接碰后端", ", ".join(hit))
 
 
+def t_backend_bound() -> None:
+    print("\n▶ 接口背后的后端对象在界面启动时登记")
+    init = S.def_text("app", "__init__", owner="WebUI")
+    check("_api_state.bind(agent_obj=self.agent, provider_obj=self.provider, memory_obj=self.memory)"
+          in init, "WebUI 建好 orchestrator 后立刻登记给 ui_api（否则接口在生产里全部报「后端还没启动」）")
+
+
 def main() -> int:
+    t_backend_bound()
     t_skills()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)

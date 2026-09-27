@@ -861,6 +861,9 @@ class WebUI:
         # 用的是模块级那个，用户改完 key 后 RAG 还在用旧凭据直到重启。
         self.provider = get_provider()
         self.agent  = Orchestrator(self.provider, registry, self.memory)
+        # 界面接口（`core.ui_api`）背后的后端对象
+        from core.ui_api import _state as _api_state
+        _api_state.bind(agent_obj=self.agent, provider_obj=self.provider, memory_obj=self.memory)
         # 后台载体结束 → 唤醒等它的挂起；载体状态变化 → 刷新抽屉与 Skill 活动态。
         from core.runtime import carriers as _carriers
         _carriers.add_listener(self._on_carrier_change)
