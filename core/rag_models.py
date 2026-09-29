@@ -20,12 +20,16 @@
 同一快照里的 ``pytorch_model.bin``，以及 ModelScope 缓存中该模型的目录。
 清理只记 DEBUG 日志。
 
+检查与转换过程中遇到系统内存不足（``is_memory_error``）时，原异常直接抛出：
+读取权重失败的原因是内存而不是文件，此时既不能判定文件损坏，也不能触发下载。
+
 每个进程对同一个模型只做一次完整检查，结果缓存在内存中。
 """
 from __future__ import annotations
 
 import os
 import pathlib
+import re
 import shutil
 import threading
 from typing import Iterable, Optional
@@ -51,6 +55,30 @@ MS_ENDPOINT = "https://mirrors.aliyun.com/modelscope/"
 
 class ModelUnavailable(RuntimeError):
     """本地没有可用快照，且下载失败。"""
+
+
+# Windows 系统错误码：8 = ERROR_NOT_ENOUGH_MEMORY，1450 = ERROR_NO_SYSTEM_RESOURCES，
+# 1455 = ERROR_COMMITMENT_LIMIT（页面文件不足以提交所需内存）。
+_MEMORY_WINERRORS = (8, 1450, 1455)
+# safetensors 以写时复制方式映射整个权重文件，映射大小计入提交内存；提交失败时抛出的
+# OSError 不带 winerror 属性，错误码只出现在消息末尾，例如
+# 「页面文件太小，无法完成操作。 (os error 1455)」（消息正文随系统语言变化）。
+_OS_ERROR_CODE = re.compile(r"os error (\d+)")
+_MEMORY_PHRASES = ("not enough memory", "paging file", "commitment limit",
+                   "cannot allocate", "out of memory", "页面文件太小")
+
+
+def is_memory_error(e: BaseException) -> bool:
+    """异常是否由系统内存不足引起。``core.rag`` 的故障分类使用同一判据。"""
+    if isinstance(e, MemoryError):
+        return True
+    if getattr(e, "winerror", None) in _MEMORY_WINERRORS:
+        return True
+    text = str(e)
+    if any(int(code) in _MEMORY_WINERRORS for code in _OS_ERROR_CODE.findall(text)):
+        return True
+    lowered = text.lower()
+    return any(p in lowered for p in _MEMORY_PHRASES)
 
 
 _lock = threading.Lock()
@@ -84,7 +112,10 @@ def modelscope_repo_dirs(repo_id: str) -> list[pathlib.Path]:
 # ── 快照检查 ──────────────────────────────────────────────────────────────
 
 def _weights_readable(path: pathlib.Path) -> bool:
-    """safetensors 文件头可以解析即视为完整（文件长度与头部声明不符时解析会失败）。"""
+    """safetensors 文件头可以解析即视为完整（文件长度与头部声明不符时解析会失败）。
+
+    内存不足导致的失败不说明文件状态，原异常抛出。
+    """
     if not path.is_file():
         return False
     try:
@@ -93,6 +124,8 @@ def _weights_readable(path: pathlib.Path) -> bool:
             f.keys()
         return True
     except Exception as e:
+        if is_memory_error(e):
+            raise
         logger.debug(f"[RAG-Models] {path} 无法作为 safetensors 读取: {e}")
         return False
 
@@ -176,8 +209,17 @@ def _remove(path: pathlib.Path) -> int:
 
 
 def cleanup_redundant(repo_id: str, snapshot: pathlib.Path) -> int:
-    """快照已确认可用时，删除不再需要的副本。返回释放的字节数。"""
-    if not snapshot_ready(snapshot):
+    """快照已确认可用时，删除不再需要的副本。返回释放的字节数。
+
+    内存不足、无法再次确认快照时跳过清理，留到下一次检查。
+    """
+    try:
+        if not snapshot_ready(snapshot):
+            return 0
+    except Exception as e:
+        if not is_memory_error(e):
+            raise
+        logger.debug(f"[RAG-Models] {repo_id} 内存不足，跳过清理: {e}")
         return 0
     freed = 0
     legacy = snapshot / LEGACY_WEIGHTS
@@ -238,6 +280,8 @@ def _prepare(repo_id: str, snapshot: pathlib.Path) -> Optional[pathlib.Path]:
         try:
             convert_bin_to_safetensors(snapshot)
         except Exception as e:
+            if is_memory_error(e):
+                raise
             logger.warning(f"[RAG-Models] {repo_id} 权重格式转换失败: {type(e).__name__}: {e}")
             return None
         if _weights_readable(snapshot / WEIGHTS):
@@ -246,7 +290,8 @@ def _prepare(repo_id: str, snapshot: pathlib.Path) -> Optional[pathlib.Path]:
 
 
 def ensure_model(repo_id: str, *, recheck: bool = False) -> str:
-    """保证模型在本地可加载，返回快照目录。失败抛 ``ModelUnavailable``。
+    """保证模型在本地可加载，返回快照目录。失败抛 ``ModelUnavailable``；
+    系统内存不足时抛出原始的内存异常，不下载。
 
     ``recheck=True`` 忽略本进程内的缓存结果，重新检查一次（加载失败后的修复路径使用）。
     """

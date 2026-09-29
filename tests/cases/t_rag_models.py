@@ -4,13 +4,19 @@
 所有缓存状态都在临时目录里构造（HF_HUB_CACHE / MODELSCOPE_CACHE 指向临时目录），
 下载函数替换为调用即失败的桩，用来证明本地路径不发起网络请求。
 
+内存不足的用例制造真实的提交失败：子进程把自己放进限制单进程提交内存的 Job 对象，
+再加载一个大于限额的权重文件（safetensors 以写时复制方式映射整个文件，映射大小计入提交）。
+
 用法：
   py -3.10 tests\\cases\\t_rag_models.py
 """
 from __future__ import annotations
 
+import json
 import os
 import pathlib
+import struct
+import subprocess
 import sys
 import tempfile
 
@@ -18,7 +24,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-_TMP = pathlib.Path(tempfile.mkdtemp(prefix="nano_rag_models_"))
+# 子进程模式：`t_rag_models.py --oom-child <缓存目录>`，沿用父进程构造好的缓存。
+_OOM_CHILD = len(sys.argv) > 2 and sys.argv[1] == "--oom-child"
+_TMP = (pathlib.Path(sys.argv[2]) if _OOM_CHILD
+        else pathlib.Path(tempfile.mkdtemp(prefix="nano_rag_models_")))
 # 必须在导入 huggingface_hub 之前设置：它在导入时读取缓存目录。
 os.environ["HF_HUB_CACHE"] = str(_TMP / "hf")
 os.environ["MODELSCOPE_CACHE"] = str(_TMP / "ms")
@@ -220,6 +229,184 @@ def t_all_ready_is_read_only() -> None:
     check(RM.all_ready(["test/does-not-exist"]) is False, "不存在的模型 → False")
 
 
+def t_memory_error_signals() -> None:
+    print("\n[7] 内存不足的判定")
+    from core import rag_models as RM
+    from core.rag import _model_load_code
+    zh = OSError("页面文件太小，无法完成操作。 (os error 1455)")
+    en = OSError("The paging file is too small for this operation to complete. (os error 1455)")
+    other_lang = OSError("Le fichier d'échange est insuffisant. (os error 1455)")
+    with_winerror = OSError(None, "commit failed", None, 1455)
+    positives = {
+        "safe_open 映射失败（中文系统）": zh,
+        "safe_open 映射失败（英文系统）": en,
+        "只靠错误码（其他语言的系统）": other_lang,
+        "带 winerror 属性的 OSError": with_winerror,
+        "os error 1450": OSError("Insufficient system resources exist. (os error 1450)"),
+        "MemoryError": MemoryError(),
+        "torch 分配失败": RuntimeError("DefaultCPUAllocator: not enough memory: you tried to allocate 1 bytes."),
+    }
+    for name, e in positives.items():
+        check(RM.is_memory_error(e), f"{name} → 内存不足", repr(e))
+        check(_model_load_code(e) == "MODEL_LOAD_OOM", f"{name} → rag 归类为 MODEL_LOAD_OOM",
+              _model_load_code(e))
+    negatives = {
+        "文件不存在": FileNotFoundError(2, "No such file or directory"),
+        "os error 2": OSError("系统找不到指定的文件。 (os error 2)"),
+        "os error 14550": OSError("unrelated (os error 14550)"),
+        "文件头损坏": Exception("Error while deserializing header: HeaderTooLarge"),
+    }
+    for name, e in negatives.items():
+        check(not RM.is_memory_error(e), f"{name} → 不是内存不足", repr(e))
+
+
+def t_cleanup_skipped_when_memory_short() -> None:
+    print("\n[8] 内存不足无法确认快照时，清理跳过而不是报错")
+    from core import rag_models as RM
+    snap = _make_snapshot("test/cleanup-oom", safetensors=True, bin_=True)
+    original = RM.snapshot_ready
+
+    def short_of_memory(_snapshot):
+        raise OSError("页面文件太小，无法完成操作。 (os error 1455)")
+
+    RM.snapshot_ready = short_of_memory
+    try:
+        freed = RM.cleanup_redundant("test/cleanup-oom", snap)
+    finally:
+        RM.snapshot_ready = original
+    check(freed == 0, "返回 0", str(freed))
+    check((snap / RM.LEGACY_WEIGHTS).exists() and (snap / RM.WEIGHTS).exists(), "没有删除任何文件")
+
+
+# ── 真实内存不足（子进程） ─────────────────────────────────────────────────
+
+_OOM_REPO = "test/oom"
+_OOM_WEIGHTS_MB = 400
+_OOM_HEADROOM_MB = 128
+
+
+def _write_large_safetensors(path: pathlib.Path, mb: int) -> None:
+    """写一个合法的 safetensors：只写文件头，数据区用 truncate 补零，不占用进程内存。"""
+    n = mb * 2 ** 20 // 4
+    header = json.dumps({"w": {"dtype": "F32", "shape": [n], "data_offsets": [0, n * 4]}}).encode()
+    header += b" " * (-len(header) % 8)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<Q", len(header)))
+        f.write(header)
+        f.truncate(8 + len(header) + n * 4)
+
+
+def _limit_own_commit(extra_mb: int) -> None:
+    """把当前进程放进 Job 对象，单进程提交内存上限 = 当前提交量 + extra_mb。"""
+    import ctypes
+    import ctypes.wintypes as wt
+
+    class PMC(ctypes.Structure):
+        _fields_ = [("cb", wt.DWORD), ("PageFaultCount", wt.DWORD)] + [
+            (n, ctypes.c_size_t) for n in (
+                "PeakWorkingSetSize", "WorkingSetSize", "QuotaPeakPagedPoolUsage",
+                "QuotaPagedPoolUsage", "QuotaPeakNonPagedPoolUsage", "QuotaNonPagedPoolUsage",
+                "PagefileUsage", "PeakPagefileUsage", "PrivateUsage")]
+
+    class BASIC(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong),
+                    ("PerJobUserTimeLimit", ctypes.c_longlong),
+                    ("LimitFlags", wt.DWORD),
+                    ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", wt.DWORD),
+                    ("Affinity", ctypes.c_size_t),
+                    ("PriorityClass", wt.DWORD),
+                    ("SchedulingClass", wt.DWORD)]
+
+    class EXTENDED(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", BASIC)] + [
+            (n, ctypes.c_ulonglong) for n in (
+                "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+                "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")] + [
+            (n, ctypes.c_size_t) for n in (
+                "ProcessMemoryLimit", "JobMemoryLimit", "PeakProcessMemoryUsed", "PeakJobMemoryUsed")]
+
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    k32.GetCurrentProcess.restype = wt.HANDLE
+    k32.CreateJobObjectW.restype = wt.HANDLE
+    me = k32.GetCurrentProcess()
+    pmc = PMC()
+    pmc.cb = ctypes.sizeof(pmc)
+    if not psapi.GetProcessMemoryInfo(wt.HANDLE(me), ctypes.byref(pmc), pmc.cb):
+        raise OSError(ctypes.get_last_error(), "GetProcessMemoryInfo")
+    info = EXTENDED()
+    info.BasicLimitInformation.LimitFlags = 0x100          # JOB_OBJECT_LIMIT_PROCESS_MEMORY
+    info.ProcessMemoryLimit = pmc.PrivateUsage + extra_mb * 2 ** 20
+    job = k32.CreateJobObjectW(None, None)
+    if not job or not k32.SetInformationJobObject(wt.HANDLE(job), 9, ctypes.byref(info),
+                                                 ctypes.sizeof(info)):
+        raise OSError(ctypes.get_last_error(), "SetInformationJobObject")
+    if not k32.AssignProcessToJobObject(wt.HANDLE(job), wt.HANDLE(me)):
+        raise OSError(ctypes.get_last_error(), "AssignProcessToJobObject")
+
+
+def _oom_child() -> int:
+    """子进程：在提交内存受限的情况下加载嵌入模型，把结果写到 stdout 最后一行。"""
+    import sentence_transformers  # noqa: F401  _load_embedder 内部导入；限额之前先导入
+    from core import rag, rag_models as RM
+    from core.health import Cap, get_health
+
+    downloads: list[str] = []
+
+    def no_hf(repo_id):
+        downloads.append("hf:" + repo_id)
+        return None
+
+    def no_ms(repo_id):
+        downloads.append("ms:" + repo_id)
+        raise RuntimeError("network disabled in test")
+
+    RM._download_hf = no_hf
+    RM._download_modelscope = no_ms
+    RM.EMBEDDER_REPO = _OOM_REPO
+    RM.reset_for_tests()
+
+    _limit_own_commit(_OOM_HEADROOM_MB)
+    try:
+        rag._load_embedder()
+        outcome = "loaded"
+    except Exception as e:
+        outcome = f"{type(e).__name__}: {e}"
+    state = get_health().get(Cap.KB_VECTOR_SEARCH)
+    print(json.dumps({
+        "outcome": outcome,
+        "downloads": downloads,
+        "code": state.code if state else "",
+        "hint_en": state.recovery_hint_en if state else "",
+    }, ensure_ascii=True))
+    return 0
+
+
+def t_real_memory_shortage() -> None:
+    print("\n[10] 真实内存不足：报内存不足，不下载，不删除模型文件")
+    from core import rag_models as RM
+    snap = _make_snapshot(_OOM_REPO)
+    weights = snap / RM.WEIGHTS
+    _write_large_safetensors(weights, _OOM_WEIGHTS_MB)
+    size = weights.stat().st_size
+    check(RM._weights_readable(weights), "不限内存时这份权重可以读取（前提成立）")
+
+    r = subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "--oom-child", str(_TMP)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+    lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
+    result = json.loads(lines[-1]) if lines else {}
+    check(r.returncode == 0 and bool(result), "子进程正常结束并给出结果",
+          f"rc={r.returncode} {r.stderr[-400:]}")
+    check(result.get("outcome", "loaded") != "loaded", "加载失败（限额生效）", result.get("outcome", ""))
+    check(result.get("downloads") == [], "没有调用任何下载函数", str(result.get("downloads")))
+    check(result.get("code") == "MODEL_LOAD_OOM", "健康状态记为 MODEL_LOAD_OOM", result.get("code", ""))
+    check("do NOT re-download" in result.get("hint_en", ""), "给模型的恢复建议写明不要重新下载")
+    check(weights.is_file() and weights.stat().st_size == size, "权重文件原样保留")
+    check(RM.hf_repo_dir(_OOM_REPO).is_dir() and not RM.missing_files(snap), "模型缓存目录与必需文件都在")
+
+
 def t_single_download_implementation() -> None:
     print("\n[9] 安装器与运行时共用同一份下载代码")
     ps1 = (ROOT / "install.ps1").read_text(encoding="utf-8-sig")
@@ -239,7 +426,10 @@ def main() -> int:
     t_download_failure_raises()
     t_missing_required_file_not_ready()
     t_all_ready_is_read_only()
+    t_memory_error_signals()
+    t_cleanup_skipped_when_memory_short()
     t_single_download_implementation()
+    t_real_memory_shortage()
 
     ok = sum(1 for r in _results if r[0])
     print("")
@@ -258,4 +448,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_oom_child() if _OOM_CHILD else main())

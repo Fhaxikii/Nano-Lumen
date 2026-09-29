@@ -259,12 +259,9 @@ def _model_load_code(e: Exception) -> str:
         return "WEIGHTS_FORMAT_REJECTED"
     if "offline" in s or "couldn't connect" in s or "connection" in s:
         return "MODEL_FETCH_OFFLINE"
-    # ⚠️ 内存类失败必须排在 OSError 之前 —— **顺序即逻辑**。
-    #    Windows 1455 = ERROR_COMMITMENT_LIMIT（提交内存到顶），
-    #    1450 = ERROR_NO_SYSTEM_RESOURCES，8 = ERROR_NOT_ENOUGH_MEMORY。
-    #    模型有 2.27GB，`safe_open` 做内存映射时提交不下来就是这几个码。
-    #    🔴 2026-08-31 实测：这条被归成了「文件缺失」，而文件是完整的。
-    if isinstance(e, MemoryError) or getattr(e, "winerror", None) in (8, 1450, 1455)             or "页面文件太小" in f"{e}" or "commitment limit" in s             or "not enough memory" in s or "paging file" in s or "cannot allocate" in s:
+    # 内存类失败必须在「文件缺失」之前判定：权重映射提交不下内存时抛出的也是 OSError，
+    # 文件本身是完整的。判据与 core.rag_models 的本地检查共用。
+    if _rag_models.is_memory_error(e):
         return "MODEL_LOAD_OOM"
     # ⚠️ 收窄到**真的指向"文件不在/不全"**的证据。
     #    🔴 原来这里写 `isinstance(e, OSError)` —— 那是 Windows 上几乎所有 I/O
