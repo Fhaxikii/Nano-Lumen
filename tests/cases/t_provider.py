@@ -51,8 +51,29 @@ def t_endpoint_models_without_key() -> None:
         P._ENDPOINT_MODELS_MEM.clear()
 
 
+def t_empty_tool_input_diag() -> None:
+    print("\n[9] tool_use 参数为空时只对可疑情形报警")
+    from core import provider as P
+    from core.tools.manifests import BUILTIN_MANIFESTS
+    manifests = list(BUILTIN_MANIFESTS.values())
+    no_req = next(m for m in manifests if m["name"] == "end_screen_task")
+    with_req = next(m for m in manifests
+                    if (m.get("parameters") or m.get("input_schema") or {}).get("required"))
+    check(not (no_req.get("parameters") or no_req.get("input_schema") or {}).get("required"),
+          "前提：end_screen_task 没有必填参数")
+    check(not P.empty_tool_input_suspicious("end_screen_task", "tool_use", manifests),
+          "没有必填参数的工具传空参数 → 不报警")
+    check(P.empty_tool_input_suspicious(with_req["name"], "tool_use", manifests),
+          f"有必填参数的工具（{with_req['name']}）传空参数 → 报警")
+    check(P.empty_tool_input_suspicious("end_screen_task", "max_tokens", manifests),
+          "响应被 max_tokens 截断 → 报警")
+    check(P.empty_tool_input_suspicious("NotInThisRequest", "tool_use", manifests),
+          "不在本次工具表里的工具 → 报警")
+
+
 def main() -> int:
     t_endpoint_models_without_key()
+    t_empty_tool_input_diag()
 
     ok = sum(1 for r in _results if r[0])
     print("")

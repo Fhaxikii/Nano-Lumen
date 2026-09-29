@@ -443,7 +443,9 @@ class ContextMeter:
                 if abs_err > self.RESIDUAL_ABS and rel_err > self.RESIDUAL_REL:
                     self._degraded_reason = (
                         f"predicted={pred} actual={actual} residual={rel_err:.1%}")
-                    logger.error(
+                    # 锚作废后下一次调用会重新建锚，状态也保留在 snapshot()["degraded"]；
+                    # 这是计量模型的开发诊断，用户无法据此采取任何动作，只记 DEBUG。
+                    logger.debug(
                         f"[ContextMeter] DEGRADED —— {self._degraded_reason} "
                         f"model={model} lane={lane}。"
                         f"计量模型里出现了它没理解的新成分，锚已作废。"

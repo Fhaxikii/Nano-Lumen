@@ -246,6 +246,35 @@ def t_pressure_block_discipline() -> None:
           "⭐ orchestrator 里确实调了 `pressure_block` —— 📌 写了没人调，和没写一模一样")
 
 
+def t_residual_degrade_is_quiet() -> None:
+    print("\n[5b] 残差看门狗：失准状态照记（监控卡据此显示失准），不往控制台打 WARNING 以上")
+    from core.context.meter import ContextMeter, MAIN_REACT
+    import core.context.meter as _mm
+    from loguru import logger as _lg
+    _saved, _lk = _mm._meter, _mm._read_last_known()
+    seen: list = []
+    sink = _lg.add(lambda m: seen.append(m.record["level"].no), level="WARNING")
+    try:
+        _mm._write_last_known({})
+        m = ContextMeter()
+
+        class _U:
+            input_tokens = 15_000
+            cache_read_input_tokens = 0
+            cache_creation_input_tokens = 0
+        m.observe(vendor="anthropic", model="anthropic/claude-haiku-4.5",
+                  lane=MAIN_REACT, usage=_U(), local_estimate=1000)
+        m.note_prediction(40_000)
+        m.observe(vendor="anthropic", model="anthropic/claude-haiku-4.5",
+                  lane=MAIN_REACT, usage=_U(), local_estimate=1000)
+        check(bool(m.snapshot()["degraded"]), "残差超限 → snapshot 里记下失准原因")
+        check(seen == [], "没有 WARNING / ERROR 级别的日志", str(seen))
+    finally:
+        _lg.remove(sink)
+        _mm._meter = _saved
+        _mm._write_last_known(_lk)
+
+
 def t_monitor_card() -> None:
     print("\n[6] ⭐ 监控卡：量不到显示 `--`，失准明说失准")
     src = module_text("app")
@@ -450,6 +479,7 @@ def main() -> int:
     t_window_not_duplicated()
     t_watermarks_and_snapshot()
     t_pressure_block_discipline()
+    t_residual_degrade_is_quiet()
     t_monitor_card()
     t_relay_field_probe()
     t_distribution_sampler()

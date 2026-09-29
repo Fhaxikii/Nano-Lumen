@@ -284,6 +284,20 @@ def _uses_adaptive_thinking(model: str) -> bool:
                                     "opus-4.6", "opus-4-6"))
 
 
+def empty_tool_input_suspicious(name: str, stop_reason: str, tools_manifest: list) -> bool:
+    """模型发出的 tool_use 参数为空时，这是否值得报警。
+
+    没有必填参数的工具（如 GetSystemTime、end_screen_task）传空参数是正常调用。
+    声明了必填参数、不在本次工具表里，或响应因 max_tokens 被截断时，空参数说明出了问题。
+    """
+    if stop_reason == "max_tokens":
+        return True
+    for t in tools_manifest or []:
+        if t.get("name") == name:
+            return bool((t.get("parameters") or t.get("input_schema") or {}).get("required"))
+    return True
+
+
 def _thinking_arg(max_tokens: int, model: str = ""):
     """统一生成 Anthropic thinking 参数。**必须按模型分支** —— 三代模型三套规则。
 
@@ -1122,7 +1136,8 @@ class ClaudeProvider:
                 #    📌 分不清这两者，就只能在「改提示词」和「查网络」之间瞎猜。
                 for _tb in tool_blocks:
                     if not getattr(_tb, "input", None):
-                        logger.warning(
+                        _suspicious = empty_tool_input_suspicious(_tb.name, _stop, tools_manifest)
+                        (logger.warning if _suspicious else logger.debug)(
                             f"[Provider-Diag] tool_use【{_tb.name}】参数为空 | "
                             f"stop_reason={_stop or '(none)'} | "
                             f"input={getattr(_tb, 'input', None)!r} | "
