@@ -2204,6 +2204,7 @@
 - "x running task(s)" follows the timer of the latest reply instead of taking a line of its own.
 - The countdown on high-risk confirmations is 3 seconds.
 - Clicks are located by the real control name or ID from the window's control tree.
+- Changes to MCP servers made in Settings are recorded in the conversation, so Nano still knows about them later and after a restart.
 - Internal restructuring (no behaviour change): confirmation dialogs reply by ID, background heartbeats run outside the UI timers, one module decides which windows are Nano's own, Auto approval is decided by the core instead of the interface, background tasks are held by the core, messages and wake-ups are scheduled by the core, all core-to-interface events go through one channel, proactive speech, startup messages, fault cards and Skill reloading are produced by the core, the interface's status displays (pending reviews, task drawer, takeover bar, status cards, budget warning) are pushed by the core when they change, the interface reaches the core only through one interface layer, and unused code for the old proactive speech was removed.
 
 ### Fixes
@@ -2230,6 +2231,13 @@
 - Fixed Nano not being told when the user added, removed, reconnected, enabled or disabled an MCP server in Settings.
 - Fixed a sub-agent action that was refused still showing a check mark.
 - Fixed the knowledge-base model being downloaded again, and a memory shortage being reported as a download failure, when the system ran low on memory while loading it.
+- Fixed MCP switches in Settings not taking effect and jumping back.
+- Fixed a quote set with "Reply to this" while Nano was replying being lost when the message was sent.
+- Fixed operations carried out after a confirmation (deploying an approved Skill, deleting a Skill or an MCP server) showing ✕ in the tool row although they succeeded.
+- Fixed Nano not replying after a Skill was deployed.
+- Fixed Nano treating an early "Run now" on a waiting reminder as if the time had come.
+- Fixed typing a long text on screen continuing to the end after an emergency stop, a Stop, or the user taking over the computer.
+- Fixed diagnostic warnings appearing in the console during normal use.
 
 
 ### 新增
@@ -2247,6 +2255,7 @@
 - 「x running task(s)」接在最新一条回复的计时器后面，不再单独占一行。
 - 高危确认的倒计时改为 3 秒。
 - 点击优先按窗口控件树中的真实名称或 ID 定位。
+- 在设置里对 MCP 服务的改动记入对话，Nano 之后以及重启后仍然知道。
 - 内部结构调整（行为不变）：确认弹窗改为按编号回复，后台心跳移出界面定时器，统一判断哪些窗口属于 Nano 自己，Auto 放行改由核心判定而非界面，后台任务改由核心持有，消息与唤醒改由核心调度，核心发给界面的事件统一走一条通道，主动开口、启动提示、故障卡与 Skill 重载改由核心发出，界面常驻显示的状态（待审卡、任务抽屉、接管状态条、状态卡片、用量警示）改由核心在变化时推送，界面只经一层统一接口访问核心，删除旧主动开口机制的无用代码。
 
 ### 修复
@@ -2273,5 +2282,12 @@
 - 修复用户在设置里添加、删除、重连、启用或停用 MCP 服务后，Nano 并不知道的问题。
 - 修复子代理被拒绝执行的动作仍显示 ✓ 的问题。
 - 修复加载知识库模型时系统内存不足，会重新下载模型、并把内存不足报成下载失败的问题。
+- 修复设置中 MCP 开关推动后不生效、并自动复位的问题。
+- 修复在 Nano 回复过程中点「回复这条」设置的引用，发送后丢失的问题。
+- 修复确认后才执行的操作（部署审核通过的 Skill、删除 Skill 或 MCP 服务）成功后，工具行仍显示 ✕ 的问题。
+- 修复 Skill 部署后 Nano 不作回复的问题。
+- 修复对等待中的提醒点「立即执行」时，Nano 当作时间已到的问题。
+- 修复屏幕操作输入长段文字时，急停、终止或用户接手后仍会把整段打完的问题。
+- 修复正常使用时控制台出现诊断类警告的问题。
 
 ---
