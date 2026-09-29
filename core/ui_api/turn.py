@@ -47,13 +47,16 @@ def submit(text: str, *, image_bytes: Optional[bytes] = None, image_mime: str = 
            reply_target: Optional[dict] = None) -> tuple[str, str]:
     """收下一条用户消息。返回 `(key, mode)`，mode：`run` 立刻起一轮 / `cont` 插话续接当前回应期 /
     `queued` 排队。只有附件、没有文字时，交给模型的是一句「请处理上传的内容」（带语言偏好）。
-    `reply_target` 是这条消息的引用（`take_reply_target()` 取到的），随消息排队。"""
-    if not (text or "").strip():
+    `reply_target` 是这条消息的引用（`take_reply_target()` 取到的），随消息排队。
+    补上说明的消息标成「只发附件」，界面（包括重放）显示「（附件已发送）」而不是那句说明。"""
+    attachment_only = not (text or "").strip()
+    if attachment_only:
         from core.i18n import language_clause
         text = "Please process the uploaded content. " + language_clause("your reply")
     return _sched().submit_user_message(text, image_bytes=image_bytes, image_mime=image_mime,
                                         temp_hint=temp_hint, can_continue=can_continue,
-                                        reply_target=reply_target)
+                                        reply_target=reply_target,
+                                        attachment_only=attachment_only)
 
 
 def busy() -> bool:

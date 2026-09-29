@@ -6,6 +6,10 @@ from typing import Any
 
 from core.ui_api import _state
 
+# 重放时认的显示提示：`render_kind` 等于它的用户消息只发了附件，显示「（附件已发送）」。
+# 值与 `core.schema.RENDER_ATTACHMENT_ONLY` 相同（本模块顶层不导入 core 模块；相等由测试保证）。
+ATTACHMENT_ONLY = "attachment_only"
+
 
 def _memory():
     if _state.memory is None:

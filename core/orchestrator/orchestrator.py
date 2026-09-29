@@ -195,6 +195,8 @@ class Orchestrator(
         # **这一轮**的引用：调度器在处理某条消息的那一轮开始时，按这条消息带来的引用设置
         # （`TurnScheduler.run_user_turn`），`handle_query` 收尾时清掉。注入只读它。
         self._reply_target_turn: dict | None = None
+        # 这一轮的用户消息是「只发附件」（文字是补给模型的说明），同样由调度器在这一轮开始时设
+        self._turn_attachment_only: bool = False
 
         # ⭐⭐ 重启后把待审草稿捞回来。必须放在 __init__ 最后 ——
         # 它要用 `_put_pending_skill`，也要 `_pending_skills` 已经建好。

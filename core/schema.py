@@ -33,6 +33,15 @@ class ToolResultBlock:
             self.content = _json.dumps(self.content, ensure_ascii=False, default=str)
 
 
+# `ChatMessage.render_kind` 的取值分两类：
+# 只给用户看、从不进模型上下文的记录（`MemoryManager.add_ui_only_record` 写的）。
+# 重启时从账本重建模型上下文要跳过它们。
+UI_ONLY_RENDER_KINDS = frozenset({"sys_error", "inbox_unsent"})
+# 只是给界面的显示提示、模型照常读到的消息：只发附件没写字的用户消息，模型读到的是
+# 补上的那句说明，界面（live 与重放）显示「（附件已发送）」。
+RENDER_ATTACHMENT_ONLY = "attachment_only"
+
+
 class ChatMessage:
     """统一的消息格式模型（Anthropic 格式）。
 

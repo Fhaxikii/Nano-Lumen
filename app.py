@@ -1856,6 +1856,15 @@ class WebUI:
         except Exception as e:
             logger.debug(f"[UI] 切换 composer 提示符失败（仅视觉）: {e}")
 
+    def _render_attachment_only_label(self) -> None:
+        """只发附件、没写字的用户消息显示「（附件已发送）」。live 与重放共用。
+
+        行高与左侧用户名那一格（`line-height:1.75rem`）一致，两者在同一行上对齐。
+        """
+        ui.label('（附件已发送）').classes('min-w-0').style(
+            'font-size:var(--nano-fs-base); color:var(--nano-dim); font-style:italic; '
+            'line-height:1.75rem;')
+
     def _render_quote_banner(self, text: str) -> None:
         """用户消息上面那条**引用横幅**。live 与重放**共用这一份**。
 
@@ -5686,7 +5695,7 @@ class WebUI:
                             ui.label(query).classes('text-[14px] leading-7 whitespace-pre-wrap min-w-0').style(
                                 'color:var(--nano-fg);')
                         else:
-                            ui.label('（附件已发送）').style('font-size:var(--nano-fs-base); color:var(--nano-dim); font-style:italic;')
+                            self._render_attachment_only_label()
 
         # 引用在这里交给这条消息：取走（`api_turn.take_reply_target`）后随
         # `api_turn.submit(reply_target=…)` 进调度器，处理这条消息的那一轮开始时才生效。
@@ -9686,9 +9695,13 @@ class WebUI:
                                 'flex-shrink:0; min-width:64px; text-align:right; '
                                 'font-family:var(--nano-mono);')
                             with ui.column().classes('w-full gap-0 min-w-0'):
-                                ui.label(self._replay_text_content(msg.content)).classes(
-                                    'text-[14px] leading-7 whitespace-pre-wrap min-w-0').style(
-                                    'color:var(--nano-fg);')
+                                # 只发附件的消息：文字是补给模型的说明，显示与 live 相同的标签
+                                if _rk == api_history.ATTACHMENT_ONLY:
+                                    self._render_attachment_only_label()
+                                else:
+                                    ui.label(self._replay_text_content(msg.content)).classes(
+                                        'text-[14px] leading-7 whitespace-pre-wrap min-w-0').style(
+                                        'color:var(--nano-fg);')
                                 self._replay_user_images(msg)
                 index += 1
                 continue

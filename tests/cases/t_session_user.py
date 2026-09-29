@@ -170,8 +170,10 @@ def t_interject_and_queue(tmp):
         check((m1, m2, m3, m4) == ("run", "cont", "cont", "queued"), "闲→run，忙→cont / queued",
               str((m1, m2, m3, m4)))
         check(all(isinstance(v, tuple) and isinstance(v[1], dict) and set(v[1]) ==
-                  {"text", "image_bytes", "image_mime", "temp_hint", "reply_target"} for v in parked),
-              "排队项只放数据（含这条消息的引用），不带界面对象", str([v[0] for v in parked]))
+                  {"text", "image_bytes", "image_mime", "temp_hint", "reply_target",
+                   "attachment_only"} for v in parked),
+              "排队项只放数据（含这条消息的引用与只发附件标记），不带界面对象",
+              str([v[0] for v in parked]))
         check(IB.pending_count(k) == 3, "三条都落了库（排队中）", str(IB.pending_count(k)))
         pres.hold = None
         gate.set()
@@ -288,6 +290,45 @@ def t_reply_target_travels(tmp):
     check(agent._reply_target_turn is None, "两轮都结束后本轮引用已清空")
 
 
+class _AttachAgent(_Agent):
+    """记下每一轮开始时的「只发附件」标记。"""
+    _reply_target_turn = None
+    _turn_attachment_only = False
+
+    def handle_query(self, text, image_parts=None, temp_file_hint=None):
+        self.queries.append((text, self._turn_attachment_only))
+
+        async def _gen():
+            try:
+                yield {"event": "final_result", "text": text}
+            finally:
+                self._turn_attachment_only = False
+        return _gen()
+
+
+def t_attachment_only_travels(tmp):
+    print("\n▶ 「只发附件」标记随消息走")
+    make_kernel(tmp / "g")
+    sched = SS.reset_for_tests()
+    agent = _AttachAgent()
+    pres = _Presenter(sched, agent)
+    sched.attach(agent, pres)
+
+    async def run():
+        gate = asyncio.Event()
+        pres.hold = gate
+        sched.submit_user_message("普通的一句")
+        await _settle(3)
+        sched.submit_user_message("Please process the uploaded content.", image_bytes=b"img",
+                                  attachment_only=True)
+        pres.hold = None
+        gate.set()
+        await _settle(40)
+    asyncio.run(run())
+    check(agent.queries == [("普通的一句", False), ("Please process the uploaded content.", True)],
+          "⭐ 只有只发附件的那条消息，它那一轮开始时标记为真", str(agent.queries))
+
+
 def t_ui_wiring():
     print("\n▶ 界面只剩呈现")
     app = S.module_text("app")
@@ -313,6 +354,7 @@ def main() -> int:
         t_presenter_error(tmp)
         t_mixed_queue(tmp)
         t_reply_target_travels(tmp)
+        t_attachment_only_travels(tmp)
         t_ui_wiring()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)

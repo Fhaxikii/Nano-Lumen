@@ -194,7 +194,8 @@ class TurnScheduler:
     def submit_user_message(self, text: str, *, image_bytes: bytes | None = None,
                             image_mime: str = "image/jpeg", temp_hint: str | None = None,
                             can_continue: bool = False,
-                            reply_target: dict | None = None) -> tuple[str, str]:
+                            reply_target: dict | None = None,
+                            attachment_only: bool = False) -> tuple[str, str]:
         """收下一条用户消息，决定它怎么跑。返回 `(key, mode)`：
 
           · "run"    —— 闲：立刻起一轮（新回应期，段号归 1）
@@ -207,13 +208,15 @@ class TurnScheduler:
 
         `reply_target`：这条消息在引用什么（界面发送时取走的 `{"iid", "q", "kind"}`）。
         它跟着消息排队，处理这条消息的那一轮开始时才生效。
+        `attachment_only`：用户只发了附件、文字是替他补的说明；同样随消息走。
         """
         busy = self.lock.locked()
         item_id = inbox_submit(text, {"had_image": bool(image_bytes),
                                       "temp_hint": bool(temp_hint)})
         payload = {"text": text, "image_bytes": image_bytes, "image_mime": image_mime,
                    "temp_hint": temp_hint,
-                   "reply_target": dict(reply_target) if reply_target else None}
+                   "reply_target": dict(reply_target) if reply_target else None,
+                   "attachment_only": bool(attachment_only)}
         if busy:
             if can_continue:
                 key = item_id or f"cont_{id(payload)}"
@@ -276,8 +279,9 @@ class TurnScheduler:
             self._activity_event("user_message")
             self._clear_stop()
             self.last_user_text = str(payload.get("text") or "")
-            # 这条消息自己带来的引用，成为这一轮的引用（收尾时由 handle_query 清掉）
+            # 这条消息自己带来的引用与「只发附件」标记，成为这一轮的（收尾时由 handle_query 清掉）
             self.agent._reply_target_turn = payload.get("reply_target")
+            self.agent._turn_attachment_only = bool(payload.get("attachment_only"))
             try:
                 source = self._user_source(payload)
                 if await self._run_turn(source, lambda tid: self.presenter.render_user_turn(

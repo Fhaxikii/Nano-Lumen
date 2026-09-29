@@ -230,6 +230,7 @@ class TurnMixin:
                     f"[Interaction] 「回复这条」{_rt_consumed} 已被本轮消费 → 自动复位"
                 )
             self._reply_target_turn = None
+            self._turn_attachment_only = False
 
     async def _handle_query_impl(self, query: str, image_parts: list | None = None, temp_file_hint: str | None = None):
         current_running_skill = None
@@ -799,6 +800,9 @@ class TurnMixin:
             _rq = ((getattr(self, "_reply_target_turn", None) or {}).get("q") or "")
             if _rq:
                 self.memory.attach_reply_quote(_rq)
+            # 只发附件：这条消息的文字是补给模型的说明，标上后界面重放显示「（附件已发送）」
+            if getattr(self, "_turn_attachment_only", False):
+                self.memory.mark_last_user_attachment_only()
         except Exception as _e_rq:
             logger.debug(f"[Reply] 引用落盘跳过: {_e_rq}")
 

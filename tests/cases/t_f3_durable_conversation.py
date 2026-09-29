@@ -448,6 +448,48 @@ def t_no_system_note_still_uses_add_message() -> None:
           " / ".join(bad) if bad else "")
 
 
+def t_ui_only_records_stay_out_of_model_after_restart(tmp: pathlib.Path) -> None:
+    """只给用户看的记录（`add_ui_only_record`）从不进模型上下文——重启重建时也一样。
+
+    原来重建时不看 `render_kind`，账本里有什么就放什么：重启后模型会看到
+    「[Request Error] 今日用量已达上限」这类报错，以为是自己说的。
+    """
+    print("\n[11] 只给用户看的记录：重启后仍不进模型上下文")
+    store = RuntimeStore(tmp / "uionly.db")
+    repo = ConversationRepository(store)
+    memory = MemoryManager(max_turns=10, conversation_repository=repo)
+    memory.add_message("user", "你好")
+    memory.add_ui_only_record("[Request Error] 今日用量 $2.04 已达上限 $2.00", "sys_error")
+    memory.add_message("user", "还在吗")
+    check(all(m.render_kind != "sys_error" for m in memory.storage), "前提：live 时它不在模型上下文里")
+
+    restarted = MemoryManager(max_turns=10, conversation_repository=repo)
+    check([m.content for m in restarted.storage] == ["你好", "还在吗"],
+          "⭐⭐ 重启后模型上下文里仍然没有那条报错", str([m.content for m in restarted.storage]))
+    ledger = restarted.conversation_messages()
+    check(any(getattr(m, "render_kind", "") == "sys_error" for m in ledger),
+          "账本里仍然有它（重放照样画那张卡）")
+
+
+def t_attachment_only_message(tmp: pathlib.Path) -> None:
+    """只发附件的消息：模型读到补上的说明，账本标着 attachment_only，重启后两边都不变。"""
+    print("\n[12] 只发附件的消息：模型照常读到，标记随消息落盘")
+    from core.schema import RENDER_ATTACHMENT_ONLY
+    store = RuntimeStore(tmp / "attach.db")
+    repo = ConversationRepository(store)
+    memory = MemoryManager(max_turns=10, conversation_repository=repo)
+    note = "Please process the uploaded content. Write your reply in Simplified Chinese."
+    memory.add_message("user", note)
+    check(memory.mark_last_user_attachment_only() is True, "标记成功")
+
+    restarted = MemoryManager(max_turns=10, conversation_repository=repo)
+    check([m.content for m in restarted.storage] == [note],
+          "⭐⭐ 重启后模型上下文里仍有这条（不能被当成只给用户看的记录跳过）")
+    ledger = restarted.conversation_messages()
+    check(ledger and ledger[-1].render_kind == RENDER_ATTACHMENT_ONLY,
+          "⭐ 账本里带着 attachment_only（重放据此显示「（附件已发送）」）")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         tmp = pathlib.Path(d)
@@ -460,6 +502,8 @@ def main() -> int:
         t_later_memory_compression_updates_durable_record(tmp)
         t_user_images_survive_restart_in_ui(tmp)
         t_system_notes_reach_model_but_never_the_screen(tmp)
+        t_ui_only_records_stay_out_of_model_after_restart(tmp)
+        t_attachment_only_message(tmp)
     t_real_app_wires_durable_memory_and_reset()
     t_ui_replay_is_passive_and_uses_durable_messages()
     t_no_system_note_still_uses_add_message()

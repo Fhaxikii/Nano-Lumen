@@ -3,7 +3,8 @@ from typing import List, Optional, Dict, Any, TYPE_CHECKING
 
 from loguru import logger
 
-from core.schema import ChatMessage, ToolCall, ToolResultBlock
+from core.schema import (ChatMessage, ToolCall, ToolResultBlock, UI_ONLY_RENDER_KINDS,
+                         RENDER_ATTACHMENT_ONLY)
 
 if TYPE_CHECKING:
     from core.runtime.conversation import ConversationRepository
@@ -77,6 +78,11 @@ class MemoryManager:
                 i += 1
                 continue
             if msg.role == "tool":
+                i += 1
+                continue
+            if getattr(msg, "render_kind", "") in UI_ONLY_RENDER_KINDS:
+                # 只给用户看的记录（`add_ui_only_record`）只在账本里，从不进模型上下文；
+                # 重建时同样不放进去，否则重启后模型会以为那些报错是自己说的。
                 i += 1
                 continue
             restored.append(msg)
@@ -376,6 +382,24 @@ class MemoryManager:
             return True
         except Exception as e:
             logger.debug(f"[Reply] 引用落盘失败（不影响发送）: {e}")
+            return False
+
+    def mark_last_user_attachment_only(self) -> bool:
+        """把最后一条 user 消息标成「只发了附件、没写字」（`render_kind=attachment_only`），随消息落盘。
+
+        这条消息的文字是替用户补给模型的说明（模型照常读到），界面重放时据此显示
+        「（附件已发送）」而不是那句说明。失败只记 DEBUG，不影响发送。
+        """
+        try:
+            msg = next((m for m in reversed(self.storage) if m.role == "user"), None)
+            if msg is None:
+                return False
+            msg.render_kind = RENDER_ATTACHMENT_ONLY
+            if self._conversation_repository is not None and self._conversation_session_id:
+                self._conversation_repository.update_message(self._conversation_session_id, msg)
+            return True
+        except Exception as e:
+            logger.debug(f"[Attach] 只发附件的标记落盘失败（不影响发送）: {e}")
             return False
 
     def attach_user_images(self, image_parts: list) -> int:
