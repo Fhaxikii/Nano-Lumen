@@ -1412,7 +1412,8 @@ class WebUI:
             return value if isinstance(value, str) else (fallback or "")
         except RuntimeError as e:
             if "auto-index" in str(e) or "Cannot await" in str(e):
-                logger.warning("[UI] auto-index 禁止 await JS，使用 code_holder fallback")
+                # 正常的后备路径：code_holder 随编辑器每次改动同步，取它就是当前内容
+                logger.debug("[UI] auto-index 禁止 await JS，使用 code_holder fallback")
                 return fallback or ""
             logger.warning(f"[UI] 读取 CodeMirror 内容失败: {e}")
             return fallback or ""

@@ -405,12 +405,16 @@ def install(kernel: RuntimeKernel) -> None:
                 _close(conn, cur["lease_id"], LeaseStatus.PREEMPTED,
                        p.get("preempt_reason") or f"preempted by {holder}", ctx.now)
             else:
-                # ⭐ 到期未还 —— 这就是 `_os_task_busy` 泄漏那个形状，收掉并响亮记一笔
+                # 到期未还：收掉。Nano 持有的租约走到这里说明没能收尾，报警；
+                # 用户持有的（被动挂起）本来就靠 TTL 结束——用户停手即到期，是正常路径。
                 _close(conn, cur["lease_id"], LeaseStatus.EXPIRED,
                        "not released before deadline", ctx.now)
-                logger.warning(
-                    f"[OSLease] 活动租约 {cur['lease_id']}（{cur['holder']}）到期未归还，"
-                    f"已回收。持有者没能收尾 —— 这正是裸 bool 时代会永久卡死的那种情况。")
+                if cur["holder"] == Holder.USER:
+                    logger.debug(f"[OSLease] 用户持有的活动租约 {cur['lease_id']} 已到期（用户停手）")
+                else:
+                    logger.warning(
+                        f"[OSLease] 活动租约 {cur['lease_id']}（{cur['holder']}）到期未归还，"
+                        f"已回收。持有者没能收尾。")
 
         lid = p.get("lease_id") or ("lease_" + uuid.uuid4().hex[:10])
         ttl = p.get("ttl_sec")
@@ -1147,10 +1151,14 @@ def expire_tick(kernel: RuntimeKernel, now: float | None = None) -> int:
                                   payload={"lease_id": r["lease_id"]}))
             n += 1
             if r["kind"] == LeaseKind.ACTIVITY:
-                # ⚠️ 活动租约走到过期，说明持有者没能收尾 —— 响亮
-                logger.warning(
-                    f"[OSLease] 活动租约 {r['lease_id']}（{r['holder']}）到期回收。"
-                    f"正常路径应当主动归还，走到这里说明有东西没收好。")
+                # Nano 持有的活动租约走到过期，说明没能收尾，报警；
+                # 用户持有的（被动挂起）靠 TTL 结束，是正常路径。
+                if r["holder"] == Holder.USER:
+                    logger.debug(f"[OSLease] 用户持有的活动租约 {r['lease_id']} 已到期（用户停手）")
+                else:
+                    logger.warning(
+                        f"[OSLease] 活动租约 {r['lease_id']}（{r['holder']}）到期回收。"
+                        f"正常路径应当主动归还，走到这里说明有东西没收好。")
         except Exception as e:      # pragma: no cover
             logger.error(f"[OSLease] 回收 {r['lease_id']} 失败: {e}")
     return n

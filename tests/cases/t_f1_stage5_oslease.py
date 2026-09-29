@@ -133,6 +133,39 @@ def t_expiry_is_derived(tmp: pathlib.Path) -> None:
           "⭐ tick 也会回收（level-triggered，两条路互不依赖）", str(n))
 
 
+def t_expiry_log_level(tmp: pathlib.Path) -> None:
+    """用户持有（被动挂起）靠 TTL 结束是正常路径，不报警；Nano 持有的到期才报警。"""
+    print("\n[2b] 到期回收的日志级别：用户持有的不报警，Nano 持有的报警")
+    seen: list = []
+    sink = logger.add(lambda m: seen.append(m.record["message"]), level="WARNING")
+    try:
+        # acquire 顺手收掉过期的那条路
+        k, clock = make_kernel(tmp / "b3")
+        _acq(k, holder=L.Holder.USER, ttl_sec=12)
+        clock.advance(13)
+        _acq(k)
+        check(not seen, "⭐ 用户持有的到期被 acquire 收掉：没有 WARNING", str(seen)[:120])
+        # tick 那条路
+        k2, clock2 = make_kernel(tmp / "b4")
+        _acq(k2, holder=L.Holder.USER, ttl_sec=12)
+        clock2.advance(13)
+        L.expire_tick(k2)
+        check(not seen, "⭐ 用户持有的到期被 tick 收掉：没有 WARNING", str(seen)[:120])
+        # Nano 持有的到期：两条路都报警
+        k3, clock3 = make_kernel(tmp / "b5")
+        _acq(k3, ttl_sec=30)
+        clock3.advance(31)
+        L.expire_tick(k3)
+        check(len(seen) == 1 and "nano" in seen[-1], "Nano 持有的到期被 tick 收掉：WARNING", str(seen)[-120:])
+        k4, clock4 = make_kernel(tmp / "b6")
+        _acq(k4, ttl_sec=30)
+        clock4.advance(31)
+        _acq(k4, holder=L.Holder.USER)
+        check(len(seen) == 2 and "nano" in seen[-1], "Nano 持有的到期被 acquire 收掉：WARNING", str(seen)[-120:])
+    finally:
+        logger.remove(sink)
+
+
 def t_fence(tmp: pathlib.Path) -> None:
     print("\n[3] ⭐ fence：被接管的持有者安静作废")
     k, _ = make_kernel(tmp / "c")
@@ -266,6 +299,7 @@ def main() -> int:
         tmp = pathlib.Path(d)
         t_acquire_and_mutex(tmp)
         t_expiry_is_derived(tmp)
+        t_expiry_log_level(tmp)
         t_fence(tmp)
         t_db_level_mutex(tmp)
         t_authorization_is_different(tmp)
