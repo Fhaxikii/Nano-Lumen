@@ -646,6 +646,21 @@ class SkillWriterMixin:
         # Interaction 是**待办事实**。两者职责不同，不是双权威。
         self._rt_audit_iid = _rt_open_skill_audit(
             self, filename, description, code, mode, ok, errors)
+        # 草稿写好、进入审计这件事写进对话（隐藏的系统记录，英文）。对话历史里原本只有用户的
+        # 请求——写代码的过程与审计卡都不在历史里，模型读历史会以为还没写，用户说「部署吧」时
+        # 去重写或答「没有待审计的 Skill」。
+        try:
+            _what = "an update of" if mode == "update" else "a new"
+            _checked = "passed validation" if ok else "did NOT pass validation"
+            _iid = f" (interaction {self._rt_audit_iid})" if self._rt_audit_iid else ""
+            self.memory.add_system_note(
+                "assistant",
+                f"[System record, written by the system - not something you said: the draft of "
+                f"{_what} Skill \"{filename}\" has been written, {_checked}, and is waiting in the "
+                f"review window for the user's decision{_iid}. To deploy, change or discard it, "
+                f"answer that review item with answer_open_interaction; do not write it again.]")
+        except Exception as _e_note:
+            logger.debug(f"[SkillWriter] 草稿进审计的对话记录没写成: {_e_note}")
         yield {
             "event": "skill_preview",
             "filename": filename,

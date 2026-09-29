@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Skill 部署 / 更新后写进对话的那条记录（`_write_skill_deploy_context`）。
+"""Skill 草稿进审计、部署 / 更新之后写进对话的记录。
 
-它是系统陈述的事实，给模型看：
+草稿进审计（`_emit_skill_preview_from_decision`）：写代码的过程与审计卡都不在对话历史里，
+不记一笔的话模型读历史会以为还没写，用户说「部署吧」时去重写或答「没有待审计的 Skill」。
+
+部署 / 更新（`_write_skill_deploy_context`）。两者都是系统陈述的事实，给模型看：
 - 走隐藏的系统记录（`visible_to_user=False`），不是普通 assistant 消息——否则模型以为
   自己已经告诉过用户、这一轮不再开口，重放时还会被画成 Nano 的气泡；
 - 英文（注入模型的文本一律英文），写明是系统写的；
@@ -98,11 +101,38 @@ def t_update_and_collision(tmp: pathlib.Path) -> None:
     check(o.memory.storage[-1].visible_to_user is False, "同样不对用户可见")
 
 
+def t_draft_record(tmp: pathlib.Path) -> None:
+    print("\n[3] 草稿写好、进入审计：对话里记一笔（隐藏、英文）")
+    import asyncio
+    import types
+    o = make_orch(tmp / "c")
+    o._put_pending_skill = lambda d: None      # 草稿的工作载荷与本用例无关
+    before = len(o.memory.storage)
+    dec = types.SimpleNamespace(args={"filename": "CountClipboardWords", "code": "x = 1\n",
+                                      "description": "count the words on the clipboard"})
+
+    async def run():
+        return [e async for e in o._emit_skill_preview_from_decision(dec, "fake")]
+    events = asyncio.run(run())
+    check(any(e.get("event") == "skill_preview" for e in events), "前提：审计卡照常发出")
+    added = o.memory.storage[before:]
+    m = added[-1] if added else None
+    text = (m.content if m else "") or ""
+    check(m is not None and m.visible_to_user is False and m.role == "assistant",
+          "⭐⭐ 写了一条隐藏的系统记录（模型读得到，聊天区不显示）", str(len(added)))
+    check(text.isascii() and '"CountClipboardWords"' in text and "review window" in text,
+          "⭐ 英文，写明草稿名、在审计窗口等用户决定", text[:120])
+    check("answer_open_interaction" in text and "do not write it again" in text,
+          "⭐ 告诉模型用 answer_open_interaction 处理、不要重写")
+    check("did NOT pass validation" in text, "校验没通过时如实写明（这段代码不合协议）")
+
+
 def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="nano_deploy_record_"))
     try:
         t_deploy_record(tmp)
         t_update_and_collision(tmp)
+        t_draft_record(tmp)
     finally:
         for st in _stores:
             try:
