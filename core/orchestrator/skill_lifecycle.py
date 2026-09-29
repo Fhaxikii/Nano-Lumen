@@ -197,46 +197,30 @@ class SkillLifecycleMixin:
     def _write_skill_deploy_context(self, skill_name: str, description: str,
                                      mode: str = "create", lifecycle: str = "permanent",
                                      name_collision: bool = False):
-        """Skill 部署后往 memory 写一条 assistant 消息记录部署上下文。
+        """Skill 部署 / 更新后，往对话里写一条给模型看的系统记录。
 
-        解决"这个 Skill 怎么用"被错误路由的根本原因:
-        部署后 _pending_skill 清空,模型再收到追问时没有上下文。
-        在 memory 里写一条明确的记录,后续追问时模型能从 memory 读到。
+        部署后 `_pending_skill` 已清空，用户追问「这个 Skill 怎么用」时，模型靠这条记录知道
+        它刚装上、用途是什么；同名覆盖了永久 Skill 时也写明，否则用户说「用回原来的」时
+        模型不知道那个名字已被遮蔽。
 
-        name_collision: Fix A 的延伸——"信息全"不能只给 UI 一个 toast，
-        模型自己的 memory 里也要有这件事。否则用户后面说"用回原来的
-        {skill_name}"，模型不知道这个名字现在被临时版本遮蔽了，
-        又会重复一遍"模型以为的状态 vs 实际状态"不一致的坑。
+        写成隐藏的系统记录（`add_system_note`，英文）：它是系统陈述的事实，不是模型说过的话。
+        写成普通 assistant 消息的话，模型会以为自己已经告诉过用户、这一轮不再开口，
+        重放时还会被画成 Nano 的气泡。怎么告诉用户由模型自己决定。
         """
-        use_zh = self._looks_chinese(description)
-
-        if use_zh:
-            action_label = "更新" if mode == "update" else "部署"
-            context_msg = (
-                f"Skill「{skill_name}」已成功{action_label}并热载到工具链。\n"
-                f"用途：{description or '无描述'}\n"
-                f"使用方式：直接用自然语言描述需求，模型会自动调用；也可以明确说：调用 {skill_name}。\n"
-                f"如需修改，说：修改 {skill_name}。如需查看代码，说：查看 {skill_name} 的代码。"
-            )
-        else:
-            action_label = "updated" if mode == "update" else "deployed"
-            context_msg = (
-                f"Skill \"{skill_name}\" has been successfully {action_label} and hot-loaded into the tool chain.\n"
-                f"Purpose: {description or 'no description'}\n"
-                f"How to use: describe the need in natural language and the model will call it automatically, "
-                f"or explicitly say: call {skill_name}.\n"
-                f"To modify it, say: modify {skill_name}. To inspect code, say: inspect {skill_name} code."
-            )
-
+        action_label = "updated" if mode == "update" else "deployed"
+        context_msg = (
+            f"[System record, written by the system - not something you said: Skill "
+            f"\"{skill_name}\" has been {action_label} and hot-loaded into the tool chain. "
+            f"Purpose: {description or 'no description'}. "
+            f"It is called automatically when a request matches, or when the user names it; "
+            f"the user can ask to modify it or to see its code.")
         if name_collision:
-            if use_zh:
-                context_msg += f"\n名字冲突：Skill「{skill_name}」与已有永久 Skill 同名，已覆盖。"
-            else:
-                context_msg += (
-                    f"\nName collision: \"{skill_name}\" has the same name as an existing permanent Skill and has overwritten it."
-                )
+            context_msg += (
+                f" Name collision: \"{skill_name}\" has the same name as an existing permanent "
+                f"Skill and has overwritten it.")
+        context_msg += "]"
 
-        self.memory.add_message("assistant", context_msg)
+        self.memory.add_system_note("assistant", context_msg)
         # Keep session_log in English because it is injected back into the system prompt.
         self._session_log_append(
             f"[Skill {('updated' if mode == 'update' else 'deployed')}] {skill_name}: {description or 'no description'}"

@@ -266,10 +266,6 @@ class PromptContextMixin:
             name = name.replace("Windows 10", "Windows 11")
         return f"{name} {major}.{minor}.{build}" if build else name
 
-    @staticmethod
-    def _looks_chinese(text: str) -> bool:
-        return any("\u4e00" <= ch <= "\u9fff" for ch in (text or ""))
-
     def _build_audit_failure_injection(self) -> str:
         """把"上一个 Skill 没能部署，以及具体哪里不合协议"摆到模型面前。
 
