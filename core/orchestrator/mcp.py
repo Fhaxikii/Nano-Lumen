@@ -469,23 +469,32 @@ class McpMixin:
         return _msg
 
     def _note_mcp_change(self, op: str, server: str, *, by: str) -> None:
-        """MCP 被增删改这件事，**两条来路共用的唯一出口**。
+        """MCP 被增删改这件事的唯一出口。
 
-        🔴 `by` 有两个取值，而它们**不能合并**：
-             "nano"  Nano 自己调 `manage_mcp` 动的
-             "user"  用户在设置里手点的
-           📌 对模型来说这是两件事：前者是它自己做的（它知道），
-              后者是**环境变了**（它必须被告知，否则下一轮还当那个工具在）。
-              ——同 OS 授权那条判据：「用户亲自点了同意」和「auto 替用户点了」
-                对模型是两件事，复用同一个回调这个区别就消失了。
+        `by` 区分两条来路，对模型是两件事：
+             "nano"  Nano 自己调 `manage_mcp` / `connect_mcp` 动的（它自己知道）
+             "user"  用户在设置里手点的（环境变了，要让它知道）
 
-        ⚠️ 写进 session log 而不是只发个事件：📌 事件是**当轮**的，
-           而「这个 MCP 已经没了」是**后续每一轮**都要知道的事实。
+        两条来路记在不同的地方：
+          · 用户在界面上改的 → 对话里的隐藏系统记录（`add_system_note`，英文）。它是
+            发生在对话时间线上的一件事，跟着所在的对话一起衰减、重启后仍在；
+            模型只需要知道它发生过，不主动提起。与 Skill / 知识库的界面操作同一种写法。
+          · Nano 自己调工具改的 → session log（英文）。工具结果已在对话里，这里只是
+            本次会话的操作流水。
+        能不能调用某个工具不靠这条记录：每轮的工具表是实时的。
         """
-        _verb = {"enable": "启用", "disable": "停用", "delete": "删除",
-                 "retry": "重连", "add": "接入"}.get(op, op)
-        _who = "Nano" if by == "nano" else "用户"
+        _verb = {"enable": "enabled", "disable": "disabled", "delete": "removed",
+                 "retry": "reconnected", "add": "added"}.get(op, op)
+        if by == "user":
+            try:
+                self.memory.add_system_note(
+                    "assistant",
+                    f'[System record: the user {_verb} MCP server "{server}" in Settings; '
+                    f'this was not done in the chat.]')
+            except Exception as e:
+                logger.warning(f"[B3] 用户的 MCP 变更未能写进对话记录: {e}")
+            return
         try:
-            self._session_log_append(f"{_who}{_verb}了 MCP 服务「{server}」")
+            self._session_log_append(f"[MCP {_verb}] {server}")
         except Exception as e:
             logger.warning(f"[B3] MCP 变更未能记入 session log: {e}")

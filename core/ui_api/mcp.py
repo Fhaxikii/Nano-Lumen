@@ -2,7 +2,7 @@
 """MCP 服务管理（设置里的 MCP 连接页）：状态列表、重连、移除、粘 JSON 添加、启用开关。
 
 用户在界面上改了 MCP，对模型来说是「环境变了」（和 Nano 自己调 `manage_mcp` 不是一回事），
-所以每次改动都记进 session log（`by="user"`），下一轮模型才知道那个工具已经不在了 / 新来了。
+所以每次改动都经 `_note_mcp_change(by="user")` 写成对话里的隐藏系统记录，让模型知道发生过。
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def _note(op: str, name: str) -> None:
     try:
         _state.require_agent()._note_mcp_change(op, name, by="user")
     except Exception as e:
-        logger.warning(f"[B3] 用户的 MCP 变更未能记入 session log: {e}")
+        logger.warning(f"[B3] 用户的 MCP 变更未能写进对话记录: {e}")
 
 
 def servers() -> list[dict]:
