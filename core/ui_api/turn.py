@@ -43,14 +43,17 @@ def check_event(event: Any) -> None:
 
 # ── 发消息 / 终止 ─────────────────────────────────────────────────────────
 def submit(text: str, *, image_bytes: Optional[bytes] = None, image_mime: str = "image/jpeg",
-           temp_hint: Optional[str] = None, can_continue: bool = False) -> tuple[str, str]:
+           temp_hint: Optional[str] = None, can_continue: bool = False,
+           reply_target: Optional[dict] = None) -> tuple[str, str]:
     """收下一条用户消息。返回 `(key, mode)`，mode：`run` 立刻起一轮 / `cont` 插话续接当前回应期 /
-    `queued` 排队。只有附件、没有文字时，交给模型的是一句「请处理上传的内容」（带语言偏好）。"""
+    `queued` 排队。只有附件、没有文字时，交给模型的是一句「请处理上传的内容」（带语言偏好）。
+    `reply_target` 是这条消息的引用（`take_reply_target()` 取到的），随消息排队。"""
     if not (text or "").strip():
         from core.i18n import language_clause
         text = "Please process the uploaded content. " + language_clause("your reply")
     return _sched().submit_user_message(text, image_bytes=image_bytes, image_mime=image_mime,
-                                        temp_hint=temp_hint, can_continue=can_continue)
+                                        temp_hint=temp_hint, can_continue=can_continue,
+                                        reply_target=reply_target)
 
 
 def busy() -> bool:
@@ -78,9 +81,9 @@ def set_reply_target(target: Optional[dict]) -> None:
     _state.require_agent()._reply_target = dict(target) if target else None
 
 
-def hand_off_reply_target() -> str:
-    """发出消息时把引用移交给这一轮（界面侧复位，模型这一轮读得到）。返回被移交的目标 id。"""
-    return _state.require_agent().hand_off_reply_target()
+def take_reply_target() -> Optional[dict]:
+    """发出消息时取走引用（界面侧随即复位），交给 `submit(reply_target=…)` 随这条消息走。"""
+    return _state.require_agent().take_reply_target()
 
 
 # ── 对话里的界面记录 / 重置 ──────────────────────────────────────────────

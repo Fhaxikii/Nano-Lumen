@@ -182,12 +182,12 @@ class Orchestrator(
         # 而模型往往是在很多轮之后才说"上次写的校验报错，重新写"。
         # 实例状态 + 每轮重建的动态段，天生不受截断影响。
         self._last_audit_failure: dict | None = None
-        # 用户在待办卡片上点了「回复这条」→ 下一条消息的指向是显式的。
-        # ⚠️ 只是**意图**，不动 Interaction 状态；落盘仍走 answer_open_interaction。
+        # 用户在待办卡片上点了「回复这条」或选中了一段话 → **下一条**消息的引用。
+        # 只是意图，不动 Interaction 状态；落盘仍走 answer_open_interaction。
+        # 发送时由 `take_reply_target()` 取走，随消息进调度器。
         self._reply_target: dict | None = None
-        # ⭐⭐⭐ [2026-08-13 CMD63] 本轮**已被移交**的指向 —— 见 `hand_off_reply_target()`。
-        # UI 一按发送就把 `_reply_target` 移到这里（而不是清掉），
-        # 因为真正的消费者（模型动态段）比 UI 晚 4 毫秒才来读。
+        # **这一轮**的引用：调度器在处理某条消息的那一轮开始时，按这条消息带来的引用设置
+        # （`TurnScheduler.run_user_turn`），`handle_query` 收尾时清掉。注入只读它。
         self._reply_target_turn: dict | None = None
 
         # ⭐⭐ 重启后把待审草稿捞回来。必须放在 __init__ 最后 ——

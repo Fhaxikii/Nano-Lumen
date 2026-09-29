@@ -98,18 +98,20 @@ def t_reset_in_finally() -> None:
     tries = [n for n in ast.walk(fn) if isinstance(n, ast.Try) and n.finalbody]
     check(bool(tries), "handle_query 里有带 finally 的 try")
 
+    # 复位的对象是这一轮带着的引用 `_reply_target_turn`（调度器按消息设）。
+    # `_reply_target` 是用户为下一条消息设的，不在这里清（见 t_reply_target_stale [4][5]）。
     def _clears(nodes):
         for n in nodes:
             for c in ast.walk(n):
                 if (isinstance(c, ast.Assign)
-                        and any(isinstance(t, ast.Attribute) and t.attr == "_reply_target"
+                        and any(isinstance(t, ast.Attribute) and t.attr == "_reply_target_turn"
                                 for t in c.targets)
                         and isinstance(c.value, ast.Constant) and c.value.value is None):
                     return True
         return False
 
     check(any(_clears(t.finalbody) for t in tries),
-          "⭐ finally 里把 _reply_target 置 None —— 正常/超预算/异常三条出口都算消费过")
+          "⭐ finally 里把本轮引用 _reply_target_turn 置 None —— 正常/超预算/异常三条出口都算消费过")
 
     # ⚠️ 反向前置：证明它不是在别处也被随便清（那样这条断言没有意义）
     body_clears = _clears([n for t in tries for n in t.body])

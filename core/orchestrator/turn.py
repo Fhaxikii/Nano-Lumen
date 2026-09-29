@@ -221,17 +221,14 @@ class TurnMixin:
             #    不再自己存一份（双权威必然不同步 —— 这里尤其明显：
             #    复位发生在轮次结束，而那时 UI 根本没参与）。
             #
-            # ⭐⭐⭐ [2026-08-13 CMD63] **两个字段都要清。**
-            #    `_reply_target_turn` 是 UI 按发送时移交过来的本轮快照
-            #    （见 `hand_off_reply_target`）—— 正常路径下真正带着 iid 的是它，
-            #    漏清它 = 指向粘到下一轮，也就是这个 bug 的原始形态。
-            #    `_reply_target` 仍要清：有可能压根没经过 UI 发送路径。
-            _rt_consumed = (self._reply_target_turn or self._reply_target or {}).get("iid")
+            # 只清本轮带着的那份（`_reply_target_turn`，调度器在这一轮开始时按消息设）。
+            # `_reply_target` 是用户为**下一条**消息设的引用（可能正是在这一轮进行中设的），
+            # 不属于这一轮，不能在这里清。
+            _rt_consumed = (self._reply_target_turn or {}).get("iid")
             if _rt_consumed:
                 logger.info(
                     f"[Interaction] 「回复这条」{_rt_consumed} 已被本轮消费 → 自动复位"
                 )
-            self._reply_target = None
             self._reply_target_turn = None
 
     async def _handle_query_impl(self, query: str, image_parts: list | None = None, temp_file_hint: str | None = None):
@@ -794,15 +791,12 @@ class TurnMixin:
 
     def _turn_after_user_message(self):
         """用户消息写入 memory 之后：引用落盘、插话基线、清终止意图、压缩历史图片与旧文件切片。"""
-        # ⭐ [2026-08-22] 引用指向跟着这条消息落盘 —— 见 `attach_reply_quote`。
-        # ⚠️ 读的是 `_reply_target_turn`（UI 按发送时移交过来的本轮快照），
-        #    退回 `_reply_target` 兼容还没移交的路径 —— 与
-        #    `_build_quoted_selection_block()` 读的是**同一个来源**。
-        #    📌 展示给用户的那份和喂给模型的那份，必须来自同一个事实，
-        #       否则总有一天它们会说两件事。
+        # 引用跟着这条消息落盘（`attach_reply_quote`），重放时显示引用横幅。
+        # 只读本轮快照 `_reply_target_turn`（这条消息自己带来的引用），与
+        # `_build_quoted_selection_block()`、`_build_open_interactions_injection()` 同一来源；
+        # 不读 `_reply_target`——那是用户为下一条消息设的。
         try:
-            _rq = ((getattr(self, "_reply_target_turn", None)
-                    or getattr(self, "_reply_target", None) or {}).get("q") or "")
+            _rq = ((getattr(self, "_reply_target_turn", None) or {}).get("q") or "")
             if _rq:
                 self.memory.attach_reply_quote(_rq)
         except Exception as _e_rq:

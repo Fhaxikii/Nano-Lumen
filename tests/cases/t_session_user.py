@@ -170,8 +170,8 @@ def t_interject_and_queue(tmp):
         check((m1, m2, m3, m4) == ("run", "cont", "cont", "queued"), "闲→run，忙→cont / queued",
               str((m1, m2, m3, m4)))
         check(all(isinstance(v, tuple) and isinstance(v[1], dict) and set(v[1]) ==
-                  {"text", "image_bytes", "image_mime", "temp_hint"} for v in parked),
-              "排队项只放数据，不带界面对象", str([v[0] for v in parked]))
+                  {"text", "image_bytes", "image_mime", "temp_hint", "reply_target"} for v in parked),
+              "排队项只放数据（含这条消息的引用），不带界面对象", str([v[0] for v in parked]))
         check(IB.pending_count(k) == 3, "三条都落了库（排队中）", str(IB.pending_count(k)))
         pres.hold = None
         gate.set()
@@ -243,6 +243,51 @@ def t_mixed_queue(tmp):
           "按入队顺序：唤醒排在后来的消息前面", str(kinds))
 
 
+class _QuoteAgent(_Agent):
+    """记下每一轮开始时看到的本轮引用；轮结束时像 handle_query 的 finally 一样清掉它。"""
+    _reply_target = None
+    _reply_target_turn = None
+
+    def handle_query(self, text, image_parts=None, temp_file_hint=None):
+        self.queries.append((text, dict(self._reply_target_turn or {}) or None))
+
+        async def _gen():
+            try:
+                yield {"event": "final_result", "text": text}
+            finally:
+                self._reply_target_turn = None
+        return _gen()
+
+
+def t_reply_target_travels(tmp):
+    print("\n▶ 引用随消息走：上一轮进行中发出的引用，只给它自己那一轮")
+    make_kernel(tmp / "f")
+    sched = SS.reset_for_tests()
+    agent = _QuoteAgent()
+    pres = _Presenter(sched, agent)
+    sched.attach(agent, pres)
+    X = {"iid": "int_audit", "q": "Review pending draft", "kind": "interaction"}
+
+    async def run():
+        gate = asyncio.Event()
+        pres.hold = gate
+        sched.submit_user_message("现在几点")            # 第一轮：没有引用
+        await _settle(3)
+        # 第一轮还在跑：用户点了审计卡的「回复」，随即发出「部署吧」（界面取走引用随消息提交）
+        agent._reply_target = dict(X)
+        taken, agent._reply_target = agent._reply_target, None
+        _, mode = sched.submit_user_message("部署吧", can_continue=False, reply_target=taken)
+        check(mode == "queued", "第一轮没结束 → 第二条排队", mode)
+        check(agent._reply_target_turn is None, "⭐ 排队期间当前这一轮的引用不被改动")
+        pres.hold = None
+        gate.set()
+        await _settle(40)
+    asyncio.run(run())
+    check(agent.queries == [("现在几点", None), ("部署吧", X)],
+          "⭐⭐ 第一轮看不到这个引用；「部署吧」那一轮开始时带着它", str(agent.queries))
+    check(agent._reply_target_turn is None, "两轮都结束后本轮引用已清空")
+
+
 def t_ui_wiring():
     print("\n▶ 界面只剩呈现")
     app = S.module_text("app")
@@ -267,6 +312,7 @@ def main() -> int:
         t_inbox_down(tmp)
         t_presenter_error(tmp)
         t_mixed_queue(tmp)
+        t_reply_target_travels(tmp)
         t_ui_wiring()
     ok = sum(1 for r in _results if r[0])
     print("\n" + "=" * 74)

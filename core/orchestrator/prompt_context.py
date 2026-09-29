@@ -445,8 +445,8 @@ class PromptContextMixin:
 
         ⚠️ 长度截到 200（UI 侧存的时候就截过）：引用是个指路标，不是重新贴一遍。
         """
-        rt = (getattr(self, "_reply_target_turn", None)
-              or getattr(self, "_reply_target", None) or {})
+        # 只读本轮快照（这条消息自己带来的引用）；`_reply_target` 属于下一条消息。
+        rt = getattr(self, "_reply_target_turn", None) or {}
         if rt.get("kind") != "selection":
             return ""
         q = (rt.get("q") or "").strip()
@@ -533,16 +533,10 @@ class PromptContextMixin:
         # 「回复这条」的目标：只有它**还在上面这份清单里**才算有效指向。
         # 指向已关闭/已取代的那条 = 把模型逼进死角，理由见下方注释。
         #
-        # ⭐⭐⭐ [2026-08-13 CMD63] **先读本轮快照，再退回实时值。**
-        #    UI 一按发送就把指向移交到 `_reply_target_turn`（见 `hand_off_reply_target`），
-        #    此刻 `_reply_target` 已经是空的 —— 只读它就等于永远读不到用户点的那条，
-        #    那正是 CMD63「引用了审计卡却去新建 Skill」的根因。
-        # ⚠️ 保留 `or _reply_target` 这一路：不经过 UI 发送路径的调用方
-        #    （测试替身、将来别的入口）仍然只设了 `_reply_target`。
-        _reply_iid = (
-            (getattr(self, "_reply_target_turn", None)
-             or getattr(self, "_reply_target", None) or {}).get("iid") or ""
-        )
+        # 只读本轮快照 `_reply_target_turn`：调度器在这一轮开始时按消息设
+        # （`TurnScheduler.run_user_turn`）。`_reply_target` 是用户为下一条消息设的引用，
+        # 这一轮进行中才设的也在那里；读它会把下一条消息的引用串到这一轮。
+        _reply_iid = (getattr(self, "_reply_target_turn", None) or {}).get("iid") or ""
         if _reply_iid and _reply_iid not in _live_ids:
             logger.info(
                 f"[Interaction] 「回复这条」目标 {_reply_iid} 已不在未决清单里，"

@@ -193,7 +193,8 @@ class TurnScheduler:
     # ── 用户消息 ────────────────────────────────────────────────────────────
     def submit_user_message(self, text: str, *, image_bytes: bytes | None = None,
                             image_mime: str = "image/jpeg", temp_hint: str | None = None,
-                            can_continue: bool = False) -> tuple[str, str]:
+                            can_continue: bool = False,
+                            reply_target: dict | None = None) -> tuple[str, str]:
         """收下一条用户消息，决定它怎么跑。返回 `(key, mode)`：
 
           · "run"    —— 闲：立刻起一轮（新回应期，段号归 1）
@@ -203,12 +204,16 @@ class TurnScheduler:
 
         无论忙不忙都先落库：`item_id` 是这句话在系统里的唯一身份，崩溃可能发生在任何时刻。
         落库失败（`item_id` 为空）照样干活，用内存 key。
+
+        `reply_target`：这条消息在引用什么（界面发送时取走的 `{"iid", "q", "kind"}`）。
+        它跟着消息排队，处理这条消息的那一轮开始时才生效。
         """
         busy = self.lock.locked()
         item_id = inbox_submit(text, {"had_image": bool(image_bytes),
                                       "temp_hint": bool(temp_hint)})
         payload = {"text": text, "image_bytes": image_bytes, "image_mime": image_mime,
-                   "temp_hint": temp_hint}
+                   "temp_hint": temp_hint,
+                   "reply_target": dict(reply_target) if reply_target else None}
         if busy:
             if can_continue:
                 key = item_id or f"cont_{id(payload)}"
@@ -271,6 +276,8 @@ class TurnScheduler:
             self._activity_event("user_message")
             self._clear_stop()
             self.last_user_text = str(payload.get("text") or "")
+            # 这条消息自己带来的引用，成为这一轮的引用（收尾时由 handle_query 清掉）
+            self.agent._reply_target_turn = payload.get("reply_target")
             try:
                 source = self._user_source(payload)
                 if await self._run_turn(source, lambda tid: self.presenter.render_user_turn(

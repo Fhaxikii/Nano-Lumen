@@ -155,8 +155,11 @@ def t_two_injections_stay_separate() -> None:
     from core.orchestrator import Orchestrator
 
     class F(Orchestrator):
+        # 注入读的是这一轮的引用（调度器按消息设的 `_reply_target_turn`）；
+        # `_reply_target` 是下一条消息的引用，这一轮不读。
         def __init__(self, rt):
-            self._reply_target = rt
+            self._reply_target = None
+            self._reply_target_turn = rt
 
     out = Orchestrator._build_quoted_selection_injection(
         F({"iid": "", "q": "这个能力坏了", "kind": "selection"}))

@@ -18,54 +18,17 @@ from core.orchestrator._runtime import (
 class InteractionMixin:
     """回答待办交互、请用户选择、回复指向的移交。"""
 
-    def hand_off_reply_target(self) -> str:
-        """⭐⭐⭐ [2026-08-13 CMD63] 用户按下发送 → 把「回复这条」的指向**移交给这一轮**。
+    def take_reply_target(self) -> dict | None:
+        """用户按下发送：取走「下一条消息在引用什么」，交给这条消息自己带着。
 
-        ═══ 这个方法存在的理由（一个实测 bug，两行日志就能看完）═══
+        引用属于**这一条消息**，不属于「当前这一轮」：消息可能排队、可能插话续接，
+        真正处理它的那一轮由调度器在开始时设 `_reply_target_turn`（`TurnScheduler.run_user_turn`）。
+        在这里直接写 `_reply_target_turn` 的话，正在跑的上一轮会读到它、并在收尾时清掉它。
 
-：
-
-            22:33:39.127  [UI] 引用已发出（int_2f32640844）→ 引用态复位
-            22:33:39.131  [TOKEN-PLAN] core_tools=6 (…answer_open_interaction)
-
-        用户点了 replay 引用一张 skill_audit 卡、说「部署这个吧」。
-        UI 在**渲染发送行时**就把 `_reply_target` 清了，而
-        `_build_open_interactions_injection()` **4 毫秒之后**才去读它 ——
-        于是那句「⭐ The user explicitly marked this message as answering
-        int_2f32640844 — do not pick a different one」**一个字都没进 prompt**。
-
-        模型只看到一条 `[skill_audit]` 和一句「部署这个吧」，
-        于是先 `load_tools` 把 `create_new_skill` 捞回来（22:33:39 是 6 个工具，
-        22:33:47 变成 7 个，多出来的正是它），再调它 → 进探索 →
-        探索作用域里**根本没有"部署"这个出口** → 伸手拿 `create_new_skill`
-        → 内部故障路径 → 澄清待办也跟着不登记。
-        ⭐ **用户报的那两个"独立问题"其实是一条链，头在这里。**
-
-        ═══ 为什么当初会清早（这才是要记住的部分）═══
-
-        `handle_query` 的 `finally` 里**本来就有**一处复位（2026-08-06，位置正确）。
-        2026-08-09 修「composer 停在引用态」时，app.py 那处注释写的是
-        「回查发现…**发送路径上一处都没有**」—— 它没看见 orchestrator 已经有了，
-        于是加了**第二处**。而那个 bug 的真因是**显示层没被通知**
-        （`_refresh_reply_prompt` 那条自愈线），却被修成了**提前清状态**。
-
-        📌 **一个「发出去就该消失」的状态，不该被清掉，该被【移交】** ——
-           清掉会让真正的消费者读空。
-        📌 修「显示没跟上」时，动的必须是显示；动状态会把延迟问题变成丢失问题。
-
-        四个诉求这样同时满足：
-          · composer 立刻复位（`_reply_target` 确实空了）
-          · 模型拿得到指向（读 `_reply_target_turn`）
-          · 一次性（`finally` 里连同快照一起清）
-          · 单一权威（两个字段都只在 orchestrator 上，UI 只调这个方法）
-
-        返回被移交的 iid（没有就空串），供调用方打日志。
+        取走后 `_reply_target` 为空，输入框立刻回到普通态；没有引用时返回 None。
         """
-        if self._reply_target is None:
-            return ""
-        self._reply_target_turn = self._reply_target
-        self._reply_target = None
-        return (self._reply_target_turn or {}).get("iid") or ""
+        rt, self._reply_target = self._reply_target, None
+        return dict(rt) if rt else None
 
     async def _handle_answer_interaction(self, args: dict, base_guide: str,
                                          realtime_callback, event_queue):

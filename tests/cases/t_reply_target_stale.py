@@ -80,9 +80,11 @@ MARK = "explicitly marked this message as answering"
 
 
 def _render(live: list[Rec], reply_iid: str | None) -> str:
+    """这一轮的引用是 `_reply_target_turn`（调度器按消息设）；`_reply_target` 属于下一条消息。"""
     patch_global("core.orchestrator", "_rt_live_interactions", lambda o: live)
     stub = types.SimpleNamespace(
-        _reply_target={"iid": reply_iid, "q": "x"} if reply_iid else None)
+        _reply_target=None,
+        _reply_target_turn={"iid": reply_iid, "q": "x"} if reply_iid else None)
     return om.Orchestrator._build_open_interactions_injection(stub)
 
 
@@ -170,53 +172,45 @@ def t_ui_resets_when_target_closed() -> None:
           "澄清本身仍不上卡（显示范围只有审计）")
 
 
-def t_handoff_survives_send() -> None:
-    """⭐⭐⭐ [2026-08-13 CMD63] 指向必须**活过发送动作**，模型才读得到。
+def t_quote_belongs_to_the_message() -> None:
+    """引用属于发出的那条消息：发送时取走，由这条消息自己那一轮使用。
 
-    ═══ 实测═══
+    发送时不能清空引用（注入读不到，模型会去新建 Skill），也不能直接写成「当前这一轮」的引用：
+    消息可能排队，正在跑的上一轮会读到它并在收尾时清掉。所以发送时**取走**，随消息进调度器，
+    轮到它时由调度器设为 `_reply_target_turn`（端到端的行为测试在 t_session_user）。
 
-        22:33:39.127  [UI] 引用已发出（int_2f32640844）→ 引用态复位
-        22:33:39.131  [TOKEN-PLAN] core_tools=6 (…answer_open_interaction)
-
-    用户点 replay 引用一张 skill_audit 卡、说「部署这个吧」。UI 在渲染发送行时
-    就把 `_reply_target` 清了，而注入函数 **4 毫秒之后**才来读 → 指向段一个字都没进
-    prompt → 模型改去 `load_tools` 捞 `create_new_skill` → 进探索 → 探索里没有
-    "部署"这个出口 → 内部故障路径 → 澄清待办也跟着不登记。
-    ⭐ 用户报的两个"独立问题"是一条链，头在这里。
-
-    📌 **一个「发出去就该消失」的状态，不该被清掉，该被【移交】。**
+    原来这里断言「只设了 `_reply_target` 也要注入」（兜底读法）；那个兜底会把用户为下一条消息
+    设的引用串进正在跑的这一轮，所以反过来：这一轮只认 `_reply_target_turn`。
     """
-    print("\n[4] ⭐⭐⭐ CMD63：指向活过发送动作（移交，不是清除）")
+    print("\n[4] ⭐⭐⭐ 引用属于发出的那条消息（取走，不清除；这一轮只认自己的快照）")
     AUD = "int_2f32640844"
     live = [Rec(AUD, _it.Kind.SKILL_AUDIT, "Review pending draft LocalIPExtractor.", 300.0)]
-
-    # ── 真实时序：UI 按发送 → 移交 → orchestrator 建 prompt ───────────────
     patch_global("core.orchestrator", "_rt_live_interactions", lambda o: live)
+
+    # ── 发送：取走 ────────────────────────────────────────────────────
     stub = types.SimpleNamespace(_reply_target={"iid": AUD, "q": "x"},
                                  _reply_target_turn=None)
-    handed = om.Orchestrator.hand_off_reply_target(stub)
+    taken = om.Orchestrator.take_reply_target(stub)
+    check((taken or {}).get("iid") == AUD, "取走的就是用户点的那条（交给 submit 随消息走）", str(taken))
+    check(stub._reply_target is None, "⭐ UI 侧那份空了 —— composer 提示符能立刻刷回普通态")
+    check(stub._reply_target_turn is None, "⭐ 取走时不碰当前这一轮的引用（消息可能在排队）")
 
-    check(handed == AUD, "hand_off 返回被移交的 iid（供 UI 打日志）", handed)
-    check(stub._reply_target is None,
-          "⭐ UI 侧那份确实空了 —— composer 提示符能立刻刷回普通态")
-    check((stub._reply_target_turn or {}).get("iid") == AUD,
-          "⭐ 但指向没丢，它被移交到了本轮快照上")
-
-    out = om.Orchestrator._build_open_interactions_injection(stub)
+    # ── 这条消息自己的那一轮：引用生效 ──────────────────────────────────
+    own = types.SimpleNamespace(_reply_target=None, _reply_target_turn=taken)
+    out = om.Orchestrator._build_open_interactions_injection(own)
     check(MARK in out and AUD in out.split("If several items")[0],
-          "⭐⭐ **发送之后**建 prompt，指向段仍然注入 —— 这就是 CMD63 修掉的那一格")
+          "⭐⭐ 这条消息那一轮建 prompt 时指向段注入")
 
-    # ── 反向：证明这条断言不是恒真 ──────────────────────────────────
-    # 旧行为（发送时直接清空、不移交）必须让它红。
-    old = types.SimpleNamespace(_reply_target=None, _reply_target_turn=None)
-    check(MARK not in om.Orchestrator._build_open_interactions_injection(old),
-          "⚠️ 反向：两个字段都空时确实不注入（上一条不是恒真）")
+    # ── 反向：没有引用时不注入（上一条不是恒真） ──────────────────────────
+    none = types.SimpleNamespace(_reply_target=None, _reply_target_turn=None)
+    check(MARK not in om.Orchestrator._build_open_interactions_injection(none),
+          "⚠️ 反向：没有引用时确实不注入")
 
-    # ── 不经过 UI 的调用方仍然只设 `_reply_target`，那一路不能断 ──────────
-    only_live = types.SimpleNamespace(_reply_target={"iid": AUD, "q": "x"},
+    # ── 只有「下一条消息的引用」时，这一轮不许用它 ─────────────────────────
+    next_only = types.SimpleNamespace(_reply_target={"iid": AUD, "q": "x"},
                                       _reply_target_turn=None)
-    check(MARK in om.Orchestrator._build_open_interactions_injection(only_live),
-          "⚠️ 只设了 _reply_target（测试替身/将来别的入口）→ 仍然注入")
+    check(MARK not in om.Orchestrator._build_open_interactions_injection(next_only),
+          "⭐⭐ 用户在这一轮进行中为下一条消息设的引用，不会串进这一轮")
 
 
 def t_send_path_hands_off_not_clears() -> None:
@@ -248,14 +242,21 @@ def t_send_path_hands_off_not_clears() -> None:
           "⭐⭐ 发送路径里【没有】_set_reply_target(None) —— 清早了模型就读空",
           f"仍有 {len(clears)} 处" if clears else "")
 
-    handoffs = [c for c in ast.walk(sub)
-                if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-                and c.func.attr == "hand_off_reply_target"]
-    check(bool(handoffs), "⭐ 改成调 agent.hand_off_reply_target()（权威只有一份）")
+    takes = [c for c in ast.walk(sub)
+             if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+             and c.func.attr == "take_reply_target"]
+    check(bool(takes), "⭐ 发送时取走引用（take_reply_target，权威只有一份）")
+    submits = [c for c in ast.walk(sub)
+               if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+               and c.func.attr == "submit"
+               and any(k.arg == "reply_target" for k in c.keywords)]
+    check(bool(submits), "⭐⭐ 取走的引用随 api_turn.submit(reply_target=…) 交给调度器")
     check("_refresh_reply_prompt" in seg,
-          "⚠️ 仍然刷一次 composer 提示符 —— 移交之后显示要立刻跟上")
+          "⚠️ 仍然刷一次 composer 提示符 —— 取走之后显示要立刻跟上")
 
-    # finally 侧：两个字段都要清，漏一个就粘到下一轮
+    # finally 侧：只清这一轮的引用。原来断言「两个字段都清」——那会把用户在这一轮进行中
+    # 为下一条消息设的 `_reply_target` 一起清掉（6b 完整实机 D3：引用了审计卡说「部署吧」，
+    # 却因为上一轮收尾把引用清了而去新建 Skill）。
     orch = module_text("core.orchestrator")
     otree = ast.parse(orch)
     hq = next((n for n in ast.walk(otree)
@@ -268,16 +269,17 @@ def t_send_path_hands_off_not_clears() -> None:
                for t in c.targets
                if isinstance(t, ast.Attribute)
                and isinstance(c.value, ast.Constant) and c.value.value is None}
-    check("_reply_target" in cleared and "_reply_target_turn" in cleared,
-          "⭐⭐ finally 里【两个字段都】置 None（漏 _reply_target_turn = 粘到下一轮）",
-          f"实际清了 {sorted(cleared & {'_reply_target', '_reply_target_turn'})}")
+    check("_reply_target_turn" in cleared,
+          "⭐⭐ finally 里清掉本轮的引用（漏了就粘到下一轮）", str(sorted(cleared)))
+    check("_reply_target" not in cleared,
+          "⭐⭐ finally 里不碰 `_reply_target`（那是下一条消息的引用）", str(sorted(cleared)))
 
 
 def main() -> int:
     t_live_target_still_injected()
     t_dead_target_not_injected()
     t_ui_resets_when_target_closed()
-    t_handoff_survives_send()
+    t_quote_belongs_to_the_message()
     t_send_path_hands_off_not_clears()
     passed = sum(1 for r in _results if r[0])
     total = len(_results)

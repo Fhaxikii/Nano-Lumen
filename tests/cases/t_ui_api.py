@@ -748,6 +748,7 @@ def t_turn() -> None:
 
         def submit_user_message(self, text, **kw):
             got.append(("submit", text, kw.get("can_continue")))
+            got.append(("reply_target", kw.get("reply_target")))
             return "k1", "run"
 
         def busy(self):
@@ -772,8 +773,8 @@ def t_turn() -> None:
             got.append("reset")
             return {"msg": "已重置"}
 
-        def hand_off_reply_target(self):
-            return "int_1"
+        def take_reply_target(self):
+            return {"iid": "int_1", "q": "x", "kind": "interaction"}
 
         def request_stop(self, src):
             got.append(("stop", src))
@@ -782,18 +783,22 @@ def t_turn() -> None:
     TU._sched = lambda: sch
     _state.bind(agent_obj=_Ag())
     try:
-        check(TU.submit("你好", can_continue=True) == ("k1", "run") and got[-1] == ("submit", "你好", True),
+        check(TU.submit("你好", can_continue=True) == ("k1", "run") and got[-2] == ("submit", "你好", True),
               "发消息交给调度器")
+        TU.submit("引用这条", reply_target={"iid": "int_9", "q": "y", "kind": "interaction"})
+        check(got[-1] == ("reply_target", {"iid": "int_9", "q": "y", "kind": "interaction"}),
+              "这条消息的引用随 submit 交给调度器", str(got[-1]))
         TU.submit("   ")
-        check(got[-1][1].startswith("Please process the uploaded content.") and "reply" in got[-1][1],
-              "只有附件没有文字时，后端补一句「请处理上传的内容」（带语言偏好）", got[-1][1])
+        check(got[-2][1].startswith("Please process the uploaded content.") and "reply" in got[-2][1],
+              "只有附件没有文字时，后端补一句「请处理上传的内容」（带语言偏好）", got[-2][1])
         check(TU.has_queued() is True and TU.busy() is False, "队列 / 忙的查询")
         TU.set_reply_target({"iid": "int_1", "q": "x", "kind": "interaction"})
         rt = TU.reply_target()
         rt["iid"] = "changed"
         check(TU.reply_target()["iid"] == "int_1", "引用目标返回副本（改了不影响权威）")
         TU.set_reply_target(None)
-        check(TU.reply_target() is None and TU.hand_off_reply_target() == "int_1", "清除 / 移交引用")
+        check(TU.reply_target() is None
+              and (TU.take_reply_target() or {}).get("iid") == "int_1", "清除 / 发送时取走引用")
         TU.request_stop("按钮")
         TU.record_ui_error("402")
         check(("stop", "按钮") in got and ("sys_error", "402") in got, "终止 / 界面错误卡")

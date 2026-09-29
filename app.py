@@ -5687,18 +5687,9 @@ class WebUI:
                         else:
                             ui.label('（附件已发送）').style('font-size:var(--nano-fs-base); color:var(--nano-dim); font-style:italic;')
 
-        # ⭐⭐⭐ [2026-08-09 实测] **引用状态在这里移交给本轮。**
-        #
-        # ⚠️⚠️⚠️ **2026-08-13 CMD63 更正：这里原来是「清除」，那是个真 bug。**
-        #    `self._set_reply_target(None)` 跑在 orchestrator 建 prompt 之前 4 毫秒
-        #    （：`22:33:39.127 引用态复位` / `22:33:39.131 [TOKEN-PLAN]`），
-        #    于是 `_build_open_interactions_injection()` 读到的永远是空 ——
-        #    「用户明确指了这一条」那句话从来没进过模型上下文。
-        #    后果：用户引用审计卡说「部署这个吧」，模型改去 `create_new_skill`。
-        #    整条链见 `Orchestrator.hand_off_reply_target()` 的 docstring。
-        #
-        # 📌 **一个「发出去就该消失」的状态，不该被清掉，该被【移交】。**
-        #    清掉会让真正的消费者读空 —— 而这里真正的消费者不是 UI，是模型。
+        # 引用在这里交给这条消息：取走（`api_turn.take_reply_target`）后随
+        # `api_turn.submit(reply_target=…)` 进调度器，处理这条消息的那一轮开始时才生效。
+        # 不能在发送时直接清掉（注入读不到），也不能直接交给「当前这一轮」（消息可能在排队）。
         #
         # 🔴 现象：点了 `replay` 引用一条待审、发出去之后，**composer 仍然停在
         #    引用态**（提示符还是 `↳`），于是**下一条消息也会被当成在回答那一条**。
@@ -5738,14 +5729,15 @@ class WebUI:
         #    📌 复述一个已经被别处保证的条件，等于给它开了个分叉口。
         _rt_obj = self._reply_target or {}
         _rt_live = _rt_obj.get("iid") or _rt_obj.get("q") or ""
+        # 这条消息带走的引用：随 `api_turn.submit(reply_target=…)` 进调度器，
+        # 处理这条消息的那一轮开始时才生效（消息可能排队，不能直接交给正在跑的那一轮）。
+        _msg_reply_target = None
         if self._reply_target is not None:
             try:
-                # ⚠️ 移交由 orchestrator 自己完成（两个字段都在它身上，UI 不碰）。
-                #    它清掉 `_reply_target` → composer 提示符立刻能刷回普通态；
-                #    同时把指向存进 `_reply_target_turn` → 模型这一轮读得到。
-                _handed = api_turn.hand_off_reply_target()
+                # 取走后 `_reply_target` 为空，composer 提示符立刻刷回普通态
+                _msg_reply_target = api_turn.take_reply_target()
                 self._refresh_reply_prompt()
-                logger.info(f"[UI] 引用已发出（{_handed or _rt_live}）→ 移交本轮，UI 侧复位")
+                logger.info(f"[UI] 引用已发出（{_rt_live}）→ 随这条消息提交，UI 侧复位")
             except Exception as _e_rt:
                 logger.warning(f"[UI] 引用态移交失败: {_e_rt}")
 
@@ -5889,7 +5881,8 @@ class WebUI:
                          and not (self._live_view() or {}).get("stop_clicked"))
         _key, _mode = api_turn.submit(
             query, image_bytes=_img_bytes, image_mime=_img_mime,
-            temp_hint=_temp_hint, can_continue=_can_cont)
+            temp_hint=_temp_hint, can_continue=_can_cont,
+            reply_target=_msg_reply_target)
         _view = self._resp_state
         self._user_views[_key] = _view
         if _mode == "cont":
