@@ -717,6 +717,24 @@ class ScreenMixin:
         except Exception:
             return False
 
+    def _input_interrupt_reason(self) -> str:
+        """长文本输入（逐字）中途要不要停：返回停止原因（英文，写进工具结果），空串表示继续。
+
+        登记给 `executor_action.set_input_interrupt_probe`。用户接手的判定来自被动挂起：
+        用户的真实点击 / 按键让 USER 持有活动租约；Nano 自己注入的输入（`LLKHF_INJECTED`）
+        不算，所以打字本身不会触发它。
+        """
+        if self._stop_asked():
+            return "the user stopped this turn"
+        try:
+            from core.proactive.takeover import user_holds_machine
+            if user_holds_machine():
+                return ("the user took over the computer (clicked or typed outside Nano); "
+                        "wait until they are done, then check what is on screen before continuing")
+        except Exception:
+            pass
+        return ""
+
     def _gui_task_begin(self, reason: str) -> None:
         """开始 GUI 任务：先开 GUI 会话（建 Task），再发绑定到该 Task 的临时免确认授权。"""
         try:

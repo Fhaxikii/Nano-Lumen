@@ -76,6 +76,28 @@ def global_hotkey_armed() -> bool:
     return _hotkey_handle is not None
 
 
+# 长文本输入的中途停止判据：返回停止原因（英文，交给模型），空串 = 继续。
+# 由上层登记（用户接手了这台电脑 / 用户终止了这一轮），执行器不直接依赖上层模块。
+_input_interrupt_probe = None
+
+# 英文逐字输入时每段的字符数：段与段之间检查急停与停止判据，并让出事件循环。
+_TYPE_CHUNK = 8
+
+
+def set_input_interrupt_probe(fn) -> None:
+    """登记长文本输入的中途停止判据：`fn() -> str`，返回停止原因，空串表示继续。"""
+    global _input_interrupt_probe
+    _input_interrupt_probe = fn
+
+
+def _input_interrupt_reason() -> str:
+    """读不出来按「继续」处理：判据本身出错不应让输入中途失败。"""
+    try:
+        return str(_input_interrupt_probe() or "") if _input_interrupt_probe is not None else ""
+    except Exception:
+        return ""
+
+
 class EmergencyStop:
     """急停状态：本执行器的中止标志 + 全局急停标志。"""
 
@@ -364,7 +386,24 @@ class ActionExecutor:
                     return {"ok": False, "data": {}, "summary": "",
                             "error": "Chinese text input requires pyperclip"}
             else:
-                pyautogui.write(text, interval=0.02)
+                # 逐字输入分段进行：每段在线程里打（不占事件循环，终止按钮等界面事件照常处理），
+                # 段与段之间检查急停、用户接手与终止。一整段一口气打完的话，
+                # 用户点了别的窗口后剩下的字会打进用户正在用的窗口。
+                typed = 0
+                for i in range(0, len(text), _TYPE_CHUNK):
+                    if self._estop.is_stopped():
+                        return {**self._aborted(), "data": {"typed": typed, "length": len(text)},
+                                "error": (f"emergency stop triggered after typing {typed} of "
+                                          f"{len(text)} character(s); operation aborted")}
+                    reason = _input_interrupt_reason()
+                    if reason:
+                        return {"ok": False, "data": {"typed": typed, "length": len(text)},
+                                "summary": "", "interrupted": reason,
+                                "error": (f"stopped after typing {typed} of {len(text)} "
+                                          f"character(s): {reason}. The rest was not typed.")}
+                    chunk = text[i:i + _TYPE_CHUNK]
+                    await asyncio.to_thread(pyautogui.write, chunk, interval=0.02, _pause=False)
+                    typed += len(chunk)
             return {"ok": True, "data": {"length": len(text)},
                     "summary": f"typed {len(text)} character(s)", "error": ""}
         except Exception as e:

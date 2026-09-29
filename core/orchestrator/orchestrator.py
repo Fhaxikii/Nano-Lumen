@@ -92,6 +92,12 @@ class Orchestrator(
             _lc_probe.set_turn_stop_probe(self._stop_asked)
         except Exception:
             pass
+        # 长文本输入（逐字）在用户接手或终止时中途停下（`executor_action.type_text`）
+        try:
+            from core.os_layer import executor_action as _ea_probe
+            _ea_probe.set_input_interrupt_probe(self._input_interrupt_reason)
+        except Exception:
+            pass
         # () -> Nano 主窗口对象（有 minimize / restore），由 app.py 注入；core 不直接依赖 UI 框架。
         # 看屏幕前用它把自己最小化让开；没有注入时（测试、无界面运行）不让开。
         self._native_window = None
