@@ -339,6 +339,25 @@ def t_resume_consumes_waitrecord_shape(tmp: pathlib.Path) -> None:
               str(_mem.visible_flags))
 
 
+def t_manual_wake_is_not_due(tmp: pathlib.Path) -> None:
+    print("\n[8b] 「立即执行」唤醒：告诉模型这是用户提前触发，不是时间到了")
+    make_kernel(tmp / "wake-manual")
+    rec = W.open_wait(reason="remind the user to drink water", wake_on=[W.WakeSource.TIMER],
+                      timer_seconds=300)
+    _, mem = asyncio.run(_exercise_real_resume(rec, "manual"))
+    note = mem.messages[-1][1] if mem.messages else ""
+    check('"Run now"' in note and "has not come" in note,
+          "手动唤醒的注入写明：用户按了立即执行、时间还没到", note[:160])
+    check("timer fired" not in note, "不会被说成定时器到点")
+
+    make_kernel(tmp / "wake-due")
+    rec2 = W.open_wait(reason="remind the user to drink water", wake_on=[W.WakeSource.TIMER],
+                       timer_seconds=300)
+    _, mem2 = asyncio.run(_exercise_real_resume(rec2, "timer"))
+    note2 = mem2.messages[-1][1] if mem2.messages else ""
+    check("timer fired" in note2 and '"Run now"' not in note2, "正常到点的唤醒不带这句说明")
+
+
 class _NeverFinishingMCP:
     """Only the external wait is fake; the orchestrator slow-path stays production-real."""
     def __init__(self) -> None:
@@ -1057,6 +1076,7 @@ def main() -> int:
         t_completion_discards_recheck(tmp)
         t_reschedule_rejects_terminal(tmp)
         t_resume_consumes_waitrecord_shape(tmp)
+        t_manual_wake_is_not_due(tmp)
         t_mcp_slow_path_consumes_waitrecord(tmp)
         t_long_command_is_the_same_contract()
         t_long_command_progress_is_real(tmp)

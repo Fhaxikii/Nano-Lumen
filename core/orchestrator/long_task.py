@@ -364,6 +364,12 @@ class LongTaskMixin:
         _trigger_desc = {
             "timer": "(timer fired; automatic wake-up)",
             "background": "(background task completed; automatic wake-up)",
+            # 「立即执行」：用户在等待条件满足之前手动唤醒。计时没到、后台也未必完成，
+            # 不能按「时间到了 / 事情办完了」来回应。
+            "manual": ("(the user pressed \"Run now\" to wake you before this wait was due; "
+                       "the time has not come and whatever you were waiting for has not "
+                       "necessarily happened. Act on it now, and do not say it is time or "
+                       "that it finished unless you have checked)"),
         }.get(trigger, f"({trigger} wake-up)")
         _note_seg = f" Background output: {note}" if note else ""
         if _is_recheck:
