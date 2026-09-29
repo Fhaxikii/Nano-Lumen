@@ -7901,15 +7901,10 @@ class WebUI:
            📌 **一页 vs 一行，看用户在里面待多久。**
               这里要反复查看状态、开关、展开详情、粘 JSON 加新的 —— 值得一整页。
 
-        🔴 里面那个「应用」按钮**不能去掉**，理由跟环境配置又不一样：
-           环境配置是「填错了看不出来，需要一个我填完了的动作」；
-           这里是**异步冲突** —— 开关采用「待定 → 应用」模型，推开关只改本地
-           `_pending`，不立即重连。改造前每推一次就异步重连 + 刷新，两边打架，
-           表现为**开关自己变回去**。
-           📌 「去掉保存按钮」是个好默认，但它有三种各自独立的例外：
-              ① 连续输入（打字打到一半不是想要的值）
-              ② 填错了不当场露馅（验证需要一个触发点）
-              ③ **生效动作本身是异步的**（立即生效会和上一次生效打架）
+        开关推动即生效（启用 / 停用并重连），没有保存按钮，同个人信息页。生效是异步的：
+        同一行正在生效时再推不重复提交，生效完成后才按后端状态重画列表——生效途中重画
+        会把开关按旧状态画回去（「自己变回去」）。「添加 server」弹窗里的「应用」按钮
+        只负责添加粘贴的新 server。
         """
         # 🔴 这行 import 差点被漏在原方法里：搬内容区时只抓了
         #    `mgr = get_mcp_manager()`，没抓它上面那句局部 import ——
@@ -7930,12 +7925,7 @@ class WebUI:
             "disconnected": ("var(--nano-fg-soft)", "未连接"),
         }
         # ── 块1：服务器状态列表 ───────────────────────────────────
-        # 开关采用「待定 → 应用」模型：推开关只改本地 _pending（开关自由移动、
-        # 不再每次异步重连+刷新打架，根除"自己变回去"的 bug）。真正生效在底部
-        # 「应用」按钮：兼做"添加粘贴的新 server" + "保存开关变更" + 重连。
-        # 开关用「待定 → 应用」模型：推开关只移动它自己（不立即生效、不刷新，
-        # 根除"自己变回去"）。应用时直接读开关的 .value（开关本身就是期望状态源，
-        # 比监听 update:model-value 事件可靠——之前 e.args 拿不到 bool 导致判"没变化"）。
+        # 开关推动即生效（`_apply_switch`），用 `on_value_change` 取值（它给的是已同步的 bool）。
         _switches: dict = {}   # name -> ui.switch
         # ⭐ 展开状态：**每行独立**，不是手风琴（用户可能想同时对比两个）。
         # ⚠️ 刻意**不持久化** —— 关掉弹窗再打开回到全折叠。
@@ -7949,6 +7939,8 @@ class WebUI:
         #       而且内层一旦有横向溢出，就会多出一条谁也不需要的横条。
         # ⚠️ 横向 padding 交给外层；这里只留行与行之间的间距。
         _list_col = ui.column().style('width:100%; padding:4px 0 0; gap:6px;')
+        # 开关生效后的重画定时器挂在这里（不在 `_list_col` 里，重画不会清掉它）
+        _timer_host = ui.element('div').style('display:none;')
 
         def _render_list():
             _list_col.clear()
@@ -8001,8 +7993,12 @@ class WebUI:
                             _ic = 'login' if s["status"] == "needs_auth" else 'refresh'
                             ui.button(icon=_ic, on_click=lambda e=None, n=s["name"]: _do_retry(n)) \
                                 .props('flat round dense').style('color:var(--nano-fg-soft) !important;')
-                        # 开关：只移动自己（不立即生效），应用时读 .value。官方自带也可禁用。
-                        _switches[s["name"]] = ui.switch(value=s["enabled"]).props('color=indigo-4 dense')
+                        # 开关：推动即生效（启用 / 停用并重连），没有保存按钮。官方自带也可禁用。
+                        # 回调返回协程，由 NiceGUI 在开关所在的位置执行（提示发到点开关的那个窗口）
+                        _sw = ui.switch(value=s["enabled"]).props('color=indigo-4 dense')
+                        _sw.on_value_change(
+                            lambda e, n=s["name"]: _apply_switch(n, bool(e.value)))
+                        _switches[s["name"]] = _sw
                         if s.get("builtin"):
                             # 官方自带能力：受保护，可禁用、不可删除（对齐官方 Skill 模型）
                             ui.label('官方').style(
@@ -8056,6 +8052,28 @@ class WebUI:
         def _toggle(name):
             _expanded.discard(name) if name in _expanded else _expanded.add(name)
             _render_list()
+
+        _applying: set = set()   # 正在生效的开关，期间再推不重复提交
+
+        async def _apply_switch(name: str, on: bool):
+            if name in _applying:
+                return
+            _applying.add(name)
+            try:
+                _changed = await api_mcp.apply_switches({name: on})
+                if _changed:
+                    ui.notify(f'{name} 已{"启用" if on else "停用"}', type='positive',
+                              icon='check_circle')
+            except Exception as _sw_err:
+                logger.warning(f"[MCP] 开关 {name} 生效失败: {_sw_err}")
+                ui.notify(f'{name} 切换失败：{_sw_err}', type='negative')
+            finally:
+                _applying.discard(name)
+            # 按后端状态重画（连接状态随后变化，再补一次）。推迟一拍：不在开关自己的回调里删掉它；
+            # 定时器挂在列表外的占位元素上，重画清列表时不会把后一个定时器一起删掉。
+            with _timer_host:
+                ui.timer(0.05, _render_list, once=True)
+                ui.timer(1.6, _render_list, once=True)
 
         def _do_retry(name):
             ui.notify(f'正在重连 {name}…', type='info')

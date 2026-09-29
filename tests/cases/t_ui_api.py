@@ -575,11 +575,22 @@ def t_mcp() -> None:
                   "开关：只改真的变了的，然后连接已启用的", str(log))
             check(notes == [("add", "newsrv", "user"), ("retry", "fetch", "user"),
                             ("delete", "pw", "user"), ("disable", "fetch", "user")],
-                  "⭐ 每次用户改动都记进 session log（by=user，模型下一轮才知道环境变了）", str(notes))
+                  "⭐ 每次用户改动都经 _note_mcp_change(by=user) 记下（对话里的系统记录）", str(notes))
     finally:
         _state.bind()
     code = "\n".join(ln for ln in S.module_text("app").splitlines() if not ln.strip().startswith("#"))
     check("get_mcp_manager" not in code and "mgr." not in code, "app.py 不再直接用 MCP 管理器")
+
+    # 设置页的 MCP 开关推动即生效：每个开关挂 on_value_change → 只提交这一个开关
+    page = S.def_text("app", "_build_settings_mcp", owner="WebUI")
+    page_code = "\n".join(ln for ln in page.splitlines() if not ln.strip().startswith("#"))
+    check("_sw.on_value_change(" in page_code and "_apply_switch(n, bool(e.value))" in page_code,
+          "开关推动即调用 _apply_switch（没有保存按钮）")
+    check("api_mcp.apply_switches({name: on})" in page_code, "只提交被推动的那一个开关")
+    _ap = page_code.split("async def _apply_switch")[1].split("\n        def ")[0]
+    check(_ap.index("await api_mcp.apply_switches") < _ap.index("_render_list"),
+          "生效完成之后才重画（生效途中重画会把开关画回旧状态）")
+    check("with _timer_host:" in _ap, "重画定时器挂在列表外，重画清列表时不会被一起删掉")
 
 
 def t_proactive() -> None:
