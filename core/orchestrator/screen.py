@@ -729,8 +729,11 @@ class ScreenMixin:
         try:
             from core.proactive.takeover import user_holds_machine
             if user_holds_machine():
-                return ("the user took over the computer (clicked or typed outside Nano); "
-                        "wait until they are done, then check what is on screen before continuing")
+                # 被动挂起会让下一步屏幕动作自动等到用户停手，不需要结束这一轮去问用户
+                return ("the user took over the computer (clicked or typed outside Nano). "
+                        "You do not need to end the turn or ask them: your next screen action "
+                        "automatically waits until they stop. Look at the screen first, then "
+                        "continue from where the typing stopped")
         except Exception:
             pass
         return ""

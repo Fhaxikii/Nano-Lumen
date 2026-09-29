@@ -80,8 +80,9 @@ def global_hotkey_armed() -> bool:
 # 由上层登记（用户接手了这台电脑 / 用户终止了这一轮），执行器不直接依赖上层模块。
 _input_interrupt_probe = None
 
-# 英文逐字输入时每段的字符数：段与段之间检查急停与停止判据，并让出事件循环。
-_TYPE_CHUNK = 8
+# 英文逐字输入时每段的字符数：段与段之间检查急停、停止判据与前台窗口，并让出事件循环。
+# 前台在一段中间被抢走时，最多这么多字符落到别处。
+_TYPE_CHUNK = 4
 
 
 def set_input_interrupt_probe(fn) -> None:
@@ -258,6 +259,40 @@ class ActionExecutor:
         except Exception as e:
             logger.warning(f"[OS-Action] 激活目标窗口失败（忽略，继续操作）: {e}")
 
+    def _foreground_hwnd(self) -> int:
+        if not self._is_windows:
+            return 0
+        try:
+            return int(ctypes.windll.user32.GetForegroundWindow() or 0)
+        except Exception:
+            return 0
+
+    async def _keep_typing_focus(self, target: int) -> str:
+        """分段输入时，前台还是不是开始时的目标窗口。返回停止原因（英文），空串 = 继续。
+
+        前台变成了 Nano 自己的窗口（用户点 Nano 看进度或要跟它说话，不算接手）：
+        把目标窗口提回前台继续，与每个动作开始时的 `_focus_target_window` 同一个处理。
+        变成了别的窗口：停下，剩下的字不往别处打。
+        """
+        if not target:
+            return ""
+        fg = self._foreground_hwnd()
+        if not fg or fg == target:
+            return ""
+        try:
+            from core.self_identity import is_self_window
+            own = bool(is_self_window(fg))
+        except Exception:
+            own = False
+        if own:
+            await asyncio.to_thread(self._focus_target_window)
+            if self._foreground_hwnd() == target:
+                return ""
+            return ("the input focus moved to Nano's own window and the target window "
+                    "could not be brought back to the front")
+        return ("the input focus moved to another window; check which window is in front "
+                "before continuing")
+
     # ── 定位 + 点击类（决策1：A方案）────────────────────────────────────
 
     async def click(self, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -387,15 +422,16 @@ class ActionExecutor:
                             "error": "Chinese text input requires pyperclip"}
             else:
                 # 逐字输入分段进行：每段在线程里打（不占事件循环，终止按钮等界面事件照常处理），
-                # 段与段之间检查急停、用户接手与终止。一整段一口气打完的话，
-                # 用户点了别的窗口后剩下的字会打进用户正在用的窗口。
+                # 段与段之间检查急停、用户接手与终止，并核对前台仍是开始时的目标窗口。
+                # 一整段一口气打完的话，焦点被抢走后剩下的字会打进别的窗口。
+                target = self._foreground_hwnd()
                 typed = 0
                 for i in range(0, len(text), _TYPE_CHUNK):
                     if self._estop.is_stopped():
                         return {**self._aborted(), "data": {"typed": typed, "length": len(text)},
                                 "error": (f"emergency stop triggered after typing {typed} of "
                                           f"{len(text)} character(s); operation aborted")}
-                    reason = _input_interrupt_reason()
+                    reason = _input_interrupt_reason() or await self._keep_typing_focus(target)
                     if reason:
                         return {"ok": False, "data": {"typed": typed, "length": len(text)},
                                 "summary": "", "interrupted": reason,

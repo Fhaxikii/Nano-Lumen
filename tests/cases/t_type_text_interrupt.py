@@ -56,11 +56,22 @@ class _FakePyAutoGUI(types.ModuleType):
 TEXT = "The quick brown fox jumps over the lazy dog. " * 3   # 135 个 ASCII 字符
 
 
-def _executor(fake):
+TARGET, NANO, OTHER = 1001, 2002, 3003     # 假的窗口句柄：目标 / Nano 自己 / 别的程序
+
+
+def _executor(fake, focus=None):
+    """执行器是真的；前台窗口与「把目标提回前台」换成可控的替身，不碰真实桌面。"""
     sys.modules["pyautogui"] = fake
     from core.os_layer import executor_action as EA
     ex = EA.ActionExecutor()
-    ex._focus_target_window = lambda: None      # 不碰真实窗口
+    focus = focus if focus is not None else {"fg": TARGET, "refocus_works": True, "refocused": 0}
+
+    def _refocus():
+        focus["refocused"] += 1
+        if focus["refocus_works"]:
+            focus["fg"] = TARGET
+    ex._focus_target_window = _refocus
+    ex._foreground_hwnd = lambda: focus["fg"]
     return EA, ex
 
 
@@ -138,6 +149,67 @@ def t_loop_not_blocked(fake) -> None:
     check(len(fake.writes) < len(TEXT) // EA._TYPE_CHUNK, "没有把整段打完", f"{len(fake.writes)} 段")
 
 
+def _own_window_patch():
+    import core.self_identity  # noqa: F401  patch_global 要求模块已导入
+    from tests._patch import patch_global
+    return patch_global("core.self_identity", "is_self_window", lambda h: h == NANO)
+
+
+def t_focus_to_own_window(fake) -> None:
+    print("\n[6] 打字中途焦点跑到 Nano 自己的窗口：把目标提回前台，接着打完")
+    focus = {"fg": TARGET, "refocus_works": True, "refocused": 0}
+    EA, ex = _executor(fake, focus)
+    EA.set_input_interrupt_probe(lambda: "")
+    fake.writes.clear()
+    fake.on_write = lambda n: focus.__setitem__("fg", NANO) if n == 3 else None
+    undo = _own_window_patch()
+    try:
+        r = asyncio.run(ex.type_text({"text": TEXT}))
+    finally:
+        undo()
+        fake.on_write = None
+    check(r.get("ok") is True and "".join(w[0] for w in fake.writes) == TEXT,
+          "⭐⭐ 没有中断，整段打完", str(r.get("error", "")))
+    check(focus["refocused"] >= 2, "⭐ 中途把目标窗口提回了前台（开始时 1 次 + 中途 1 次）",
+          str(focus["refocused"]))
+
+
+def t_focus_to_other_window(fake) -> None:
+    print("\n[7] 打字中途焦点跑到别的窗口：停下，剩下的不往别处打")
+    focus = {"fg": TARGET, "refocus_works": True, "refocused": 0}
+    EA, ex = _executor(fake, focus)
+    EA.set_input_interrupt_probe(lambda: "")
+    fake.writes.clear()
+    fake.on_write = lambda n: focus.__setitem__("fg", OTHER) if n == 3 else None
+    undo = _own_window_patch()
+    try:
+        r = asyncio.run(ex.type_text({"text": TEXT}))
+    finally:
+        undo()
+        fake.on_write = None
+    check(r.get("ok") is False and len(fake.writes) == 3, "⭐⭐ 第 3 段之后不再往下打",
+          f"{len(fake.writes)} 段")
+    check("another window" in r.get("error", "") and r["error"].isascii(),
+          "说明焦点去了别的窗口（英文）", r.get("error", ""))
+
+
+def t_focus_cannot_return(fake) -> None:
+    print("\n[8] 焦点跑到 Nano 自己、但目标提不回前台：停下")
+    focus = {"fg": TARGET, "refocus_works": False, "refocused": 0}
+    EA, ex = _executor(fake, focus)
+    EA.set_input_interrupt_probe(lambda: "")
+    fake.writes.clear()
+    fake.on_write = lambda n: focus.__setitem__("fg", NANO) if n == 2 else None
+    undo = _own_window_patch()
+    try:
+        r = asyncio.run(ex.type_text({"text": TEXT}))
+    finally:
+        undo()
+        fake.on_write = None
+    check(r.get("ok") is False and len(fake.writes) == 2, "提不回来就停下", f"{len(fake.writes)} 段")
+    check("could not be brought back" in r.get("error", ""), "说明提不回来", r.get("error", ""))
+
+
 def t_probe_wiring() -> None:
     print("\n[5] Orchestrator 登记的判据：终止 / 用户接手 / 都没有")
     from core.orchestrator import Orchestrator
@@ -154,7 +226,10 @@ def t_probe_wiring() -> None:
         undo()
     undo = patch_global("core.proactive.takeover", "user_holds_machine", lambda now=None: True)
     try:
-        check("took over" in o._input_interrupt_reason(), "用户持有机器 → 停，原因写明接手")
+        _why = o._input_interrupt_reason()
+        check("took over" in _why, "用户持有机器 → 停，原因写明接手")
+        check("do not need to end the turn" in _why and "automatically waits" in _why,
+              "⭐ 告诉模型不必结束这一轮：下一步屏幕动作会自动等用户停手", _why)
     finally:
         undo()
     o._stop_asked = lambda: True
@@ -175,6 +250,9 @@ def main() -> int:
         t_takeover_midway(fake)
         t_estop_midway(fake)
         t_loop_not_blocked(fake)
+        t_focus_to_own_window(fake)
+        t_focus_to_other_window(fake)
+        t_focus_cannot_return(fake)
     finally:
         if real is not None:
             sys.modules["pyautogui"] = real
