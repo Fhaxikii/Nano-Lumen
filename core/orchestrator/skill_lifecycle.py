@@ -654,7 +654,9 @@ class SkillLifecycleMixin:
             f"confirmation first, because it is a local file-level operation. A pending "
             f"confirmation has been registered. Ask the user to confirm or cancel, in your "
             f"own words. Do not call manage_existing_skill again for this.",
-            f"等待用户确认 {_op} Skill「{_skill}」，措辞交回模型。")
+            f"等待用户确认 {_op} Skill「{_skill}」，措辞交回模型。",
+            # 这一步的职责（登记待确认）已完成；删没删由确认那一步的工具行表示
+            ok=True)
 
     async def _handle_update_existing_skill_decision(
         self,

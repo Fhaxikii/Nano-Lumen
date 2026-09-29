@@ -349,6 +349,28 @@ def t_defer_ok():
     mc = S.module_text("core.orchestrator")
     check('措辞交回模型。", ok=True)' in mc, "MCP 管理 / 接入成功时标 ok")
 
+    # 确认之后才执行的三个出口：按真实执行结果标 ok（审计通过部署 / 确认删 MCP / 确认管理 Skill）
+    import ast as _ast
+    import textwrap as _tw
+    ans = S.def_text("core.orchestrator", "_handle_answer_interaction", owner="Orchestrator")
+    ok_vars = set()
+    for node in _ast.walk(_ast.parse(_tw.dedent(ans))):
+        if not isinstance(node, _ast.Dict):
+            continue
+        keys = {k.value: v for k, v in zip(node.keys, node.values)
+                if isinstance(k, _ast.Constant)}
+        ev = keys.get("event")
+        if isinstance(ev, _ast.Constant) and ev.value == "exit_flow_defer_to_model" and "ok" in keys:
+            ok_vars.add(_ast.unparse(keys["ok"]))
+    for want in ("_deployed", "bool(_ok)", "_manage_ok"):
+        check(want in ok_vars, f"确认后执行的出口按结果标 ok（{want}）", str(sorted(ok_vars)))
+    # 「已登记待确认」那一步本身没失败：显示 ✓，删没删由确认那一步的工具行表示
+    for mod, label in (("core.orchestrator.mcp", "MCP 删除"),
+                       ("core.orchestrator.skill_lifecycle", "Skill 删除")):
+        src = S.module_text(mod)
+        i = src.find("等待用户确认")
+        check(i >= 0 and "ok=True)" in src[i:i + 200], f"{label}登记待确认的那一步标 ok")
+
 
 def t_rag_expandvars(tmp):
     print("\n▶ 知识库读文件展开环境变量")

@@ -310,13 +310,20 @@ class InteractionMixin:
             # ANSWER → 同意部署。走既有 apply_pending_skill（它自己会关交互）。
             logger.info(f"[Interaction] 审计 {iid} → 用户同意部署 {_fn}")
             _res = self.apply_pending_skill(_fn)
+            _deployed = bool(_res.get("ok"))
             yield {"event": "exit_flow_defer_to_model",
                    "tool_result": (
-                       f"The user approved the pending Skill {_fn!r} and it has been deployed "
-                       f"(ok={_res.get('ok')}). Raw system message, as evidence: "
-                       + repr(_res.get("msg") or "") + ". Tell them it is in place."
+                       (f"The user approved the pending Skill {_fn!r} and it has been deployed. "
+                        f"Raw system message, as evidence: " + repr(_res.get("msg") or "")
+                        + ". Tell them it is in place.")
+                       if _deployed else
+                       (f"The user approved the pending Skill {_fn!r}, but deploying it FAILED. "
+                        f"Raw system message: " + repr(_res.get("msg") or "")
+                        + ". Report the failure as-is; do not say it is in place.")
                    ),
-                   "log": f"审计 {iid} 经模型工具批准部署。"}
+                   "log": f"审计 {iid} 经模型工具批准部署。",
+                   # 已经做成，措辞交回模型：工具行按执行结果显示 ✓ / ✕
+                   "ok": _deployed}
             from core import skill_watch as _skw
             _skw.request_reload("审计经模型工具批准部署")
             return
@@ -332,6 +339,7 @@ class InteractionMixin:
             _rt_close_mcp_manage(_srv, approved=True)
             self._pending_action = None
             self._pending_action_at = 0.0
+            _ok = False
             try:
                 from core.mcp_client import MCPManager as _MM_c
                 _ok = await _MM_c.instance().remove_server(_srv)
@@ -344,6 +352,7 @@ class InteractionMixin:
                     # ⭐ 与 Nano 自己动手那条**同一个出口** —— 见 `_note_mcp_change`
                     self._note_mcp_change("delete", _srv, by="nano")
             except Exception as e:
+                _ok = False
                 logger.warning(f"[B3] 删除 MCP {_srv} 失败: {e}")
                 _mcp_facts = (f"Deleting MCP server {_srv!r} failed with: {e}. "
                               f"Report the failure as-is; do not soften it.")
@@ -351,7 +360,8 @@ class InteractionMixin:
                    "tool_result": (
                        _mcp_facts
                    ),
-                   "log": f"MCP 管理确认 {iid} 已执行。"}
+                   "log": f"MCP 管理确认 {iid} 已执行。",
+                   "ok": bool(_ok)}
             return
 
         if rec.kind == _it.Kind.SKILL_MANAGE:
@@ -397,6 +407,7 @@ class InteractionMixin:
             _rt_close_skill_manage(_sk, approved=True)
             self._pending_action = None
             self._pending_action_at = 0.0
+            _manage_ok = False
             try:
                 if _op == "delete":
                     # ⚠️ 方法名是 `delete_skill_file`，不是 `delete_skill`
@@ -406,9 +417,10 @@ class InteractionMixin:
                     _r = self.registry.disable_skill(_sk)
                 else:
                     _r = self.registry.enable_skill(_sk)
+                _manage_ok = bool((_r or {}).get('ok', True))
                 _skill_manage_facts = (
                     f"Operation {_op!r} on Skill {_sk!r} completed "
-                    f"(ok={(_r or {}).get('ok', True)}). Raw system message, as "
+                    f"(ok={_manage_ok}). Raw system message, as "
                     f"evidence: " + repr((_r or {}).get("msg") or "") + ".")
             except Exception as e:
                 # ⚠️ 如实报错，不要换成"操作遇到了问题"（设计原则 3 的推论）。
@@ -423,7 +435,8 @@ class InteractionMixin:
                    "tool_result": (
                        _skill_manage_facts
                    ),
-                   "log": f"管理确认 {iid} 执行 {_op}。"}
+                   "log": f"管理确认 {iid} 执行 {_op}。",
+                   "ok": _manage_ok}
             return
 
         if rec.kind != _it.Kind.SKILL_CLARIFICATION:

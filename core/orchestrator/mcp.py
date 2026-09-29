@@ -189,7 +189,9 @@ class McpMixin:
                 f"confirmation first, because it edits the local configuration and cannot be "
                 f"undone. A pending confirmation has been registered. Ask the user to confirm "
                 f"or cancel, in your own words. Do not call manage_mcp again for this.",
-                f"等待用户确认 delete MCP「{_srv}」，措辞交回模型。")
+                f"等待用户确认 delete MCP「{_srv}」，措辞交回模型。",
+                # 这一步的职责（登记待确认）已完成；删没删由确认那一步的工具行表示
+                ok=True)
             return
 
         # ── enable / disable / reconnect：可逆，立即执行 ────────────────
