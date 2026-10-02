@@ -184,7 +184,7 @@ pydantic-settings==2.14.1
 pydantic_core==2.46.4
 PyGetWindow==0.0.9
 Pygments==2.20.0
-PyJWT==2.13.0
+PyJWT==2.15.0
 PyMsgBox==2.0.1
 PyMuPDF==1.20.2
 pyparsing==3.3.2
