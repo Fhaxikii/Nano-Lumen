@@ -120,7 +120,7 @@ markdownify==1.2.2
 MarkupSafe==3.0.3
 marshmallow==3.26.2
 matplotlib==3.10.9
-mcp==1.28.1
+mcp==1.30.0
 mcp-server-fetch==2026.6.4
 mdurl==0.1.2
 mmh3==5.2.1
