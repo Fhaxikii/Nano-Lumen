@@ -226,7 +226,7 @@ safetensors==0.8.0
 scikit-image==0.25.2
 scikit-learn==1.7.2
 scipy==1.15.3
-sentence-transformers==5.5.1
+sentence-transformers==5.6.0
 sentencepiece==0.2.1
 shapely==2.1.2
 shellingham==1.5.4
