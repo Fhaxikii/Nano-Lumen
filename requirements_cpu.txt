@@ -107,7 +107,7 @@ langchain-community==0.3.31
 langchain-core==0.3.86
 langchain-openai==0.3.35
 langchain-text-splitters==0.3.11
-langsmith==0.8.5
+langsmith==0.8.18
 latex2mathml==3.81.0
 lazy-loader==0.5
 lmdb==2.2.0
