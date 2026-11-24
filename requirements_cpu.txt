@@ -166,7 +166,7 @@ prettytable==3.17.0
 propcache==0.5.2
 Protego==0.6.2
 proto-plus==1.28.0
-protobuf==5.28.3
+protobuf==5.29.6
 proxy-tools==0.1.0
 pscript==0.7.7
 psutil==7.2.2
