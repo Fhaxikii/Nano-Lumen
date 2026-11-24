@@ -105,7 +105,7 @@ kubernetes==34.1.0
 langchain==0.3.30
 langchain-community==0.3.31
 langchain-core==0.3.86
-langchain-openai==0.3.35
+langchain-openai==1.1.14
 langchain-text-splitters==0.3.11
 langsmith==0.8.5
 latex2mathml==3.81.0
