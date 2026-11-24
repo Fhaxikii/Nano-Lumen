@@ -255,7 +255,7 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 tzdata==2026.2
 uiautomation==2.0.29
-ujson==5.12.1
+ujson==5.13.0
 uritemplate==4.2.0
 urllib3==2.3.0
 uuid_utils==0.16.0
